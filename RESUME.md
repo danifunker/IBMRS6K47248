@@ -40,46 +40,84 @@ machine):
   (`support/ibmrs6k/`, reusing the disk write buffer, fast SCSI service loop
   and Ethernet mailbox of the user's other family branches): `docs/plan.md` M5/M7.
 
-## Where it stands (2026-10-17)
+## Where it stands (2026-10-17, end of the second session: on Windows, with a MiSTer)
 
-- **M0-M2 done on the bench**: the v1.12 ROM runs from reset through the
-  recovery block (MPC105 memory sizing, the CS4232's Crystal-key set-up,
-  the main block's CRC), the main block (RAM test, LZW decompression) to
-  `main_control` at clock 520 M, then the 8259s, RTC, 8042, debugger, file
-  system, the serial-port monitor and the serial console (VT100 on COM1),
-  to `diskette_init` (B1).
-- **Little-endian mode**: done and verified (`sim/tests/le_test*.rom`; with
-  MacPPC7300's golden vectors and `run_core.py` lockstep at LE_MODE = 0).
-  The patch and the resume prompt for MacPPC7300 are written
-  (`docs/cpu_patches/`, `../MacPPC7300_MiSTer/RESUME_le_mode.md`, the latter
-  left uncommitted there).
-- **The floppy controller** (drive empty) passes `diskette_init` (B1) in
-  1.3 M instructions.
-- **M4 (S3) phase 1 works on the bench**: the firmware's S3 driver draws
-  its start-up screen (PowerPC logo, the POST icons, then the error
-  triangle with 00017006: the console named in the blank NVRAM not found)
-  and idles at progress 7B around clock 950 M. Picture:
-  `docs/images/first_screen_powerpc_logo.png`; details in
-  `docs/bringup_log.md` (the last section).
-- **M5 phase 1 (the 53C810) runs on the bench**: `rtl/machine/IBMRS6K7248_ncr810.sv`
-  (the HP 9000/715 core's 53C710 SCRIPTS engine carried to the 810),
-  `IBMRS6K7248_scsitgt.sv` (the 715's targets with a dual-clock hps
-  buffer), PCI I/O decode, DMA through the CPU's snoop port, IRQ 15; the
-  bench's `--disk0/--disk1/--cd` image server and `--io-range LO:HI`; the
-  top's three hps_io slots. First run (`docs/bringup_log.md`, last
-  section): the driver opens the adapter (SCRIPTS self-test, selection
-  timeouts all work), the scan runs to its end (a new progress 98 at ID 3,
-  probably the CD's INQUIRY), then a new progress CB, and the firmware idles
-  at 7B with 00017006 as before. **The CD image was never read.**
-  **Next check**: rerun from the `main_control` snapshot with
-  `--cd scratch/downloads/fsck.technology/diag/AIX_4.3.3.3_RS6000_standalone_diagnostics.iso
-  --io-range A0000000:A00000FF` (and `--watch 9C27C` ncr_execute) to clock
-  ~1,300 M and see which commands go to ID 3; find what 98 and CB mean;
-  then make the firmware boot it (a boot list in NVRAM, or its menus).
-  `docs/scsi_design.md` sections 1.5-1.10 are the checklist.
+Read `docs/bringup_log.md`'s last five sections first: they are the day.
+
+- **M0-M2, the floppy, M4 phase 1, M5 phase 1 run on the bench** as before:
+  the firmware from reset to its start-up screen (PowerPC logo, the POST
+  icons, the 00017006 triangle: no console named in the blank NVRAM).
+- **The 53C810 and the CD are good through the scan**: with the CD at ID 3,
+  INQUIRY runs through selection, SDTR negotiation, command, data in,
+  status and message to a good status (progress 98), then LUN 1. (A restored
+  run had lost its images: the snapshot's inputs came back; fixed.)
+- **After 00017006 the firmware sleeps 3 s on the CMOS clock** (`sleep(3,1)`
+  in `text_errormsg_tr`) — the "idle at 7B" of every earlier run — then goes
+  on: `cold_boot_path`, D2, D4, DE, FE (word FF007BFE), draws a boot screen
+  (a drive icon and the "System Management Services" diskette,
+  `docs/images/`: `scratch/work/frame_boot.png` in the session) and **waits
+  for a key in `rxchar` (RAM 1A204)**, polling a port held at 516(r2) (which
+  one: two runs with `--io-range 80000060:80000064` and `800003F8:800003FF`
+  were in progress at the end). No SCSI command is sent after the scan. The
+  bench can now press keys: `--key-at CLOCK:CODE[:e]` (PS/2 set 2) and
+  `--com1-at CLOCK:BYTE`; and `RTC_FAST` (on by default in `sim/Makefile`)
+  runs the RTC's seconds 64 x faster so such sleeps cost 5 M clocks.
+  **Next**: from `snap3_cbp.bin` (the RTC_FAST build's `cold_boot_path`
+  snapshot, being made at the end), run to the wait (~320 M clocks less the
+  sleep) and press Enter / F1 / F4 (set 2: 5A, 05, 0C) or send 0D on COM1;
+  see what the firmware does with the boot list (diskette first by default:
+  the empty drive; then "SCSI CDROM"); watch `boot_cmd` 133A0, `ParallelBoot`
+  232EC, `netboot` A9524, `setboot` 1EF64 and the 53C810's registers.
+- **The first Quartus fits**: 100 MHz misses by 6.2 ns, 70 MHz by 2.6 ns
+  (every failing path in the CPU: the FPU's result mux into the completion
+  queue, the data cache's address into writeback). **The CPU is MacPPC7300's
+  master as it stands** (checked: only the LE patch differs; MacPPC7300 runs
+  at 70, not 100). The top is at 70 MHz (`CPU_MHZ`; the PLL also has a
+  50 MHz counter option, built once as a diagnostic, not wanted as a speed).
+  80-82 % of the ALMs (CPU 15,900; framework ~6,900; 53C810+targets 3,075;
+  S3 2,286; the two PCI config spaces 1,759 and the 8042 772 as flops).
+- **On the board** (the user's MiSTer at 192.168.99.92; the .143 one is the
+  PPC_Mac sessions'): the core loads, the OSD works, and the UART (ttyS1 on
+  the board, 115200; OSD "UART" = POST codes, the default) shows the CPU
+  running the recovery block to its end and the main block **into the memory
+  sizing's halt loop** (FFF15AD0, code 22 forever, after `23 24 23 24 ...`),
+  with 112 MB (the 128 MB module's "Most") and with 16 MB alike. The screen
+  shows the S3's reset-state scan-out of whatever DDR3 held. The plain
+  bench with 16 and 112 MB and **the new SDRAM-in-the-loop bench** (`make
+  machine_sd`: the board's controller plus MacPPC7300's chip model, the ROM
+  through the upload port) pass that sizing; the 16 MB SDRAM-bench run
+  through the whole memory phase (`run_sd16`, to 800 M clocks) was in
+  progress at the end. If it passes too, the board's halt is not the
+  controller's logic: then timing (the CPU at -2.6 ns; a one-off 50 MHz load
+  would prove it: `CPU_MHZ = 50`, the PLL counter 7/7 is in) or something
+  the chip model does not have (the real board's data path).
 - Then: the Main_MiSTer branch (ask first), M6 (AIX), M7 (PCnet, CS4232
-  sound, the L2, the model option). Not yet done: a Quartus fit (the top
-  compiles only in the bench's subset so far: the first fit is due).
+  sound, the L2, the model option); the EEPROM at ports 78-7C (stubbed:
+  `EEPROM_Wait` polls 7C 2,000 times a boot) and the NVRAM's configuration.
+
+## On this machine (Windows 11, 32 GB, 20 cores)
+
+- The bench builds in WSL Ubuntu-24.04 (user dani): the distro's Verilator
+  5.020 is too old; use `make machine_tb VERILATOR=/home/dani/oss-cad-suite/bin/verilator
+  BUILD=/home/dani/ibmrs6k/build3 JOBS=4` from `/mnt/c/Temp/mistercore/IBMRS6K47248/sim`
+  (objects on the ext4 disk; `make` with the systemd cap fails from a plain
+  `wsl -- bash`). Long runs: `setsid nohup bash /mnt/c/.../scratch/work/X.sh &`
+  inside `wsl -d Ubuntu-24.04 -- bash -lc '...'` (a `$var` in that string is
+  eaten: keep commands in script files). Snapshots: `~/ibmrs6k/snap3_mc.bin`
+  (main_control, the RTC_FAST build `build3`), `snap3_cbp.bin` (cold_boot_path,
+  with the CD, if the run finished); `build`/`snap_mc.bin`/`snap_cbp.bin` are
+  the earlier build without RTC_FAST.
+- Quartus 17.0 Lite: `C:\intelFPGA_lite.0\quartusin64\quartus_sh --flow compile IBMRS6K7248`
+  from the repo (16-17 minutes; the first error list is in the bringup log:
+  Quartus 17 misreads `N'(int)` casts as signed, needs `genvar` declared
+  before `generate`, cannot slice a concatenation).
+- The board: `ssh -i ~/mister_key root@192.168.99.92` from WSL;
+  `scratch/work/stage.sh` copies the rbf, boot.rom and the ISO; `echo
+  load_core /media/fat/_Computer/IBMRS6K7248.rbf > /dev/MiSTer_cmd`; the
+  screen through the MiSTerKVMS capture server on this PC
+  (`scratch/work/grab.py MiSTer-SS1 out.jpg`); keys through mrext
+  (`POST http://192.168.99.92:8182/api/controls/keyboard-raw/<linux keycode>`);
+  the POST codes: `stty -F /dev/ttyS1 115200 raw; cat /dev/ttyS1`.
 
 ## The bench (sim/)
 
