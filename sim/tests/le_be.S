@@ -76,9 +76,12 @@ setup:
 
 	# the bridge into little-endian mode (PICR1 bit 5) and the CPU with it, by rfi;
 	# the block runs twice, the first time only to bring it into the cache
+	li32	r3, 0x00011040		# ILE first, by mtmsr (rfi does not restore it), still big-endian
+	mtmsr	r3
+	isync
 	li32	r3, 0xFFF02000
 	mtsrr0	r3
-	li32	r3, 0x00011041		# ILE, ME, IP, LE
+	li	r3, 0x1041		# ME, IP, LE
 	mtsrr1	r3
 	li32	r20, CF8
 	li32	r21, 0x800000A8
@@ -193,7 +196,7 @@ table:
 	.long	0x14, 0xBEBAFECA	# stw CAFEBABE at 2014
 	.long	0x18, 0x44332211	# lwbrx 1000 (11223344)
 	.long	0x1C, 0x00000000	# the little-endian code's own compares: no mismatch
-	.long	0x20, 0xFFF02088	# the misaligned load's address (SRR0)
-	.long	0x24, 0x00001001	# its effective address (DAR)
-	.long	0x2C, 0x600DC0DE	# the little-endian code ran to its end
+	.long	0x20, 0x8820F0FF	# the misaligned load's address, SRR0 FFF02088 (stored little-endian)
+	.long	0x24, 0x01100000	# its effective address, DAR 00001001, unmunged (likewise)
+	.long	0x2C, 0xDEC00D60	# the little-endian code ran to its end: 600DC0DE (likewise)
 	.long	-1, 0

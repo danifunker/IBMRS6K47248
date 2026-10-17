@@ -46,3 +46,4 @@ scratch/
 sim/tests/*.o
 sim/tests/*.elf
 sim/tests/*.bin
+sim/tools/fst2vcd

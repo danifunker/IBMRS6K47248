@@ -87,7 +87,7 @@ align_handler:
 	mfsrr0	r3
 	addi	r3, r3, 4
 	mtsrr0	r3
-	li32	r3, 0x00011041		# ILE, ME, IP, LE
+	li	r3, 0x1041		# ME, IP, LE (ILE stays set: rfi leaves it)
 	mtsrr1	r3
 	rfi
 

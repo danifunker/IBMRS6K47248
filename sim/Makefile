@@ -58,6 +58,11 @@ $(BUILD)/machine_tb: $(BUILD)/VIBMRS6K7248_system.mk
 	@$(MAKE) -s -C $(BUILD) -f VIBMRS6K7248_system.mk -j $(JOBS) OPT_FAST=$(OPT) OPT_SLOW=-O0 OBJCACHE=$(shell command -v ccache) \
 		> $(BUILD)/compile.log 2>&1 || (tail -40 $(BUILD)/compile.log; false)
 
+# fst2vcd, to read a --fst waveform without a viewer
+FSTAPI := $(dir $(shell command -v verilator))../share/verilator/include/gtkwave
+tools/fst2vcd: tools/fst2vcd.c
+	gcc -O2 -DFST_CONFIG_INCLUDE='"fst_config.h"' -I$(FSTAPI) -o $@ $< $(FSTAPI)/fstapi.c $(FSTAPI)/fastlz.c $(FSTAPI)/lz4.c -lz -lpthread
+
 lint:
 	$(VERILATOR) --lint-only $(WARN) --top-module IBMRS6K7248_system $(CPU_SRCS) $(MACH_SRCS)
 
