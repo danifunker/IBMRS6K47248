@@ -45,3 +45,49 @@ The bench runs about 400,000 clocks a second.
   internal registers stored.
 - Then the 8259s, the 8254, the RTC/NVRAM (70/71, 74/75/76), the
   keyboard controller, the PC87312, as the firmware reaches them.
+
+## 2026-10-17: the MPC105 (M1, first form)
+
+The MPC105's configuration space (`IBMRS6K7248_mpc105.sv`), Fire Coral's
+(`IBMRS6K7248_firecoral.sv`), CF8/CFC, the banks decoding RAM onto the
+SDRAM, the floating memory bus, the SIMM presence detect (32 MB: one pair
+of 16 MB SIMMs, `AA`).
+
+`machine_tb --ram 32 --cycles 40000000`: memory sizing passes. The probe
+writes AA5508AA at each 8 MB block and reads FFFFFFFF back from every
+block but the first (no DRAM: the bus floats to the last value written),
+reads the presence detect, places the 32 MB bank at 0, pattern-tests it
+(progress 23 four times) and goes on: progress 08, then 09 (`audio_mute`:
+ISA plug-and-play at 0279, the Sound Blaster's 022C), then a decrementer
+delay (FFF050E4: the time base runs at 16.67 MHz, so a 0.4 s wait is
+40 million clocks of the bench). Port 080C (equipment present) reads FF
+(a stub); FFF04E84 tests its bit 1 and takes the branch at FFF04E8C (what
+the bit means is still to be found).
+
+The bench: 390,000 clocks a second, 140 MB; the build 14 minutes
+(the CPU's logic lands in two 45-50 MB C++ files whatever the split).
+
+`--cycles 300000000` (770 s): still in step 09 after 3 s of machine
+time. Not a hang: `audio_mute` (FFF0D9A4) calls `init_4232`, which sends
+the CS4232's Crystal key and configuration bytes to 0279 (`SendKey`,
+`ConfigDevice`: every byte followed by a 1 ms delay; the delay routine
+FFF05060 takes nanoseconds and the bus MHz from the planar table, so the
+time base rate is right) and then reads the Sound Blaster DSP's write
+status at 022C, retrying up to 199 times, twice, until it reads anything
+but FF. A board always has the chip, so the firmware never expects it
+missing; giving up would take ~16 s of machine time (~70 minutes of the
+bench). Hence `IBMRS6K7248_cs4232.sv`: the DSP's status and reset
+handshake and the WSS codec's registers, present and silent.
+
+## 2026-10-17: the ISA core (M2, first form)
+
+`main_control`'s order (the decompressed firmware, RAM 8398) sets what
+comes next: CMOS (`yo_cmos`: an MC146818 at 70/71), `pci_reset_slots`,
+`init_uart`, `init_interrupts` (8259s), `rtc_clock` and `init_rtc_int`
+(the RTC's periodic interrupt: the first real use of ext_irq),
+`i8042_init`, `debugger_init`, `manager_init`, the password EEPROM,
+`monitor_serial_port`. Written: the 8259 pair with ELCR and the
+interrupt acknowledge (`_pic`), the 8254 and port 61 (`_pit`), the
+MC146818 and the 4 KB NVRAM (`_rtc`), the 8042 with a PS/2 keyboard and
+mouse from hps_io (`_kbc`; set 2 to set 1 translation from QEMU's table),
+port 92, the error status registers 0840-0844 reading 0.

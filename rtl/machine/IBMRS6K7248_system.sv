@@ -27,7 +27,7 @@ module IBMRS6K7248_system
 	input  logic         clk,             // the CPU's clock
 	input  logic         reset,           // in the CPU's clock
 	input  logic [31:0]  reset_pc,
-	input  logic [7:0]   ram_mb,
+	input  logic [8:0]   simm_cfg,        // the SIMM pairs (IBMRS6K7248_machine)
 	input  logic [4:0]   rom_at,
 	input  logic         rom_512k,
 	input  logic [7:0]   planar_id,
@@ -43,6 +43,16 @@ module IBMRS6K7248_system
 	output logic [255:0] b_wdata,
 	input  logic         b_ack,
 	input  logic [255:0] b_rdata,
+
+	// the keyboard and mouse (hps_io's, in any clock: synchronised inside),
+	// the RTC's starting time (rtc_set a pulse in this clock), the speaker,
+	// the 8042's reset line (a pulse)
+	input  logic [10:0]  ps2_key,
+	input  logic [24:0]  ps2_mouse,
+	input  logic         rtc_set,
+	input  logic [55:0]  rtc_time,
+	output logic         speaker,
+	output logic         kbc_reset,
 
 	// COM1, 1 when idle; asynchronous in
 	output logic         com1_txd,
@@ -98,10 +108,11 @@ DSPPC604 #(.PERF(PERF)) cpu (
 );
 
 IBMRS6K7248_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ)) machine (
-	.clk, .reset, .ram_mb, .rom_at, .rom_512k, .planar_id,
+	.clk, .reset, .simm_cfg, .rom_at, .rom_512k, .planar_id,
 	.c_req, .c_we, .c_line, .c_addr, .c_be, .c_wdata, .c_ack, .c_rdata,
 	.m_req, .m_we, .m_line, .m_addr, .m_be, .m_wdata, .m_ack, .m_rdata,
-	.ext_irq, .tb_tick,
+	.ext_irq, .tb_tick, .kbc_reset, .speaker,
+	.ps2_key, .ps2_mouse, .rtc_set, .rtc_time,
 	.com1_txd, .com1_rxd, .com1_cts_n, .com1_rts_n,
 	.io_ev, .io_we, .io_stub, .io_addr, .io_be, .io_wdata, .io_rdata
 );

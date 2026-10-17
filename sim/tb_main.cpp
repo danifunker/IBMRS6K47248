@@ -36,19 +36,28 @@ struct StubInfo { uint64_t reads = 0, writes = 0; uint32_t first_pc = 0; uint32_
 static void usage() {
 	printf("machine_tb --rom FILE [--ram MB] [--cycles N] [--instr N] [--io] [--pcs N] [--stall N]\n"
 	       "  --rom FILE   the ROM image (512 KB: the flash at FFF00000, FFF80000 empty)\n"
-	       "  --ram MB     installed RAM (default 32)\n"
+	       "  --ram MB     installed RAM, as SIMM pairs: 8 16 24 32 48 56 64 96 112 (default 32)\n"
+	       "  --planar ID  the planar ID at port 0852 (default 0xF5, a 7248-100; F0-F3 a Power Series 830/850)\n"
+	       "  --watch PC   report when PC (hex) first retires (FFF10100 and 8398, main_control, always)\n"
 	       "  --cycles N   stop after N clocks (default 50,000,000)\n"
 	       "  --instr N    stop after N instructions retired\n"
 	       "  --io         print every device access as it happens\n"
-	       "  --quiet-progress  do not print the firmware's progress codes (port 8C0) as they come\n"
+	       "  --quiet-progress  do not print the firmware's progress codes (port 680) as they come\n"
 	       "  --pcs N      print the first N retired PCs\n"
 	       "  --stall N    stop when no new PC was retired in the last N instructions (default 2,000,000; 0 never)\n");
 }
 
 int main(int argc, char** argv) {
+	setvbuf(stdout, nullptr, _IOLBF, 0);          // a run cut short still shows how far it got
 	Verilated::commandArgs(argc, argv);
 	const char* rom_path = nullptr;
 	unsigned ram_mb = 32;
+	unsigned planar_id = 0xF5;                         // a 7248-100
+	std::vector<uint32_t> extra_watch;
+	// the SIMM pairs for each size (3 bits a pair, pair 0 lowest: 1 8 MB, 2 16, 3 32, 4 64)
+	static const struct { unsigned mb, cfg; } simm_sets[] = {
+		{8, 1}, {16, 2}, {24, 2 | 1 << 3}, {32, 3}, {48, 3 | 2 << 3}, {56, 3 | 2 << 3 | 1 << 6},
+		{64, 4}, {96, 4 | 3 << 3}, {112, 4 | 3 << 3 | 2 << 6}};
 	uint64_t max_cycles = 50000000, max_instr = 0, stall_lim = 2000000;
 	bool io_print = false, post_print = true;
 	uint64_t pcs_print = 0;
@@ -57,6 +66,8 @@ int main(int argc, char** argv) {
 		auto next = [&]() { if (i + 1 >= argc) { usage(); exit(2); } return argv[++i]; };
 		if (a == "--rom") rom_path = next();
 		else if (a == "--ram") ram_mb = strtoul(next(), nullptr, 0);
+		else if (a == "--planar") planar_id = strtoul(next(), nullptr, 0);
+		else if (a == "--watch") extra_watch.push_back(strtoul(next(), nullptr, 16));
 		else if (a == "--cycles") max_cycles = strtoull(next(), nullptr, 0);
 		else if (a == "--instr") max_instr = strtoull(next(), nullptr, 0);
 		else if (a == "--io") io_print = true;
@@ -81,7 +92,16 @@ int main(int argc, char** argv) {
 
 	auto* top = new VIBMRS6K7248_system;
 	top->reset_pc = 0xFFF00100;
-	top->ram_mb   = ram_mb;
+	unsigned simm_cfg = ~0u;
+	for (auto& e : simm_sets) if (e.mb == ram_mb) simm_cfg = e.cfg;
+	if (simm_cfg == ~0u) { fprintf(stderr, "--ram %u: not a SIMM size this bench builds\n", ram_mb); return 2; }
+	top->simm_cfg = simm_cfg;
+	top->planar_id = planar_id;
+	top->ps2_key = 0;
+	top->ps2_mouse = 0;
+	top->rtc_set = 0;
+	// the RTC starts at 2026-10-17 12:00:00, a Saturday (hps_io's RTC: BCD seconds, minutes, hours, date, month, year; weekday 0-6 from Sunday)
+	top->rtc_time = (0x00ull) | (0x00ull << 8) | (0x12ull << 16) | (0x17ull << 24) | (0x10ull << 32) | (0x26ull << 40) | (0x06ull << 48);
 	top->rom_at   = ROM_AT;
 	top->rom_512k = rom_len == 512u * 1024;
 	top->com1_rxd = 1;
@@ -102,6 +122,12 @@ int main(int argc, char** argv) {
 	uint32_t lcr = 0;
 	std::string line;
 	uint64_t io_count = 0;
+	struct Watch { uint32_t pc; std::string name; bool hit; };
+	std::vector<Watch> watch = {
+		{0xFFF10100, "the main block's reset vector", false},
+		{0x00008398, "main_control", false},
+	};
+	for (auto& w : extra_watch) watch.push_back({w, "--watch", false});
 	unsigned post_last = 0;
 	uint64_t post_count = 0;
 
@@ -110,7 +136,9 @@ int main(int argc, char** argv) {
 		top->clk = 1; top->clk_b = 1; top->eval();
 	};
 
+	top->rtc_set = 1;
 	for (int i = 0; i < 20; i++) tick();
+	top->rtc_set = 0;
 	top->reset = 0;
 	top->reset_b = 0;
 
@@ -149,6 +177,12 @@ int main(int argc, char** argv) {
 
 		if (top->trace_valid && top->trace_last) {
 			uint32_t pc = top->trace_pc;
+			for (auto& w : watch)
+				if (!w.hit && pc == w.pc) {
+					w.hit = true;
+					printf("  reached %08X (%s) at instr %llu, clock %llu\n", pc, w.name.c_str(),
+					       (unsigned long long)instr, (unsigned long long)cycle);
+				}
 			if (instr < pcs_print) printf("  pc %08X  %08X  msr %08X\n", pc, top->trace_insn, top->trace_msr);
 			instr++;
 			last_pc = pc;
@@ -172,8 +206,9 @@ int main(int argc, char** argv) {
 				else if (c != '\r') line += (c >= 32 && c < 127) ? c : '.';
 			}
 			if (we && (a & ~3u) == 0x800003F8 && (be & 1)) lcr = top->io_wdata & 0xFF;   // 3FB
-			// the firmware's progress codes: each step writes its code to 8C0 (and 3BC, 680)
-			if (we && a == 0x800008C0 && (be & 8)) {
+			// the firmware's progress codes: every step writes a little-endian word 000x00nn to
+			// 680 (the assembly also writes nn to 8C0, the C code only to 680)
+			if (we && a == 0x80000680 && be == 0xF) {
 				unsigned code = (top->io_wdata >> 24) & 0xFF;
 				if (post_print) printf("  progress %02X  (pc %08X, instr %llu)\n", code, last_pc, (unsigned long long)instr);
 				post_last = code;

@@ -15,11 +15,22 @@
 //  contiguous I/O mode (to be checked against the firmware: see
 //  docs/firmware_analysis.md):
 //
-//    00000000-7FFFFFFF  system memory      ram_mb MB from SDRAM offset 0;
-//                                          beyond it reads 0, writes ignored
+//    00000000-3FFFFFFF  system memory      the MPC105's eight banks (their
+//                                          start, end and enable registers,
+//                                          IBMRS6K7248_mpc105); a bank with
+//                                          DRAM behind it reaches the SDRAM
+//                                          (below), an address no such bank
+//                                          holds reads the value last driven
+//                                          onto the memory bus (what the
+//                                          firmware's bank probe expects of
+//                                          an empty bank) and writes nothing
 //    80000000-807FFFFF  ISA/PCI I/O        port = address[22:0] (contiguous);
 //                                          devices below, the rest reads FF
-//    80800000-80FFFFFF  PCI config direct  no devices yet: reads FFFFFFFF
+//    80000CF8, 80000CFC PCI configuration  the MPC105's CONFIG_ADDR/CONFIG_DATA
+//                                          (little-endian registers): bus 0
+//                                          device 0 the MPC105, device 11 Fire
+//                                          Coral; any other reads FFFFFFFF
+//    80800000-80FFFFFF  PCI config direct  not used by this board: reads FFFFFFFF
 //    81000000-BF7FFFFF  PCI I/O            reads FF
 //    BFFFF000-BFFFFFFF  interrupt ack      reads 0 (no 8259s yet)
 //    C0000000-FEFFFFFF  PCI/ISA memory     reads FF
@@ -30,8 +41,27 @@
 //                                          image, rom_512k: reads FF); writes go to
 //                                          the device path and are ignored
 //
+//  The RAM: three SIMM pairs (simm_cfg, 3 bits each: 0 empty, 1 8 MB, one
+//  bank of 8 MB; 2 16 MB, two of 8; 3 32 MB, one of 32; 4 64 MB, two of
+//  32). Pair p holds banks 2p and 2p+1. The banks' DRAM lies in the SDRAM
+//  one after another from offset 0, bank 0 first; within a bank the
+//  address wraps at its size. The presence-detect byte of each pair is
+//  read at ports 0880-0882 (FF empty; 88, BB, AA, 99 as the firmware's
+//  table at FFF05BA4 has them).
+//
 //  Devices answered so far, in ISA I/O space:
 //    03F8-03FF  COM1, a 16550A (IBMRS6K7248_uart) on the MiSTer's UART
+//    0020-0021, 00A0-00A1, 04D0-04D1   the 8259s and their ELCR (IBMRS6K7248_pic);
+//               BFFFFFF0 read: the interrupt acknowledge
+//    0040-0043, 0061   the 8254 and port 61 (IBMRS6K7248_pit)
+//    0060, 0064 the 8042 with a PS/2 keyboard and mouse (IBMRS6K7248_kbc)
+//    0070-0071, 0074-0076   the RTC and the 4 KB NVRAM (IBMRS6K7248_rtc)
+//    0220-022F, 0534-0537   the CS4232's Sound Blaster DSP and WSS codec, present
+//               but silent (IBMRS6K7248_cs4232)
+//    0092       port 92 (stored; its endian bit is for little-endian mode)
+//    0840-0844  the memory and L2 error status registers: no error (0)
+//    0880-0882  SIMM presence detect (read only)
+//    Fire Coral's BAR0 (1000 as the firmware sets it): its index/data pair
 //    0852       planar ID (read only): the model, which the firmware reads to
 //               choose its personality (F4-F7 a 7248, with SCSI: F5 100 MHz,
 //               F4 120, F6/F7 133; F0-F3 a Power Series 830/850, without)
@@ -58,7 +88,7 @@ module IBMRS6K7248_machine
 (
 	input  logic         clk,
 	input  logic         reset,
-	input  logic [7:0]   ram_mb,                    // installed RAM, MB
+	input  logic [8:0]   simm_cfg,                  // the SIMM pairs, 3 bits each (above; quasi-static)
 	input  logic [4:0]   rom_at,                    // the ROM's SDRAM offset in 4 MB (quasi-static)
 	input  logic         rom_512k,                  // the ROM image is 512 KB: the second socket (FFF80000) is empty
 	input  logic [7:0]   planar_id,                 // port 0852 (quasi-static)
@@ -85,6 +115,14 @@ module IBMRS6K7248_machine
 
 	output logic         ext_irq,
 	output logic         tb_tick,
+	output logic         kbc_reset,                 // the 8042's reset line (a pulse)
+	output logic         speaker,                   // the 8254's counter 2 through port 61
+
+	// the keyboard and mouse (hps_io's), the time to start the RTC from
+	input  logic [10:0]  ps2_key,
+	input  logic [24:0]  ps2_mouse,
+	input  logic         rtc_set,
+	input  logic [55:0]  rtc_time,
 
 	// COM1
 	output logic         com1_txd,
@@ -107,9 +145,68 @@ localparam logic [31:0] TB_INC = 32'((64'(TB_HZ) << 32) / 64'(CPU_HZ));
 logic [31:0] tb_acc = '0;
 always_ff @(posedge clk) {tb_tick, tb_acc} <= {1'b0, tb_acc} + {1'b0, TB_INC};
 
+// ---- the SIMMs: each bank's DRAM, its size and where it lies in the SDRAM ------------------
+// (from the quasi-static simm_cfg, registered: out of the request's path)
+logic [5:0]      bk_dram;               // the bank has DRAM
+logic [5:0]      bk_big;                // ... 32 MB (else 8)
+logic [5:0][7:0] bk_base;               // ... from this SDRAM offset, in MB
+logic [2:0][7:0] simm_pd;               // the presence-detect bytes
+// a pair's size in MB, its first bank's
+function automatic logic [7:0] pair_mb(input logic [2:0] c);
+	case (c)
+		3'd1:    pair_mb = 8'd8;
+		3'd2:    pair_mb = 8'd16;
+		3'd3:    pair_mb = 8'd32;
+		3'd4:    pair_mb = 8'd64;
+		default: pair_mb = 8'd0;
+	endcase
+endfunction
+function automatic logic [7:0] side_mb(input logic [2:0] c);
+	side_mb = (c == 3'd3 || c == 3'd4) ? 8'd32 : (c == 3'd1 || c == 3'd2) ? 8'd8 : 8'd0;
+endfunction
+wire [2:0] pc0 = simm_cfg[2:0], pc1 = simm_cfg[5:3], pc2 = simm_cfg[8:6];
+always_ff @(posedge clk) begin
+	bk_dram <= {pc2 == 3'd2 || pc2 == 3'd4, pc2 != 3'd0 && pc2 <= 3'd4,
+	            pc1 == 3'd2 || pc1 == 3'd4, pc1 != 3'd0 && pc1 <= 3'd4,
+	            pc0 == 3'd2 || pc0 == 3'd4, pc0 != 3'd0 && pc0 <= 3'd4};
+	bk_big  <= {{2{pc2 == 3'd3 || pc2 == 3'd4}}, {2{pc1 == 3'd3 || pc1 == 3'd4}}, {2{pc0 == 3'd3 || pc0 == 3'd4}}};
+	bk_base[0] <= 8'd0;
+	bk_base[1] <= side_mb(pc0);
+	bk_base[2] <= pair_mb(pc0);
+	bk_base[3] <= pair_mb(pc0) + side_mb(pc1);
+	bk_base[4] <= pair_mb(pc0) + pair_mb(pc1);
+	bk_base[5] <= pair_mb(pc0) + pair_mb(pc1) + side_mb(pc2);
+	for (int p = 0; p < 3; p++)
+		case (simm_cfg[3 * p +: 3])
+			3'd1:    simm_pd[p] <= 8'h88;
+			3'd2:    simm_pd[p] <= 8'hBB;
+			3'd3:    simm_pd[p] <= 8'hAA;
+			3'd4:    simm_pd[p] <= 8'h99;
+			default: simm_pd[p] <= 8'hFF;
+		endcase
+end
+
+// the MPC105's bank registers
+logic [7:0]      bank_en;
+logic [7:0][9:0] bank_start, bank_end;
+logic [31:0]     picr1;
+
 // ---- decode -------------------------------------------------------------------------------
 wire [31:0] a      = {c_addr, 2'b00};
-wire        is_ram = ~a[31] && a[30:20] < {3'd0, ram_mb};
+
+// the bank holding the address (the lowest if programmed to overlap), and its offset in the SDRAM
+logic       is_ram;
+logic [7:0] ram_mb_at;                  // SDRAM offset of the address's MB
+always_comb begin
+	is_ram    = 1'b0;
+	ram_mb_at = 8'd0;
+	for (int n = 5; n >= 0; n--)
+		if (bank_en[n] && bk_dram[n] && a[31:30] == 2'b00 &&
+		    a[29:20] >= bank_start[n] && a[29:20] <= bank_end[n]) begin
+			is_ram    = 1'b1;
+			ram_mb_at = bk_base[n] + {3'd0, (a[24:20] - bank_start[n][4:0]) & (bk_big[n] ? 5'h1F : 5'h07)};
+		end
+end
 wire        is_rom = a[31:20] == 12'hFFF && !(rom_512k && a[19]);
 wire        to_mem = is_ram | (is_rom & ~c_we);
 wire [19:2] rom_a  = a[19:2];
@@ -117,7 +214,7 @@ wire [19:2] rom_a  = a[19:2];
 assign m_req   = c_req & to_mem & ~dev_busy;
 assign m_we    = c_we;
 assign m_line  = c_line;
-assign m_addr  = is_rom ? {5'd0, rom_at, 2'b00, rom_a} : {3'd0, a[28:2]};
+assign m_addr  = is_rom ? {5'd0, rom_at, 2'b00, rom_a} : {4'd0, ram_mb_at, a[19:2]};
 assign m_be    = c_be;
 assign m_wdata = c_wdata;
 
@@ -202,15 +299,134 @@ IBMRS6K7248_uart #(.CLK_HZ(CPU_HZ)) com1 (
 	.rts_n(com1_rts_n), .dtr_n()
 );
 
-// the planar ID
+// ---- the ISA core: the 8259s, the 8254, the 8042, the RTC and NVRAM, port 92 -------------
+wire        pic_hit  = s_isa && (bport[15:1] == 15'h0010 || bport[15:1] == 15'h0050);   // 20/21, A0/A1
+wire        elcr_hit = s_isa && bport[15:1] == 15'h0268;                            // 4D0/4D1
+wire        pit_hit  = s_isa && (bport[15:2] == 14'h0010 || bport == 16'h0061);     // 40-43, 61
+wire        kbc_hit  = s_isa && (bport == 16'h0060 || bport == 16'h0064);
+wire        rtc_hit  = s_isa && (bport[15:1] == 15'h0038 || (bport[15:2] == 14'h001D && bport[1:0] != 2'd3));   // 70/71, 74-76
+wire        p92_hit  = s_isa && bport == 16'h0092;
+wire        err_hit  = s_isa && bport >= 16'h0840 && bport <= 16'h0844;
+wire        sb_hit   = s_isa && bport[15:4] == 12'h022;                             // 220-22F
+wire        wss_hit  = s_isa && bport[15:2] == 14'h014D;                            // 534-537
+
+logic [15:0] irq;
+logic  [7:0] pic_q, pit_q, kbc_q, rtc_q, aud_q;
+logic        irq0, irq1, irq8, irq12, nmi_mask;
+logic  [7:0] p92;
+
+IBMRS6K7248_pic pic (
+	.clk, .reset,
+	.sel(d_sel & (pic_hit | elcr_hit | (s_iack & ~d_we))), .we(d_we),
+	.slave(elcr_hit ? bport[0] : bport[7]), .a0(bport[0]), .elcr_sel(elcr_hit), .iack(s_iack),
+	.wdata(bwd), .rdata(pic_q),
+	.irq, .intr(ext_irq)
+);
+
+IBMRS6K7248_pit #(.CLK_HZ(CPU_HZ)) pit (
+	.clk, .reset,
+	.sel(d_sel & pit_hit), .we(d_we), .p61(bport == 16'h0061), .a(bport[1:0]), .wdata(bwd), .rdata(pit_q),
+	.irq0, .spk(speaker)
+);
+
+IBMRS6K7248_kbc #(.CLK_HZ(CPU_HZ)) kbc (
+	.clk, .reset,
+	.sel(d_sel & kbc_hit), .we(d_we), .cmd(bport[2]), .wdata(bwd), .rdata(kbc_q),
+	.irq1, .irq12, .rst(kbc_reset),
+	.ps2_key, .ps2_mouse
+);
+
+IBMRS6K7248_rtc #(.CLK_HZ(CPU_HZ)) rtc (
+	.clk, .reset,
+	.sel(d_sel & rtc_hit), .we(d_we), .port(bport[2:0]), .wdata(bwd), .rdata(rtc_q),
+	.irq8, .nmi_mask,
+	.set_time(rtc_set), .time_bcd(rtc_time)
+);
+
+IBMRS6K7248_cs4232 cs4232 (
+	.clk, .reset,
+	.sel(d_sel & (sb_hit | wss_hit)), .we(d_we), .wss(wss_hit), .off(bport[3:0]), .wdata(bwd), .rdata(aud_q)
+);
+
+always_ff @(posedge clk) begin
+	if (d_sel & d_we & p92_hit) p92 <= bwd;
+	if (reset) p92 <= 8'h00;
+end
+
+// the request lines: COM1's INTR as a PC board gates it, with OUT2
+assign irq = {3'b000, irq12, 3'b000, irq8, 3'b000, com1_irq & com1_out2, 1'b0, 1'b0, irq1, irq0};
+
+// the planar ID, the SIMMs' presence detect
 wire        planar_hit = s_isa && bport == 16'h0852;
+wire        pd_hit     = s_isa && bport[15:2] == 14'h0220 && bport[1:0] != 2'd3;   // 0880-0882
+
+// the memory bus's last value: what an address no bank holds reads (the CPU's
+// last word written to memory or to such an address)
+logic [31:0] mem_bus;
+always_ff @(posedge clk) begin
+	if (m_ack & m_we & ~m_line) mem_bus <= m_wdata[31:0];
+	if (m_ack & m_we &  m_line) mem_bus <= m_wdata[31:0];          // a line's last word
+	if (d_sel & d_we & ~d_addr[31]) mem_bus <= p_wd;
+end
+
+// ---- PCI configuration: CONFIG_ADDR (CF8) and CONFIG_DATA (CFC), little-endian ----------
+// The CPU's byte lane k (be[3-k], bits 31-8k) is the register's byte k.
+function automatic logic [31:0] swap32(input logic [31:0] x);
+	swap32 = {x[7:0], x[15:8], x[23:16], x[31:24]};
+endfunction
+wire  [3:0] le_be = {p_be[0], p_be[1], p_be[2], p_be[3]};
+wire [31:0] le_wd = swap32(p_wd);
+logic [31:0] cf8;
+wire        cf8_hit = s_isa && port == 16'h0CF8;
+wire        cfc_hit = s_isa && port == 16'h0CFC;
+wire        cfg_on  = cf8[31] && cf8[23:16] == 8'd0 && cf8[10:8] == 3'd0;   // bus 0, function 0
+wire        cfg_dev0  = cfc_hit && cfg_on && cf8[15:11] == 5'd0;
+wire        cfg_dev11 = cfc_hit && cfg_on && cf8[15:11] == 5'd11;
+always_ff @(posedge clk) begin
+	if (d_sel & d_we & cf8_hit)
+		for (int k = 0; k < 4; k++) if (le_be[k]) cf8[8 * k +: 8] <= le_wd[8 * k +: 8];
+	if (reset) cf8 <= 32'h0;
+end
+
+logic [31:0] mpc_q, fc_q;
+IBMRS6K7248_mpc105 mpc105 (
+	.clk, .reset,
+	.sel(d_sel & cfg_dev0), .we(d_we), .reg_n(cf8[7:2]), .be(le_be), .wdata(le_wd), .rdata(mpc_q),
+	.bank_en, .bank_start, .bank_end, .picr1
+);
+
+// Fire Coral: its configuration, and its index/data pair at BAR0
+logic        fc_io_on;
+logic [15:3] fc_io_base;
+logic  [7:0] fc_io_q;
+wire         fc_io_hit = s_isa && fc_io_on && bport[15:3] == fc_io_base;
+IBMRS6K7248_firecoral firecoral (
+	.clk, .reset,
+	.sel(d_sel & cfg_dev11), .we(d_we), .reg_n(cf8[7:2]), .be(le_be), .wdata(le_wd), .rdata(fc_q),
+	.io_on(fc_io_on), .io_base(fc_io_base),
+	.io_sel(d_sel & fc_io_hit), .io_we(d_we), .io_off(bport[2:0]), .io_wdata(bwd), .io_rdata(fc_io_q)
+);
 
 // the answer, the cycle after the access
-logic       q_com1, q_planar, q_pcicf, q_iack;
+logic       q_pic, q_pit, q_kbc, q_rtc, q_p92, q_err, q_aud;
+logic       q_com1, q_planar, q_pd, q_cf8, q_cfc, q_dev0, q_dev11, q_fcio, q_pcicf, q_iack;
 logic [1:0] q_lane;
 always_ff @(posedge clk) if (d_sel) begin
 	q_com1  <= com1_hit;
+	q_pic   <= pic_hit | elcr_hit;
+	q_pit   <= pit_hit;
+	q_kbc   <= kbc_hit;
+	q_rtc   <= rtc_hit;
+	q_p92   <= p92_hit;
+	q_err   <= err_hit;
+	q_aud   <= sb_hit | wss_hit;
 	q_planar <= planar_hit;
+	q_pd    <= pd_hit;
+	q_cf8   <= cf8_hit;
+	q_cfc   <= cfc_hit;
+	q_dev0  <= cfg_dev0;
+	q_dev11 <= cfg_dev11;
+	q_fcio  <= fc_io_hit;
 	q_pcicf <= s_pcicf;
 	q_iack  <= s_iack;
 	q_lane  <= lane;
@@ -219,21 +435,32 @@ end
 logic [31:0] dev_rdata;
 always_comb begin
 	if      (q_com1)  dev_rdata = {4{com1_q}};               // every lane: the byte reaches whichever one was asked
+	else if (q_pic)   dev_rdata = {4{pic_q}};
+	else if (q_pit)   dev_rdata = {4{pit_q}};
+	else if (q_kbc)   dev_rdata = {4{kbc_q}};
+	else if (q_rtc)   dev_rdata = {4{rtc_q}};
+	else if (q_p92)   dev_rdata = {4{p92}};
+	else if (q_err)   dev_rdata = 32'h0000_0000;
+	else if (q_aud)   dev_rdata = {4{aud_q}};
 	else if (q_planar) dev_rdata = {4{planar_id}};
+	else if (q_pd)    dev_rdata = {4{simm_pd[q_lane]}};
+	else if (q_fcio)  dev_rdata = {4{fc_io_q}};
+	else if (q_cf8)   dev_rdata = swap32(cf8);
+	else if (q_cfc)   dev_rdata = q_dev0 ? swap32(mpc_q) : q_dev11 ? swap32(fc_q) : 32'hFFFF_FFFF;
 	else if (q_pcicf) dev_rdata = 32'hFFFF_FFFF;
-	else if (q_iack)  dev_rdata = 32'h0000_0000;
+	else if (q_iack)  dev_rdata = {4{pic_q}};             // the vector
 	else if (d_addr[31]) dev_rdata = 32'hFFFF_FFFF;          // I/O and bus space: nothing answers
-	else              dev_rdata = 32'h0000_0000;             // RAM beyond the installed memory
+	else              dev_rdata = mem_bus;                   // memory no bank holds: the bus floats
 end
 
-assign ext_irq = 1'b0;                  // no interrupt controller yet (COM1's INTR goes to the 8259s' IRQ4)
 
 // ---- the bench's view ---------------------------------------------------------------------
 always_ff @(posedge clk) begin
 	io_ev <= d_sel_q;
 	if (d_sel_q) begin
 		io_we    <= d_we;
-		io_stub  <= ~(q_com1 | q_planar);
+		io_stub  <= ~(q_com1 | q_planar | q_pd | q_fcio | q_cf8 | q_dev0 | q_dev11 |
+		              q_pic | q_pit | q_kbc | q_rtc | q_p92 | q_err | q_aud | q_iack);
 		io_addr  <= p_a;
 		io_be    <= p_be;
 		io_wdata <= p_wd;

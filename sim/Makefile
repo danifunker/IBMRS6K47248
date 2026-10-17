@@ -20,18 +20,36 @@ CPU_SRCS  := $(addprefix $(CPU)/,$(shell grep -o '[A-Za-z0-9_]*\.sv' $(CPU)/DSPP
 MACH_SRCS := $(addprefix $(MACH)/,$(filter-out IBMRS6K7248_sdram.sv,$(shell grep -o '[A-Za-z0-9_]*\.sv' $(MACH)/IBMRS6K7248_machine.qip)))
 
 WARN   := -Wall -Wno-DECLFILENAME -Wno-UNUSEDSIGNAL -Wno-UNUSEDPARAM -Wno-PINCONNECTEMPTY -Wno-SYMRSVDWORD
+# The model is split into many small files (one 50 MB file took 10 minutes
+# and 2.5 GB to compile), the start-up code (the __Slow files) unoptimised,
+# and ccache keeps what an RTL change leaves the same. Two jobs: this 14 GB
+# machine has been run out of memory twice by more. `make` runs the build in a
+# systemd scope capped at MEM (no swap), so a build that grows too far is
+# killed alone; `make machine_tb` builds without the cap.
 JOBS   ?= 2
-VFLAGS := --cc --exe --build -j $(JOBS) $(WARN)
+MEM    ?= 5G
+# the optimisation of the model's C++ (OPT_FAST): -O1 builds faster than -O2
+OPT    ?= -O1
+# (Verilator is run to generate the C++ and exit: with --build it stays
+# resident, 2.5 GB, through the whole compile.)
+VFLAGS := --cc --exe $(WARN) --output-split 20000 --output-split-cfuncs 2000
 
-all: $(BUILD)/machine_tb
+all:
+	systemd-run --user --scope -q -p MemoryMax=$(MEM) -p MemorySwapMax=0 $(MAKE) --no-print-directory machine_tb
 
-$(BUILD)/machine_tb: $(CPU_SRCS) $(MACH_SRCS) $(HERE)tb_main.cpp $(CPU)/DSPPC604.qip $(MACH)/IBMRS6K7248_machine.qip $(HERE)Makefile
+machine_tb: $(BUILD)/machine_tb
+
+$(BUILD)/VIBMRS6K7248_system.mk: $(CPU_SRCS) $(MACH_SRCS) $(HERE)tb_main.cpp $(CPU)/DSPPC604.qip $(MACH)/IBMRS6K7248_machine.qip $(HERE)Makefile
 	@mkdir -p $(BUILD)
 	@$(VERILATOR) $(VFLAGS) --top-module IBMRS6K7248_system -Mdir $(BUILD) -o machine_tb \
-		-CFLAGS "-O2 -std=c++17" \
+		-CFLAGS "-std=c++17" \
 		$(CPU_SRCS) $(MACH_SRCS) $(HERE)tb_main.cpp \
 		> $(BUILD)/build.log 2>&1 || (cat $(BUILD)/build.log; false)
 	@grep -E '^%Warning' $(BUILD)/build.log || true
+
+$(BUILD)/machine_tb: $(BUILD)/VIBMRS6K7248_system.mk
+	@$(MAKE) -s -C $(BUILD) -f VIBMRS6K7248_system.mk -j $(JOBS) OPT_FAST=$(OPT) OPT_SLOW=-O0 OBJCACHE=$(shell command -v ccache) \
+		> $(BUILD)/compile.log 2>&1 || (tail -40 $(BUILD)/compile.log; false)
 
 lint:
 	$(VERILATOR) --lint-only $(WARN) --top-module IBMRS6K7248_system $(CPU_SRCS) $(MACH_SRCS)
@@ -39,4 +57,4 @@ lint:
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all lint clean
+.PHONY: all machine_tb lint clean

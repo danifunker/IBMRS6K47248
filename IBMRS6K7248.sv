@@ -54,8 +54,9 @@ assign HDMI_BLACKOUT = 0;
 assign HDMI_BOB_DEINT = 0;
 
 assign AUDIO_S = 1;
-assign AUDIO_L = 0;
-assign AUDIO_R = 0;
+wire   speaker;                         // the 8254's counter 2 through port 61, in the CPU's clock
+assign AUDIO_L = speaker ? 16'h1000 : 16'h0000;
+assign AUDIO_R = speaker ? 16'h1000 : 16'h0000;
 assign AUDIO_MIX = 0;
 
 assign LED_DISK = 0;
@@ -75,8 +76,9 @@ localparam CONF_STR = {
 	"-;",
 	"F1,ROMBINIMG,Load firmware ROM;",
 	"-;",
-	// the RAM beside the ROM (the board's top 4 MB): the board's most, or less
-	"O[3:1],RAM (on reset),Most,16 MB,32 MB,64 MB,96 MB;",
+	// the RAM as the board's SIMM pairs, beside the ROM (the SDRAM's top 4 MB): the most the
+	// SDRAM holds (24, 56 or 112 MB), or less
+	"O[3:1],RAM (on reset),Most,16 MB,32 MB,48 MB,64 MB,96 MB;",
 	"-;",
 	"O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
 	"-;",
@@ -130,7 +132,10 @@ wire        ioctl_wr;
 wire [26:0] ioctl_addr;
 wire  [7:0] ioctl_dout;
 wire        ioctl_wait;
-wire [15:0] sdram_sz;                 // the Main's SDRAM board: [15] known, [1:0] 1 32 MB, 2 64 MB, 3 128 MB
+wire [15:0] sdram_sz;
+wire [10:0] ps2_key;
+wire [24:0] ps2_mouse;
+wire [64:0] rtc;                      // BCD: seconds, minutes, hours, date, month, year, weekday; [64] toggles                 // the Main's SDRAM board: [15] known, [1:0] 1 32 MB, 2 64 MB, 3 128 MB
 reg   [1:0] sdram_mod = 2'd1;         // the board the ROM went into (an unknown one taken as 32 MB)
 
 hps_io #(.CONF_STR(CONF_STR)) hps_io
@@ -145,6 +150,9 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
 	.status(status),
 	.status_menumask(16'd0),
 	.sdram_sz(sdram_sz),
+	.ps2_key(ps2_key),
+	.ps2_mouse(ps2_mouse),
+	.RTC(rtc),
 
 	.ioctl_download(ioctl_download),
 	.ioctl_index(ioctl_index),
@@ -156,20 +164,27 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
 
 ///////////////////////   OPTIONS, ROM AND RESET (memory clock)   ///////////////////////////////
 
-// the RAM: the OSD's size, no more than the board holds beside the ROM
-wire [7:0] ram_max = sdram_mod == 2'd3 ? 8'd124 : sdram_mod == 2'd2 ? 8'd60 : 8'd28;
-reg  [7:0] ram_sel;
+// the RAM: the OSD's size as SIMM pairs (3 bits a pair, pair 0 lowest: 1 8 MB, 2 16, 3 32,
+// 4 64; IBMRS6K7248_machine), no more than the SDRAM holds beside the ROM: 24 MB on a
+// 32 MB board, 56 on a 64 MB one, 112 on a 128 MB one
+localparam [8:0] SIMM_16 = 9'o002, SIMM_24 = 9'o012, SIMM_32 = 9'o003, SIMM_48 = 9'o023,
+                 SIMM_56 = 9'o123, SIMM_64 = 9'o004, SIMM_96 = 9'o034, SIMM_112 = 9'o234;
+wire [8:0] simm_max = sdram_mod == 2'd3 ? SIMM_112 : sdram_mod == 2'd2 ? SIMM_56 : SIMM_24;
+wire [1:0] mod_rank = sdram_mod == 2'd3 ? 2'd2 : sdram_mod == 2'd2 ? 2'd1 : 2'd0;
+reg  [8:0] simm_sel;
+reg  [1:0] sel_rank;                       // the smallest board the choice fits
 always @(*) begin
 	case (status[3:1])
-		3'd1:    ram_sel = 8'd16;
-		3'd2:    ram_sel = 8'd32;
-		3'd3:    ram_sel = 8'd64;
-		3'd4:    ram_sel = 8'd96;
-		default: ram_sel = 8'd255;            // the most
+		3'd1:    begin simm_sel = SIMM_16; sel_rank = 2'd0; end
+		3'd2:    begin simm_sel = SIMM_32; sel_rank = 2'd1; end
+		3'd3:    begin simm_sel = SIMM_48; sel_rank = 2'd1; end
+		3'd4:    begin simm_sel = SIMM_64; sel_rank = 2'd2; end
+		3'd5:    begin simm_sel = SIMM_96; sel_rank = 2'd2; end
+		default: begin simm_sel = simm_max; sel_rank = 2'd0; end
 	endcase
 end
-reg [7:0] ram_opt;
-always @(posedge clk_mem) ram_opt <= ram_sel > ram_max ? ram_max : ram_sel;
+reg [8:0] simm_opt;
+always @(posedge clk_mem) simm_opt <= sel_rank > mod_rank ? simm_max : simm_sel;
 
 // the ROM upload: index 0 a boot.rom loaded at start, index 1 from the OSD; into the
 // board's top 4 MB. Its length decides the second socket: with 512 KB, FFF80000-FFFFFFFF reads empty.
@@ -198,33 +213,52 @@ wire sdram_init = ~locked_m[1];
 wire sdram_ready;
 
 reg  [2:0] reset_in;
-always @(posedge clk_mem) reset_in <= {reset_in[1:0], RESET | status[0] | buttons[1]};
+// the 8042's reset line (a pulse in the CPU's clock) resets the whole machine: held for
+// 256 CPU clocks there, then into this clock
+wire       kbc_reset;
+reg  [7:0] kbc_rst_hold = 0;
+always @(posedge clk_cpu) begin
+	if (kbc_reset) kbc_rst_hold <= 8'hFF;
+	else if (kbc_rst_hold != 0) kbc_rst_hold <= kbc_rst_hold - 1'd1;
+end
+reg  [1:0] kbc_rst_s;
+always @(posedge clk_mem) kbc_rst_s <= {kbc_rst_s[0], kbc_rst_hold != 0};
+always @(posedge clk_mem) reset_in <= {reset_in[1:0], RESET | status[0] | buttons[1] | kbc_rst_s[1]};
 
 reg cpu_reset_m = 1;
 always @(posedge clk_mem) cpu_reset_m <= reset_in[2] | ~sdram_ready | rom_dl | ~rom_loaded;
 
 // the options taken under reset
-reg [7:0] ram_mb = 8'd16;
+reg [8:0] simm_cfg = SIMM_16;
 reg       rom_512k = 1;
 always @(posedge clk_mem) if (cpu_reset_m) begin
-	ram_mb   <= ram_opt;
+	simm_cfg <= simm_opt;
 	rom_512k <= ~rom_big;
 end
 
 // into the CPU's clock (quasi-static: they change only with the reset held)
 reg [2:0] cpu_reset_s = 3'b111;
-reg [7:0] ram_mb_c [2];
+reg [8:0] simm_c [2];
 reg [4:0] rom_at_c [2];
 reg [1:0] rom_512k_c;
 always @(posedge clk_cpu) begin
 	cpu_reset_s <= {cpu_reset_s[1:0], cpu_reset_m};
-	ram_mb_c[0] <= ram_mb;
-	ram_mb_c[1] <= ram_mb_c[0];
+	simm_c[0]   <= simm_cfg;
+	simm_c[1]   <= simm_c[0];
 	rom_at_c[0] <= rom_at;
 	rom_at_c[1] <= rom_at_c[0];
 	rom_512k_c  <= {rom_512k_c[0], rom_512k};
 end
 wire cpu_reset = cpu_reset_s[2];
+
+// the RTC set from the MiSTer's clock each time hps_io sends it (its toggle crossed into
+// the CPU's clock; the time is steady well before the toggle moves)
+reg [2:0] rtc_tog_s;
+reg       rtc_set_c = 0;
+always @(posedge clk_cpu) begin
+	rtc_tog_s <= {rtc_tog_s[1:0], rtc[64]};
+	rtc_set_c <= rtc_tog_s[2] != rtc_tog_s[1];
+end
 
 ///////////////////////   THE MACHINE   ///////////////////////////////
 
@@ -239,7 +273,7 @@ IBMRS6K7248_system #(.CPU_HZ(CPU_MHZ * 1_000_000), .TB_HZ(TB_HZ)) system
 	.clk(clk_cpu),
 	.reset(cpu_reset),
 	.reset_pc(32'hFFF00100),
-	.ram_mb(ram_mb_c[1]),
+	.simm_cfg(simm_c[1]),
 	.rom_at(rom_at_c[1]),
 	.rom_512k(rom_512k_c[1]),
 	.planar_id(8'hF5),                      // a 7248-100 (the OSD's model choice to come)
@@ -247,6 +281,11 @@ IBMRS6K7248_system #(.CPU_HZ(CPU_MHZ * 1_000_000), .TB_HZ(TB_HZ)) system
 	.clk_b(clk_mem),
 	.reset_b(cpu_reset_m),
 	.b_req, .b_we, .b_line, .b_addr, .b_be, .b_wdata, .b_ack, .b_rdata,
+
+	.ps2_key, .ps2_mouse,
+	.rtc_set(rtc_set_c),
+	.rtc_time(rtc[55:0]),
+	.speaker, .kbc_reset,
 
 	.com1_txd(UART_TXD),
 	.com1_rxd(UART_RXD),
