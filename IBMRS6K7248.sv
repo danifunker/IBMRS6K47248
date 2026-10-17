@@ -57,7 +57,6 @@ assign AUDIO_L = speaker ? 16'h1000 : 16'h0000;
 assign AUDIO_R = speaker ? 16'h1000 : 16'h0000;
 assign AUDIO_MIX = 0;
 
-assign LED_DISK = 0;
 assign LED_POWER = 0;
 assign BUTTONS = 0;
 
@@ -73,6 +72,10 @@ localparam CONF_STR = {
 	"IBMRS6K7248;UART115200:57600:38400:19200:9600;",
 	"-;",
 	"F1,ROMBINIMG,Load firmware ROM;",
+	"-;",
+	"S0,IMGHDAVHD,SCSI disk ID 0;",
+	"S1,IMGHDAVHD,SCSI disk ID 1;",
+	"S2,ISOBINCUECHD,SCSI CD-ROM ID 3;",
 	"-;",
 	// the RAM as the board's SIMM pairs, beside the ROM (the SDRAM's top 4 MB): the most the
 	// SDRAM holds (24, 56 or 112 MB), or less
@@ -136,7 +139,19 @@ wire [24:0] ps2_mouse;
 wire [64:0] rtc;                      // BCD: seconds, minutes, hours, date, month, year, weekday; [64] toggles                 // the Main's SDRAM board: [15] known, [1:0] 1 32 MB, 2 64 MB, 3 128 MB
 reg   [1:0] sdram_mod = 2'd1;         // the board the ROM went into (an unknown one taken as 32 MB)
 
-hps_io #(.CONF_STR(CONF_STR)) hps_io
+// the SCSI devices' images: hps_io block devices 0-2 (8-bit, 512-byte blocks)
+wire  [2:0] img_mounted;
+wire        img_readonly;
+wire [63:0] img_size;
+wire [31:0] sd_lba[3];
+wire  [5:0] sd_blk_cnt[3];
+wire  [2:0] sd_rd, sd_wr, sd_ack;
+wire [13:0] sd_buff_addr;
+wire  [7:0] sd_buff_dout;
+wire  [7:0] sd_buff_din[3];
+wire        sd_buff_wr;
+
+hps_io #(.CONF_STR(CONF_STR), .VDNUM(3), .BLKSZ(2)) hps_io
 (
 	.clk_sys(clk_sys),
 	.HPS_BUS(HPS_BUS),
@@ -157,8 +172,39 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
 	.ioctl_wr(ioctl_wr),
 	.ioctl_addr(ioctl_addr),
 	.ioctl_dout(ioctl_dout),
-	.ioctl_wait(ioctl_wait)
+	.ioctl_wait(ioctl_wait),
+
+	.img_mounted(img_mounted),
+	.img_readonly(img_readonly),
+	.img_size(img_size),
+	.sd_lba(sd_lba),
+	.sd_blk_cnt(sd_blk_cnt),
+	.sd_rd(sd_rd),
+	.sd_wr(sd_wr),
+	.sd_ack(sd_ack),
+	.sd_buff_addr(sd_buff_addr),
+	.sd_buff_dout(sd_buff_dout),
+	.sd_buff_din(sd_buff_din),
+	.sd_buff_wr(sd_buff_wr)
 );
+
+wire        scsi_act;
+assign LED_DISK = {1'b1, scsi_act};      // the core drives the disk LED: SCSI busy
+
+// each slot's image: there or not, its size in 512-byte blocks (quasi-static for the
+// machine: set as an image is mounted); a CD change stretched for the CPU's clock
+reg   [2:0] img_present = 3'd0;
+reg  [31:0] img_blocks[3];
+reg   [3:0] cd_change_s = 4'd0;
+always @(posedge clk_mem) begin
+	cd_change_s <= {cd_change_s[2:0], 1'b0};
+	for (int n = 0; n < 3; n++)
+		if (img_mounted[n]) begin
+			img_present[n] <= img_size != 64'd0;
+			img_blocks[n]  <= img_size[40:9];
+			if (n == 2) cd_change_s <= 4'hF;
+		end
+end
 
 ///////////////////////   OPTIONS, ROM AND RESET (memory clock)   ///////////////////////////////
 
@@ -297,6 +343,10 @@ IBMRS6K7248_system #(.CPU_HZ(CPU_MHZ * 1_000_000), .TB_HZ(TB_HZ)) system
 	.com1_rxd(UART_RXD),
 	.com1_cts_n(~UART_CTS),
 	.com1_rts_n(),
+
+	.img_present, .img_blocks, .sd_lba, .sd_blk_cnt, .sd_rd, .sd_wr, .sd_ack,
+	.sd_buff_addr, .sd_buff_dout, .sd_buff_din, .sd_buff_wr,
+	.cd_change(|cd_change_s), .scsi_activity(scsi_act),
 
 	.io_ev(), .io_we(), .io_stub(), .io_addr(), .io_be(), .io_wdata(), .io_rdata(),
 	.trace_valid, .trace_last, .trace_pc(), .trace_insn(), .trace_msr(),
