@@ -41,7 +41,7 @@ module  pll_0002 #(
 		.output_clock_frequency0("20.000000 MHz"),
 		.phase_shift0("0 ps"),
 		.duty_cycle0(50),
-		.output_clock_frequency1(FAST ? "100.000000 MHz" : "70.000000 MHz"),
+		.output_clock_frequency1(FAST ? "100.000000 MHz" : CPU_MHZ == 50 ? "50.000000 MHz" : "70.000000 MHz"),
 		.phase_shift1("0 ps"),
 		.duty_cycle1(50),
 		.output_clock_frequency2("100.000000 MHz"),
