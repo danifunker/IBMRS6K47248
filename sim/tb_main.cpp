@@ -450,7 +450,12 @@ int main(int argc, char** argv) {
 			// 680 (the assembly also writes nn to 8C0, the C code only to 680)
 			if (we && a == 0x80000680 && be == 0xF) {
 				unsigned code = (top->io_wdata >> 24) & 0xFF;
-				if (post_print) printf("  progress %02X  (pc %08X, instr %llu)\n", code, last_pc, (unsigned long long)instr);
+				uint32_t w = top->io_wdata;
+				uint32_t word = (w >> 24) | ((w >> 8) & 0xFF00) | ((w << 8) & 0xFF0000) | (w << 24);   // little-endian
+				if (post_print) {
+					if (word >> 8) printf("  progress %02X  (pc %08X, instr %llu; word %08X)\n", code, last_pc, (unsigned long long)instr, word);
+					else printf("  progress %02X  (pc %08X, instr %llu)\n", code, last_pc, (unsigned long long)instr);
+				}
 				post_last = code;
 				post_count++;
 			}
