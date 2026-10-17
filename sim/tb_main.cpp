@@ -96,6 +96,8 @@ static void usage() {
 	       "  --io-range LO:HI  print the device accesses with addresses LO-HI (hex) only\n"
 	       "  --quiet-progress  do not print the firmware's progress codes (port 680) as they come\n"
 	       "  --pcs N      print the retired PCs up to instruction N (--pcs-from M: from M; absolute, as --beat counts)\n"
+	       "  --key-at CLOCK:CODE[:e]  press a PS/2 key (set 2 code, hex; e: extended) at that clock, release it 300,000 later; repeatable\n"
+	       "  --com1-at CLOCK:BYTE     a byte (hex) into COM1 at that clock, at the bench's line rate (16 clocks a bit); repeatable\n"
 	       "  --stall N    stop when no new PC was retired in the last N instructions (default 2,000,000; 0 never)\n");
 }
 
@@ -118,6 +120,10 @@ int main(int argc, char** argv) {
 	bool io_print = false, post_print = true;
 	uint32_t io_lo = 0, io_hi = 0xFFFFFFFF;            // --io's range
 	uint64_t pcs_print = 0, pcs_from = 0;
+	struct KeyAt { uint64_t clock; unsigned code; bool ext; };
+	std::vector<KeyAt> keys;                      // --key-at
+	struct ByteAt { uint64_t clock; unsigned byte; };
+	std::vector<ByteAt> com1_in;                  // --com1-at
 	uint64_t beat = 20000000;
 	int lat = 6;                                   // the bench memory's answer, in clocks after the request
 	const char* save_path = nullptr;               // a snapshot of the machine (model and memory) ...
@@ -166,6 +172,18 @@ int main(int argc, char** argv) {
 		else if (a == "--beat") beat = strtoull(next(), nullptr, 0);
 		else if (a == "--pcs") pcs_print = strtoull(next(), nullptr, 0);
 		else if (a == "--pcs-from") pcs_from = strtoull(next(), nullptr, 0);
+		else if (a == "--key-at") {
+			std::string v = next();
+			size_t c = v.find(':');
+			if (c == std::string::npos) { fprintf(stderr, "--key-at CLOCK:CODE[:e]\n"); return 2; }
+			keys.push_back({strtoull(v.substr(0, c).c_str(), nullptr, 0), unsigned(strtoul(v.substr(c + 1).c_str(), nullptr, 16)), v.find(":e") != std::string::npos});
+		}
+		else if (a == "--com1-at") {
+			std::string v = next();
+			size_t c = v.find(':');
+			if (c == std::string::npos) { fprintf(stderr, "--com1-at CLOCK:BYTE\n"); return 2; }
+			com1_in.push_back({strtoull(v.substr(0, c).c_str(), nullptr, 0), unsigned(strtoul(v.substr(c + 1).c_str(), nullptr, 16))});
+		}
 		else if (a == "--stall") stall_lim = strtoull(next(), nullptr, 0);
 		else { usage(); return 2; }
 	}
@@ -354,8 +372,26 @@ int main(int argc, char** argv) {
 	uint32_t sd_pos = 0, sd_len = 0, sd_lba0 = 0;
 	std::vector<uint8_t> sd_buf;
 	uint64_t sd_reads = 0, sd_writes = 0;
+	unsigned ps2_toggle = 0;
 	for (cycle = cycle0; cycle < max_cycles; cycle++) {
 		if (stop_req) { why = "a signal"; break; }
+		// --key-at: the make at its clock, the break 300,000 clocks later (hps_io's ps2_key: a toggle, pressed, extended, the code)
+		for (auto& k : keys) {
+			if (cycle == k.clock || cycle == k.clock + 300000) {
+				ps2_toggle ^= 1;
+				bool make = cycle == k.clock;
+				top->ps2_key = (ps2_toggle << 10) | (make ? 1u << 9 : 0) | (k.ext ? 1u << 8 : 0) | (k.code & 0xFF);
+				printf("  key %02X%s %s at clock %llu\n", k.code, k.ext ? " (extended)" : "", make ? "pressed" : "released", (unsigned long long)cycle);
+			}
+		}
+		// --com1-at: start bit, eight data bits (LSB first), stop bit, 16 clocks each (UART_FAST)
+		for (auto& b : com1_in) {
+			if (cycle >= b.clock && cycle < b.clock + 16 * 10) {
+				unsigned bit = unsigned((cycle - b.clock) / 16);
+				top->com1_rxd = bit == 0 ? 0 : bit == 9 ? 1 : (b.byte >> (bit - 1)) & 1;
+				if (cycle == b.clock) printf("  COM1 in %02X at clock %llu\n", b.byte, (unsigned long long)cycle);
+			} else if (cycle == b.clock + 16 * 10) top->com1_rxd = 1;
+		}
 		// hps_io's side of the SCSI images
 		top->sd_buff_wr = 0;
 		if (sd_n < 0) {
