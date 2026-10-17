@@ -34,6 +34,8 @@ MEM    ?= 5G
 OPT    ?= -O2
 # (Verilator is run to generate the C++ and exit: with --build it stays
 # resident, 2.5 GB, through the whole compile.)
+# (the bench's serial ports run at the clock / 16, UART_FAST: the firmware's 9600 baud console
+# would cost 100,000 clocks a character)
 VFLAGS := --cc --exe $(WARN) --output-split 20000 --output-split-cfuncs 2000
 # make TRACE=1: a build that can write waveforms (--fst), in its own directory
 ifeq ($(TRACE),1)
@@ -48,7 +50,7 @@ machine_tb: $(BUILD)/machine_tb
 
 $(BUILD)/VIBMRS6K7248_system.mk: $(CPU_SRCS) $(MACH_SRCS) $(HERE)tb_main.cpp $(CPU)/DSPPC604.qip $(MACH)/IBMRS6K7248_machine.qip $(HERE)Makefile
 	@mkdir -p $(BUILD)
-	@$(VERILATOR) $(VFLAGS) --top-module IBMRS6K7248_system -Mdir $(BUILD) -o machine_tb \
+	@$(VERILATOR) $(VFLAGS) --top-module IBMRS6K7248_system -GUART_FAST=1 -Mdir $(BUILD) -o machine_tb \
 		-CFLAGS "-std=c++17" \
 		$(CPU_SRCS) $(MACH_SRCS) $(HERE)tb_main.cpp \
 		> $(BUILD)/build.log 2>&1 || (cat $(BUILD)/build.log; false)

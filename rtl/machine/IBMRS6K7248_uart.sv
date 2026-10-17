@@ -23,7 +23,8 @@
 
 module IBMRS6K7248_uart
 #(
-	parameter int unsigned CLK_HZ = 100_000_000
+	parameter int unsigned CLK_HZ = 100_000_000,
+	parameter int unsigned FAST   = 0             // 1 (the bench only): the line runs at CLK_HZ / 16 whatever the divisor
 )
 (
 	input  logic       clk,
@@ -57,7 +58,7 @@ logic [15:0] dl;                        // the divisor latch
 logic [15:0] bdiv = '0;
 logic        tick16;                    // 16 x the baud rate
 always_ff @(posedge clk) begin
-	tick16 <= 1'b0;
+	tick16 <= FAST != 0;
 	if (xtick) begin
 		if (bdiv <= 16'd1) begin
 			bdiv   <= dl;

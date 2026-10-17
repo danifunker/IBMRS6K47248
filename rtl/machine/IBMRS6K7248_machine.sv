@@ -98,7 +98,8 @@ module IBMRS6K7248_machine
 #(
 	parameter int unsigned CPU_HZ = 100_000_000,
 	parameter int unsigned TB_HZ  = 16_666_667,
-	parameter int unsigned LE_MODE = 1             // 1: the MPC105's little-endian mode (PICR1's LE_MODE bit) swaps the bus
+	parameter int unsigned LE_MODE = 1,            // 1: the MPC105's little-endian mode (PICR1's LE_MODE bit) swaps the bus
+	parameter int unsigned UART_FAST = 0           // 1 (the bench only): the serial ports run at CLK_HZ / 16
 )
 (
 	input  logic         clk,
@@ -331,7 +332,7 @@ IBMRS6K7248_sio sio (
 wire        com1_hit = s_isa && uart1_on && bport[15:3] == uart1_base;
 wire  [7:0] com1_q;
 logic       com1_irq, com1_out2;
-IBMRS6K7248_uart #(.CLK_HZ(CPU_HZ)) com1 (
+IBMRS6K7248_uart #(.CLK_HZ(CPU_HZ), .FAST(UART_FAST)) com1 (
 	.clk, .reset,
 	.sel(d_sel & com1_hit), .we(d_we), .addr(bport[2:0]), .wdata(bwd), .rdata(com1_q),
 	.irq(com1_irq), .out2(com1_out2),
@@ -343,7 +344,7 @@ IBMRS6K7248_uart #(.CLK_HZ(CPU_HZ)) com1 (
 // COM2: nothing on its line
 wire        com2_hit = s_isa && uart2_on && bport[15:3] == uart2_base;
 logic       com2_irq, com2_out2;
-IBMRS6K7248_uart #(.CLK_HZ(CPU_HZ)) com2 (
+IBMRS6K7248_uart #(.CLK_HZ(CPU_HZ), .FAST(UART_FAST)) com2 (
 	.clk, .reset,
 	.sel(d_sel & com2_hit), .we(d_we), .addr(bport[2:0]), .wdata(bwd), .rdata(com2_q),
 	.irq(com2_irq), .out2(com2_out2),

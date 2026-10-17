@@ -22,7 +22,8 @@ module IBMRS6K7248_system
 	parameter int unsigned CPU_HZ = 100_000_000,
 	parameter int unsigned TB_HZ  = 16_666_667,
 	parameter int unsigned PERF   = 0,            // 1: the CPU's performance counters
-	parameter int unsigned LE_MODE = 1            // 1: little-endian mode, the CPU's munging and the MPC105's swap
+	parameter int unsigned LE_MODE = 1,           // 1: little-endian mode, the CPU's munging and the MPC105's swap
+	parameter int unsigned UART_FAST = 0          // 1 (the bench only): the serial ports at CLK_HZ / 16
 )
 (
 	input  logic         clk,             // the CPU's clock
@@ -108,7 +109,7 @@ DSPPC604 #(.PERF(PERF), .LE_MODE(LE_MODE)) cpu (
 	.perf_cnt(), .dbg_ev(), .dbg_rec()
 );
 
-IBMRS6K7248_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .LE_MODE(LE_MODE)) machine (
+IBMRS6K7248_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .LE_MODE(LE_MODE), .UART_FAST(UART_FAST)) machine (
 	.clk, .reset, .simm_cfg, .rom_at, .rom_512k, .planar_id,
 	.c_req, .c_we, .c_line, .c_addr, .c_be, .c_wdata, .c_ack, .c_rdata,
 	.m_req, .m_we, .m_line, .m_addr, .m_be, .m_wdata, .m_ack, .m_rdata,
