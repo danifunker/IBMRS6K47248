@@ -6,6 +6,11 @@
 # returns with sc.
 
 	.set	RES, 0x2000
+	.ifdef	DCACHE
+	.set	MSR_DR, 0x10
+	.else
+	.set	MSR_DR, 0
+	.endif
 
 	.macro	li32 r, v
 	lis	\r, (\v)@h
@@ -51,13 +56,23 @@ _le:
 	lwz	r5, 1(r4)		# misaligned: an alignment exception (at FFF02088)
 	li32	r5, 0x600DC0DE
 	stw	r5, 0x2C(r6)
+	lfd	f1, 0(r4)		# a doubleword: munged by 0, swapped whole by the bridge
+	stfd	f1, 0x30(r6)
+	.ifdef	DCACHE
+	# the data cache's lines written back while the bridge still swaps
+	dcbf	0, r4
+	dcbf	0, r6
+	addi	r7, r6, 0x20
+	dcbf	0, r7
+	sync
+	.endif
 
 	# back to big-endian: the bridge (PICR1 = 0; in this mode a plain stw puts the
 	# little-endian value on the bus) and the CPU with it, by rfi to the checks; the
 	# block from the cache, as on the way in
 	li32	r3, CHECKS		# le_be.S's checks (the Makefile defines CHECKS)
 	mtsrr0	r3
-	li	r3, 0x1040		# ME, IP
+	li	r3, 0x1040 + MSR_DR	# ME, IP (and DR)
 	mtsrr1	r3
 	li32	r20, 0x80000CF8
 	li32	r21, 0x800000A8
@@ -87,7 +102,7 @@ align_handler:
 	mfsrr0	r3
 	addi	r3, r3, 4
 	mtsrr0	r3
-	li	r3, 0x1041		# ME, IP, LE (ILE stays set: rfi leaves it)
+	li	r3, 0x3041 + MSR_DR	# FP, ME, IP, LE, DR as before (ILE stays set: rfi leaves it)
 	mtsrr1	r3
 	rfi
 

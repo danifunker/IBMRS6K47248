@@ -49,6 +49,45 @@ setup:
 	li	r4, 0x01
 	cfgw	0xA0			# bank 0 enabled
 
+	.ifdef	DCACHE
+	# With the data cache on, data translation too (as the firmware does): in real
+	# mode the 604 caches every data access, I/O's included. Data BATs: RAM and the
+	# ROM cacheable, I/O at 80000000 cache-inhibited and guarded; 256 MB each.
+	li32	r3, 0x00001FFE
+	mtspr	536, r3			# DBAT0U: 00000000
+	li	r3, 0x0002
+	mtspr	537, r3			# DBAT0L: read/write
+	li32	r3, 0x80001FFE
+	mtspr	538, r3			# DBAT1U: 80000000
+	li32	r3, 0x8000002A
+	mtspr	539, r3			# DBAT1L: I, G, read/write
+	li32	r3, 0xF0001FFE
+	mtspr	540, r3			# DBAT2U: F0000000
+	li32	r3, 0xF0000002
+	mtspr	541, r3			# DBAT2L
+	isync
+	.set	MSR_DR, 0x10
+	.else
+	.set	MSR_DR, 0
+	.endif
+	li32	r3, 0x00001040 + MSR_DR	# ME, IP (and DR)
+	mtmsr	r3
+	isync
+
+	# The instruction cache on: once the bridge swaps, a big-endian fetch from the bus
+	# is scrambled, so the switch below runs from the cache (as real code must).
+	mfspr	r3, 1008		# HID0
+	.ifdef	DCACHE
+	ori	r3, r3, 0xCC00		# ICE, DCE, ICFI, DCFI
+	.else
+	ori	r3, r3, 0x8800		# ICE, ICFI
+	.endif
+	mtspr	1008, r3
+	isync
+	rlwinm	r3, r3, 0, 22, 19	# ICFI, DCFI off
+	mtspr	1008, r3
+	isync
+
 	# the patterns, stored big-endian: 11 22 33 44 55 66 77 88 at 0x1000
 	li	r4, 0x1000
 	li32	r3, 0x11223344
@@ -63,25 +102,24 @@ setup:
 	addi	r6, r6, 4
 	addic.	r5, r5, -1
 	bne	1b
-
-	# The instruction cache on: once the bridge swaps, a big-endian fetch from the bus
-	# is scrambled, so the switch below runs from the cache (as real code must).
-	mfspr	r3, 1008		# HID0
-	ori	r3, r3, 0x8800		# ICE, ICFI
-	mtspr	1008, r3
-	isync
-	rlwinm	r3, r3, 0, 21, 19	# ICFI off
-	mtspr	1008, r3
-	isync
+	.ifdef	DCACHE
+	# the data cache was on for these: write them to memory before the bridge swaps
+	dcbf	0, r4
+	li	r6, RES
+	dcbf	0, r6
+	li	r6, RES + 0x20
+	dcbf	0, r6
+	sync
+	.endif
 
 	# the bridge into little-endian mode (PICR1 bit 5) and the CPU with it, by rfi;
 	# the block runs twice, the first time only to bring it into the cache
-	li32	r3, 0x00011040		# ILE first, by mtmsr (rfi does not restore it), still big-endian
+	li32	r3, 0x00011040 + MSR_DR	# ILE first, by mtmsr (rfi does not restore it), still big-endian
 	mtmsr	r3
 	isync
 	li32	r3, 0xFFF02000
 	mtsrr0	r3
-	li	r3, 0x1041		# ME, IP, LE
+	li	r3, 0x3041 + MSR_DR	# FP, ME, IP, LE (and DR)
 	mtsrr1	r3
 	li32	r20, CF8
 	li32	r21, 0x800000A8
@@ -199,4 +237,6 @@ table:
 	.long	0x20, 0x8820F0FF	# the misaligned load's address, SRR0 FFF02088 (stored little-endian)
 	.long	0x24, 0x01100000	# its effective address, DAR 00001001, unmunged (likewise)
 	.long	0x2C, 0xDEC00D60	# the little-endian code ran to its end: 600DC0DE (likewise)
+	.long	0x30, 0x11223344	# lfd 1000, stfd: the doubleword's bytes as they were
+	.long	0x34, 0x55667788
 	.long	-1, 0
