@@ -11,7 +11,17 @@
 //
 // One clock drives both sides of the crossing (both are 100 MHz on the board).
 
+// SDRAM_CHIP (make machine_sd): the board's SDRAM controller in the loop, the
+// memory a behavioural model of the chip (sdram_chip.h), the ROM through the
+// controller's upload port; a snapshot cannot be taken or restored there
+#ifdef SDRAM_CHIP
+#include "VIBMRS6K7248_sdsys.h"
+#include "sdram_chip.h"
+typedef VIBMRS6K7248_sdsys Top;
+#else
 #include "VIBMRS6K7248_system.h"
+typedef VIBMRS6K7248_system Top;
+#endif
 #include "verilated.h"
 #include "verilated_save.h"
 #if VM_TRACE
@@ -173,7 +183,7 @@ int main(int argc, char** argv) {
 	       rd32((ROM_AT << 22) + 0x100));
 
 	FILE* com1_raw = com1_path ? fopen(com1_path, "wb") : nullptr;
-	auto* top = new VIBMRS6K7248_system;
+	auto* top = new Top;
 	top->reset_pc = 0xFFF00100;
 	unsigned simm_cfg = ~0u;
 	for (auto& e : simm_sets) if (e.mb == ram_mb) simm_cfg = e.cfg;
@@ -189,7 +199,9 @@ int main(int argc, char** argv) {
 	top->rom_512k = rom_len == 512u * 1024;
 	top->com1_rxd = 1;
 	top->com1_cts_n = 0;
+#ifndef SDRAM_CHIP
 	top->b_ack = 0;
+#endif
 	// the SCSI images
 	for (int n = 0; n < 3; n++) {
 		top->img_blocks[n] = 0;
@@ -209,7 +221,15 @@ int main(int argc, char** argv) {
 	top->sd_ack = 0;
 	top->sd_buff_wr = 0;
 	top->reset = 1;
+#ifdef SDRAM_CHIP
+	top->init = 1;
+	top->up_wr = 0;
+	top->dq_in = 0;
+	sdram_chip::Chip chip(10.0);                           // the memory clock's 10 ns
+	long sd_clocks = 0;
+#else
 	top->reset_b = 1;
+#endif
 
 	// the memory: a request is answered LAT clocks after it is seen
 	// (--lat: its latency changes how long the machine waits, not what it does)
@@ -250,6 +270,15 @@ int main(int argc, char** argv) {
 	uint64_t tcycle = 0;
 	auto tick = [&]() {
 		top->clk = 0; top->clk_b = 0; top->eval();
+#ifdef SDRAM_CHIP
+		{	// the SDRAM's rising edge (its clock is the controller's inverted)
+			bool drv; uint16_t dq;
+			chip.edge(sd_clocks++, top->SDRAM_nCS, top->SDRAM_nRAS, top->SDRAM_nCAS, top->SDRAM_nWE, top->SDRAM_BA,
+			          top->SDRAM_A, (top->SDRAM_DQMH << 1) | top->SDRAM_DQML, top->dq_oe, top->dq_out, drv, dq);
+			top->dq_in = dq;
+			top->eval();
+		}
+#endif
 #if VM_TRACE
 		if (tfp && tcycle >= fst_from && tcycle <= fst_to) tfp->dump(2 * tcycle);
 #endif
@@ -292,8 +321,26 @@ int main(int argc, char** argv) {
 		top->rtc_set = 1;
 		for (int i = 0; i < 20; i++) tick();
 		top->rtc_set = 0;
+#ifdef SDRAM_CHIP
+		// the controller's power-up, then the ROM in through the upload port, as on the board
+		for (int i = 0; i < 4; i++) tick();
+		top->init = 0;
+		for (int i = 0; i < 20000000 && !top->ready; i++) tick();
+		if (!top->ready) { fprintf(stderr, "the SDRAM controller never became ready\n"); return 1; }
+		for (size_t i = 0; i < rom_len; i++) {
+			while (top->up_busy) tick();
+			top->up_wr = 1; top->up_addr = (ROM_AT << 22) + uint32_t(i); top->up_data = rom[i];
+			tick();
+			top->up_wr = 0;
+			tick();
+		}
+		for (int i = 0; i < 200; i++) tick();
+		printf("SDRAM model: ready after %ld clocks, the ROM uploaded (%d protocol errors so far)\n", sd_clocks, sdram_chip::errors);
+		top->reset = 0;
+#else
 		top->reset = 0;
 		top->reset_b = 0;
+#endif
 	}
 	bool saved = false;
 
@@ -336,6 +383,7 @@ int main(int argc, char** argv) {
 				top->sd_ack = 0; sd_n = -1;
 			}
 		}
+#ifndef SDRAM_CHIP
 		// the memory side, before the edge: set ack/rdata for this edge
 		if (ack_now) { top->b_ack = 0; ack_now = false; }
 		else if (top->b_req) {
@@ -365,6 +413,7 @@ int main(int argc, char** argv) {
 				mem_wait = -1;
 			} else mem_wait--;
 		}
+#endif
 		// DDR3 (the S3's VRAM): a read burst answered a beat a clock after 4 clocks; writes at once
 		top->ddr_busy = 0;
 		top->ddr_dout_ready = 0;
@@ -497,6 +546,10 @@ int main(int argc, char** argv) {
 		for (auto& [pc, first] : seen_pc) if (instr - first > 0) recent.push_back(pc);
 		printf("(no new PC in the last %llu instructions)\n", (unsigned long long)since_new);
 	}
+#ifdef SDRAM_CHIP
+	printf("SDRAM model: %ld clocks, %d protocol errors; refreshes rank 0 %ld, rank 1 %ld, at most %d owed\n",
+	       sd_clocks, sdram_chip::errors, chip.rk[0].refreshes, chip.rk[1].refreshes, chip.max_owed);
+#endif
 	printf("\nstubbed device addresses (%zu):\n", stubs.size());
 	printf("  %-10s %10s %10s  %-8s  %-8s  %s\n", "address", "reads", "writes", "last w", "read", "first PC");
 	for (auto& [a, s] : stubs)
