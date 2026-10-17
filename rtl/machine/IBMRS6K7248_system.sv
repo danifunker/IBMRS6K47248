@@ -62,6 +62,15 @@ module IBMRS6K7248_system
 	input  logic         com1_cts_n,
 	output logic         com1_rts_n,
 
+	// the S3's VRAM port (see IBMRS6K7248_s3), in the CPU's clock
+	output logic         v_req,
+	output logic         v_we,
+	output logic [20:2]  v_addr,
+	output logic [3:0]   v_be,
+	output logic [31:0]  v_wdata,
+	input  logic         v_ack,
+	input  logic [31:0]  v_rdata,
+
 	// the machine's device accesses (see IBMRS6K7248_machine)
 	output logic         io_ev,
 	output logic         io_we,
@@ -115,6 +124,7 @@ IBMRS6K7248_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .LE_MODE(LE_MODE), .UART_F
 	.m_req, .m_we, .m_line, .m_addr, .m_be, .m_wdata, .m_ack, .m_rdata,
 	.ext_irq, .tb_tick, .kbc_reset, .speaker,
 	.ps2_key, .ps2_mouse, .rtc_set, .rtc_time,
+	.v_req, .v_we, .v_addr, .v_be, .v_wdata, .v_ack, .v_rdata,
 	.com1_txd, .com1_rxd, .com1_cts_n, .com1_rts_n,
 	.io_ev, .io_we, .io_stub, .io_addr, .io_be, .io_wdata, .io_rdata
 );

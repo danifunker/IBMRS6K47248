@@ -146,6 +146,15 @@ module IBMRS6K7248_machine
 	input  logic         com1_cts_n,
 	output logic         com1_rts_n,
 
+	// the S3's VRAM (2 MB): words with byte enables by byte offset, req held until ack
+	output logic         v_req,
+	output logic         v_we,
+	output logic [20:2]  v_addr,
+	output logic [3:0]   v_be,
+	output logic [31:0]  v_wdata,
+	input  logic         v_ack,
+	input  logic [31:0]  v_rdata,
+
 	// every device access as it is answered (for the test bench)
 	output logic         io_ev,
 	output logic         io_we,
@@ -264,6 +273,14 @@ wire  [31:0]  p_a  = {d_addr[31:5], d_line ? d_k : d_addr[4:2], 2'b00};
 wire  [31:0]  p_wd = d_line ? d_wdata[255 - 32 * d_k -: 32] : d_wdata[31:0];
 wire  [3:0]   p_be = d_line ? 4'hF : d_be;
 
+// A word is done the cycle after its access (d_sel_q), or, for the S3, when it answers
+// (its engine may hold the bus: docs/s3_design.md 4.2)
+logic         s3_sel, q_s3, s3_ack;
+logic [31:0]  s3_rdata;
+wire          w_done  = (d_sel_q & ~q_s3) | s3_ack;
+logic [31:0]  dev_rdata;
+wire  [31:0]  w_rdata = s3_ack ? s3_rdata : dev_rdata;
+
 always_ff @(posedge clk) begin
 	dev_ack <= 1'b0;
 	d_sel   <= 1'b0;
@@ -278,8 +295,8 @@ always_ff @(posedge clk) begin
 		d_k      <= 3'd0;
 		d_sel    <= 1'b1;
 	end
-	if (d_sel_q) begin
-		line_buf[d_k] <= dev_rdata;
+	if (w_done) begin
+		line_buf[d_k] <= w_rdata;
 		if (!d_line || d_k == 3'd7) dev_ack <= 1'b1;
 		else begin
 			d_k   <= d_k + 3'd1;
@@ -293,6 +310,13 @@ always_ff @(posedge clk) begin
 		d_sel    <= 1'b0;
 		d_sel_q  <= 1'b0;
 	end
+end
+
+// the S3's request: from the word's access until its answer
+always_ff @(posedge clk) begin
+	if (d_sel & s3_hit) s3_sel <= 1'b1;
+	if (s3_ack)         s3_sel <= 1'b0;
+	if (reset)          s3_sel <= 1'b0;
 end
 
 // the regions
@@ -351,6 +375,21 @@ IBMRS6K7248_uart #(.CLK_HZ(CPU_HZ), .FAST(UART_FAST)) com2 (
 	.txd(), .rxd(1'b1),
 	.cts_n(1'b1), .dsr_n(1'b1), .dcd_n(1'b1), .ri_n(1'b1),
 	.rts_n(), .dtr_n()
+);
+
+// ---- the S3 Vision864 (PCI device 14): its ports, its frame buffer --------------------------
+wire        s_pcimem = p_a[31:30] == 2'b11 && p_a[31:24] != 8'hFF;      // C0000000-FEFFFFFF
+logic       s3_io_hit, s3_mem_hit;
+wire        s3_hit   = (s_isa & s3_io_hit) | (s_pcimem & s3_mem_hit);
+logic [31:0] s3_cfg_q;
+logic        s3_irq;
+IBMRS6K7248_s3 #(.CLK_HZ(CPU_HZ)) s3 (
+	.clk, .reset,
+	.cfg_sel(d_sel & cfg_dev14), .cfg_we(d_we), .cfg_reg(cf8[7:2]), .cfg_be(le_be), .cfg_wdata(le_wd), .cfg_rdata(s3_cfg_q),
+	.port({p_a[15:2], 2'b00}), .pci_addr({2'b00, p_a[29:0]}), .io_hit(s3_io_hit), .mem_hit(s3_mem_hit),
+	.sel(s3_sel & ~s3_ack), .we(d_we), .is_mem(s_pcimem), .be(p_be), .wdata(p_wd), .rdata(s3_rdata), .ack(s3_ack),
+	.v_req, .v_we, .v_addr, .v_be, .v_wdata, .v_ack, .v_rdata,
+	.irq(s3_irq), .monitor_id(4'hF)
 );
 
 // ---- the ISA core: the 8259s, the 8254, the 8042, the RTC and NVRAM, port 92 -------------
@@ -414,7 +453,8 @@ always_ff @(posedge clk) begin
 end
 
 // the request lines: COM1's INTR as a PC board gates it, with OUT2
-assign irq = {3'b000, irq12, 3'b000, irq8, 3'b000, com1_irq & com1_out2, com2_irq & com2_out2, 1'b0, irq1, irq0};
+// IRQ 15: every PCI device's interrupt (Carolina's routing); the S3's so far
+assign irq = {s3_irq, 2'b00, irq12, 3'b000, irq8, 3'b000, com1_irq & com1_out2, com2_irq & com2_out2, 1'b0, irq1, irq0};
 
 // the planar ID, the SIMMs' presence detect
 wire        planar_hit = s_isa && bport == 16'h0852;
@@ -442,6 +482,7 @@ wire        cfc_hit = s_isa && port == 16'h0CFC;
 wire        cfg_on  = cf8[31] && cf8[23:16] == 8'd0 && cf8[10:8] == 3'd0;   // bus 0, function 0
 wire        cfg_dev0  = cfc_hit && cfg_on && cf8[15:11] == 5'd0;
 wire        cfg_dev11 = cfc_hit && cfg_on && cf8[15:11] == 5'd11;
+wire        cfg_dev14 = cfc_hit && cfg_on && cf8[15:11] == 5'd14;
 always_ff @(posedge clk) begin
 	if (d_sel & d_we & cf8_hit)
 		for (int k = 0; k < 4; k++) if (le_be[k]) cf8[8 * k +: 8] <= le_wd[8 * k +: 8];
@@ -468,7 +509,7 @@ IBMRS6K7248_firecoral firecoral (
 );
 
 // the answer, the cycle after the access
-logic       q_sio, q_com2;
+logic       q_sio, q_com2, q_dev14;
 logic       q_pic, q_pit, q_kbc, q_rtc, q_p92, q_err, q_aud, q_audc;
 logic       q_com1, q_planar, q_pd, q_cf8, q_cfc, q_dev0, q_dev11, q_fcio, q_pcicf, q_iack;
 logic [1:0] q_lane;
@@ -490,13 +531,14 @@ always_ff @(posedge clk) if (d_sel) begin
 	q_cfc   <= cfc_hit;
 	q_dev0  <= cfg_dev0;
 	q_dev11 <= cfg_dev11;
+	q_dev14 <= cfg_dev14;
+	q_s3    <= s3_hit;
 	q_fcio  <= fc_io_hit;
 	q_pcicf <= s_pcicf;
 	q_iack  <= s_iack;
 	q_lane  <= lane;
 end
 
-logic [31:0] dev_rdata;
 always_comb begin
 	if      (q_com1)  dev_rdata = {4{com1_q}};               // every lane: the byte reaches whichever one was asked
 	else if (q_com2)  dev_rdata = {4{com2_q}};
@@ -512,7 +554,7 @@ always_comb begin
 	else if (q_pd)    dev_rdata = {4{simm_pd[q_lane]}};
 	else if (q_fcio)  dev_rdata = {4{fc_io_q}};
 	else if (q_cf8)   dev_rdata = swap32(cf8);
-	else if (q_cfc)   dev_rdata = q_dev0 ? swap32(mpc_q) : q_dev11 ? swap32(fc_q) : 32'hFFFF_FFFF;
+	else if (q_cfc)   dev_rdata = q_dev0 ? swap32(mpc_q) : q_dev11 ? swap32(fc_q) : q_dev14 ? swap32(s3_cfg_q) : 32'hFFFF_FFFF;
 	else if (q_pcicf) dev_rdata = 32'hFFFF_FFFF;
 	else if (q_iack)  dev_rdata = {4{pic_q}};             // the vector
 	else if (d_addr[31]) dev_rdata = 32'hFFFF_FFFF;          // I/O and bus space: nothing answers
@@ -522,15 +564,15 @@ end
 
 // ---- the bench's view ---------------------------------------------------------------------
 always_ff @(posedge clk) begin
-	io_ev <= d_sel_q;
-	if (d_sel_q) begin
+	io_ev <= w_done;
+	if (w_done) begin
 		io_we    <= d_we;
-		io_stub  <= ~(q_com1 | q_com2 | q_sio | q_planar | q_pd | q_fcio | q_cf8 | q_dev0 | q_dev11 |
+		io_stub  <= ~(q_s3 | q_com1 | q_com2 | q_sio | q_planar | q_pd | q_fcio | q_cf8 | q_dev0 | q_dev11 | q_dev14 |
 		              q_pic | q_pit | q_kbc | q_rtc | q_p92 | q_err | q_aud | q_audc | q_iack);
 		io_addr  <= p_a;
 		io_be    <= p_be;
 		io_wdata <= p_wd;
-		io_rdata <= dev_rdata;
+		io_rdata <= w_rdata;
 	end
 	if (reset) io_ev <= 1'b0;
 end

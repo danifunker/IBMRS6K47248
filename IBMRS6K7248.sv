@@ -267,6 +267,9 @@ wire [31:2]  b_addr;
 wire  [3:0]  b_be;
 wire [255:0] b_wdata, b_rdata;
 wire         trace_valid, trace_last;
+wire         s3_v_req;
+reg          s3_v_ack = 0;
+always @(posedge clk_cpu) s3_v_ack <= s3_v_req & ~s3_v_ack;
 
 IBMRS6K7248_system #(.CPU_HZ(CPU_MHZ * 1_000_000), .TB_HZ(TB_HZ)) system
 (
@@ -286,6 +289,9 @@ IBMRS6K7248_system #(.CPU_HZ(CPU_MHZ * 1_000_000), .TB_HZ(TB_HZ)) system
 	.rtc_set(rtc_set_c),
 	.rtc_time(rtc[55:0]),
 	.speaker, .kbc_reset,
+
+	// the S3's VRAM: not yet in DDR3 (plan M4, step 4); answered at once, reads 0
+	.v_req(s3_v_req), .v_we(), .v_addr(), .v_be(), .v_wdata(), .v_ack(s3_v_ack), .v_rdata(32'h0),
 
 	.com1_txd(UART_TXD),
 	.com1_rxd(UART_RXD),

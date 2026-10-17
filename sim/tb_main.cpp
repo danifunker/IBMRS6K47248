@@ -29,6 +29,7 @@
 static const uint32_t MEM_BYTES = 128u << 20;
 static const uint32_t ROM_AT    = 31;                 // 4 MB units: the top 4 MB of 128
 static std::vector<uint8_t> mem(MEM_BYTES, 0);
+static std::vector<uint8_t> vram(2u << 20, 0);          // the S3's 2 MB
 
 static uint32_t rd32(uint32_t a) {
 	return (uint32_t(mem[a]) << 24) | (uint32_t(mem[a + 1]) << 16) | (uint32_t(mem[a + 2]) << 8) | mem[a + 3];
@@ -46,6 +47,7 @@ static void usage() {
 	       "  --beat N     every N clocks, a line with the instructions retired, the PC and the last progress code (default 20,000,000; 0 none)\n"
 	       "  --save FILE  snapshot the machine when --save-pc PC (hex; default 8398, main_control) first retires\n"
 	       "  --restore FILE  start from a snapshot (the same build and ROM; the options given apply from there)\n"
+	       "  --vram FILE  the S3's 2 MB VRAM at the end, raw (tools/vram.py draws it)\n"
 	       "  --com1 FILE  COM1's bytes as sent, raw (tools/vt.py FILE draws the terminal's screen)\n"
 	       "  --fst FILE   write a waveform (needs a make TRACE=1 build) of clocks --from N --to M\n"
 	       "  --lat N      the bench memory answers N clocks after a request (default 6, about the SDRAM's)\n"
@@ -76,6 +78,7 @@ int main(int argc, char** argv) {
 	const char* save_path = nullptr;               // a snapshot of the machine (model and memory) ...
 	uint32_t save_pc = 0x00008398;                 // ... when this PC first retires (default main_control)
 	const char* restore_path = nullptr;            // start from a snapshot instead of from reset
+	const char* vram_path = nullptr;               // the S3's VRAM at the end, raw
 	const char* com1_path = nullptr;               // COM1's bytes as sent (tools/vt.py draws the screen)
 	const char* fst_path = nullptr;                // a waveform (a TRACE=1 build) ...
 	uint64_t fst_from = 0, fst_to = ~0ull;         // ... of these clocks                      // a heartbeat line every so many clocks (0 none)
@@ -91,6 +94,7 @@ int main(int argc, char** argv) {
 		else if (a == "--io") io_print = true;
 		else if (a == "--quiet-progress") post_print = false;
 		else if (a == "--com1") com1_path = next();
+		else if (a == "--vram") vram_path = next();
 		else if (a == "--save") save_path = next();
 		else if (a == "--save-pc") save_pc = strtoul(next(), nullptr, 16);
 		else if (a == "--restore") restore_path = next();
@@ -141,6 +145,7 @@ int main(int argc, char** argv) {
 	// the memory: a request is answered LAT clocks after it is seen
 	// (--lat: its latency changes how long the machine waits, not what it does)
 	int  mem_wait = -1;
+	int  v_wait = 0;
 	bool ack_now = false;
 
 	std::map<uint32_t, StubInfo> stubs;
@@ -189,6 +194,7 @@ int main(int argc, char** argv) {
 		f(&post_last, sizeof post_last); f(&post_count, sizeof post_count); f(&io_count, sizeof io_count);
 		f(&mem_wait, sizeof mem_wait); f(&ack_now, sizeof ack_now); f(&tcycle, sizeof tcycle);
 		f(mem.data(), mem.size());
+		f(vram.data(), vram.size());
 	};
 	uint64_t cycle0 = 0;
 	if (restore_path) {
@@ -243,6 +249,21 @@ int main(int argc, char** argv) {
 				mem_wait = -1;
 			} else mem_wait--;
 		}
+		// the S3's VRAM: a word answered two clocks after its request
+		top->v_ack = 0;
+		if (top->v_req) {
+			if (++v_wait == 2) {
+				uint32_t a = (uint32_t(top->v_addr) << 2) & ((2u << 20) - 1);
+				if (top->v_we) {
+					uint32_t v = top->v_wdata;
+					for (int b = 0; b < 4; b++) if (top->v_be & (8 >> b)) vram[a + b] = v >> (24 - 8 * b);
+				} else
+					top->v_rdata = (uint32_t(vram[a]) << 24) | (uint32_t(vram[a + 1]) << 16) | (uint32_t(vram[a + 2]) << 8) | vram[a + 3];
+				top->v_ack = 1;
+				v_wait = -1;
+			}
+		}
+		else v_wait = 0;
 		tick();
 		if (beat && cycle && cycle % beat == 0)
 			printf("  [clock %llu: %llu instructions, pc %08X, progress %02X]\n", (unsigned long long)cycle,
@@ -328,6 +349,10 @@ int main(int argc, char** argv) {
 	for (auto& [a, s] : stubs)
 		printf("  %08X   %10llu %10llu  %08X  %08X  %08X\n", a, (unsigned long long)s.reads,
 		       (unsigned long long)s.writes, s.last_wdata, s.last_rdata, s.first_pc);
+	if (vram_path) {
+		FILE* vf = fopen(vram_path, "wb");
+		if (vf) { fwrite(vram.data(), 1, vram.size(), vf); fclose(vf); }
+	}
 #if VM_TRACE
 	if (tfp) tfp->close();
 #endif
