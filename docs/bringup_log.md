@@ -275,3 +275,30 @@ clock ~1,300 M (~75 min) and read the CDBs sent to ID 3 (the DSA tables in
 RAM, `--watch` on 9C27C ncr_execute); find what 98 and CB mean
 (`docs/firmware_analysis.md`); then try the boot with a boot list in
 NVRAM or from the firmware's menus (`docs/scsi_design.md` 1.5-1.10).
+
+## 2026-10-17: a second machine; what 98 and CB are
+
+The work moved to a Windows 11 machine (32 GB, 20 cores): the bench builds
+in WSL Ubuntu-24.04 (oss-cad-suite's Verilator 5.049: the distro's 5.020
+rejects `cr[i] <= 0` in a loop; the 5.04x lints PROCASSINIT and MULTIDRIVEN
+are off in the Makefile), Quartus 17.0 Lite runs natively. A MiSTer is on the
+network (192.168.99.143). The first Quartus synthesis found what the bench
+let through: `for (genvar ...)` needs `genvar c;` + `generate` in Quartus
+17, a concatenation cannot be sliced (`{...}[11:0]`), and `regs[6'(34 + n/4)]`
+is read as index -30 (the cast taken as signed): all three fixed.
+
+The scan's two new codes, from the disassembly:
+
+- **98** (`0x0208_xx98`, `scsi_init` 0x98038): issued when a step's result
+  (r29) is 0, i.e. **a device answered INQUIRY**; then its peripheral type
+  is checked and `get_fru_id` called. So the CD at ID 3 was found.
+- **CB** (`0x0209_xxCB`, `build_boot_table` 0x1DFC8): for each device type
+  in a table, `get_occurance_count` (which asks `dasd_devio` about every
+  DASD device) is non-zero: **the type is added to the boot table**, xx the
+  entries so far. **CD** (`0x0006_xxCD`, 0x1DD24) is the same table's entry
+  for the diskette path (`dasd_devio` on the first device).
+
+So the CD-ROM was found and entered in the boot table; what did not happen
+is the boot itself: the firmware idles at 7B after 00017006. To find out
+why, the next run watches `build_boot_table` (1DBB8), `get_boot_seq` (1FBD4),
+`boot_cmd` (133A0), `ParallelBoot` (232EC) and `cold_boot_path` (BC58).
