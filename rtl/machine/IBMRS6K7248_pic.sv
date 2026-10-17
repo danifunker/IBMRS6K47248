@@ -111,8 +111,9 @@ wire       me    = slave;          // the chip addressed
 wire       acc_w = sel & ~iack & ~elcr_sel & we;
 wire       acc_r = sel & ~iack & ~elcr_sel & ~we;
 
+genvar c;
 generate
-for (genvar c = 0; c < 2; c++) begin : g_chip
+for (c = 0; c < 2; c++) begin : g_chip
 	wire        this_w = acc_w & (me == c[0]);
 	wire        this_r = acc_r & (me == c[0]);
 	wire        icw1   = this_w & ~a0 & wdata[4];
