@@ -115,6 +115,7 @@ module IBMRS6K7248_machine
 	parameter int unsigned TB_HZ  = 16_666_667,
 	parameter int unsigned LE_MODE = 1,            // 1: the MPC105's little-endian mode (PICR1's LE_MODE bit) swaps the bus
 	parameter int unsigned UART_FAST = 0,          // 1 (the bench only): the serial ports run at CLK_HZ / 16
+	parameter int unsigned RTC_FAST  = 0,          // 1 (the bench only): the RTC's seconds 64 x faster (the firmware's waits on the clock)
 	parameter int unsigned STO_UNIT = CPU_HZ / 16000    // the 53C810's selection timeout unit
 )
 (
@@ -582,7 +583,7 @@ IBMRS6K7248_kbc #(.CLK_HZ(CPU_HZ)) kbc (
 	.ps2_key, .ps2_mouse
 );
 
-IBMRS6K7248_rtc #(.CLK_HZ(CPU_HZ)) rtc (
+IBMRS6K7248_rtc #(.CLK_HZ(CPU_HZ), .FAST(RTC_FAST)) rtc (
 	.clk, .reset,
 	.sel(d_sel & rtc_hit), .we(d_we), .port(bport[2:0]), .wdata(bwd), .rdata(rtc_q),
 	.irq8, .nmi_mask,

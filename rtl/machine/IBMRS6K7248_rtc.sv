@@ -23,7 +23,8 @@
 
 module IBMRS6K7248_rtc
 #(
-	parameter int unsigned CLK_HZ = 100_000_000
+	parameter int unsigned CLK_HZ = 100_000_000,
+	parameter int unsigned FAST   = 0            // 1 (the bench only): a second every 512 ticks of the 32 kHz (64 x faster)
 )
 (
 	input  logic        clk,
@@ -50,6 +51,7 @@ logic [31:0] acc = '0;
 logic        t32k;
 always_ff @(posedge clk) {t32k, acc} <= {1'b0, acc} + {1'b0, INC};
 logic [14:0] div;                       // the divider chain: one second at its wrap
+localparam logic [14:0] SEC_WRAP = FAST != 0 ? 15'h01FF : 15'h7FFF;   // (FAST: the periodic rates above 64 Hz unchanged)
 
 // ---- registers ------------------------------------------------------------------------
 logic [6:0] index;
@@ -128,11 +130,11 @@ logic [7:0]  nv_q;
 
 always_ff @(posedge clk) begin
 	if (t32k && reg_a[6:4] == 3'b010) begin
-		div <= div + 15'd1;
+		div <= div == SEC_WRAP ? 15'd0 : div + 15'd1;
 		// periodic
 		if (reg_a[3:0] != 4'd0 && (div & pmask) == pmask)
 			flags[2] <= 1'b1;
-		if (!reg_b[7] && div == 15'h7FFF) begin
+		if (!reg_b[7] && div == SEC_WRAP) begin
 			// the second: the time, then the alarm and the update-ended flag
 			flags[0] <= 1'b1;
 			if (sec != 6'd59) sec <= sec + 6'd1;

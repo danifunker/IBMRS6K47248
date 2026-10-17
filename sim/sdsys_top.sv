@@ -15,6 +15,7 @@ module IBMRS6K7248_sdsys
 	parameter int unsigned PERF   = 0,            // 1: the CPU's performance counters
 	parameter int unsigned LE_MODE = 1,           // 1: little-endian mode, the CPU's munging and the MPC105's swap
 	parameter int unsigned UART_FAST = 0,         // 1 (the bench only): the serial ports at CLK_HZ / 16
+	parameter int unsigned RTC_FAST  = 0,
 	parameter int unsigned STO_UNIT = CPU_HZ / 16000   // the 53C810's selection timeout unit (the bench: shorter)
 
 )
@@ -128,7 +129,7 @@ logic [31:2]  b_addr;
 logic [3:0]   b_be;
 logic [255:0] b_wdata, b_rdata;
 
-IBMRS6K7248_system #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .PERF(PERF), .LE_MODE(LE_MODE), .UART_FAST(UART_FAST), .STO_UNIT(STO_UNIT)) system (
+IBMRS6K7248_system #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .PERF(PERF), .LE_MODE(LE_MODE), .UART_FAST(UART_FAST), .RTC_FAST(RTC_FAST), .STO_UNIT(STO_UNIT)) system (
 	.clk, .reset, .reset_pc, .simm_cfg, .rom_at, .rom_512k, .planar_id, .clk_b, .reset_b, .ps2_key, .ps2_mouse, .rtc_set, .rtc_time, .speaker, .kbc_reset, .com1_txd, .com1_rxd, .com1_cts_n, .com1_rts_n, .ddr_busy, .ddr_burstcnt, .ddr_addr, .ddr_dout, .ddr_dout_ready, .ddr_rd, .ddr_din, .ddr_be, .ddr_we, .vid_ce, .vid_r, .vid_g, .vid_b, .vid_hs, .vid_vs, .vid_hblank, .vid_vblank, .img_present, .img_blocks, .sd_lba, .sd_blk_cnt, .sd_rd, .sd_wr, .sd_ack, .sd_buff_addr, .sd_buff_dout, .sd_buff_din, .sd_buff_wr, .cd_change, .scsi_activity, .io_ev, .io_we, .io_stub, .io_addr, .io_be, .io_wdata, .io_rdata, .trace_valid, .trace_last, .trace_pc, .trace_insn, .trace_msr, .trace_dreq, .trace_dwe, .trace_daddr,
 	.b_req, .b_we, .b_line, .b_addr, .b_be, .b_wdata, .b_ack, .b_rdata
 );

@@ -26,6 +26,7 @@ module IBMRS6K7248_system
 	parameter int unsigned PERF   = 0,            // 1: the CPU's performance counters
 	parameter int unsigned LE_MODE = 1,           // 1: little-endian mode, the CPU's munging and the MPC105's swap
 	parameter int unsigned UART_FAST = 0,         // 1 (the bench only): the serial ports at CLK_HZ / 16
+	parameter int unsigned RTC_FAST  = 0,         // 1 (the bench only): the RTC's seconds 64 x faster
 	parameter int unsigned STO_UNIT = CPU_HZ / 16000   // the 53C810's selection timeout unit (the bench: shorter)
 )
 (
@@ -172,7 +173,7 @@ logic [3:0]   vb_be;
 logic [255:0] vb_wdata, vb_rdata;
 logic [255:0] v_rdata_w;
 
-IBMRS6K7248_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .LE_MODE(LE_MODE), .UART_FAST(UART_FAST), .STO_UNIT(STO_UNIT)) machine (
+IBMRS6K7248_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .LE_MODE(LE_MODE), .UART_FAST(UART_FAST), .RTC_FAST(RTC_FAST), .STO_UNIT(STO_UNIT)) machine (
 	.clk, .reset, .simm_cfg, .rom_at, .rom_512k, .planar_id,
 	.c_req, .c_we, .c_line, .c_addr, .c_be, .c_wdata, .c_ack, .c_rdata,
 	.m_req, .m_we, .m_line, .m_addr, .m_be, .m_wdata, .m_ack, .m_rdata,

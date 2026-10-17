@@ -45,6 +45,9 @@ OPT    ?= -O2
 # (the bench's serial ports run at the clock / 16, UART_FAST: the firmware's 9600 baud console
 # would cost 100,000 clocks a character)
 VFLAGS := --cc --exe --savable $(WARN) --output-split 20000 --output-split-cfuncs 2000
+# the RTC's seconds 64 x faster (the firmware's sleeps on the clock: 3 s after an error message);
+# make RTC_FAST=0 for the real rate
+RTC_FAST ?= 1
 # make TRACE=1: a build that can write waveforms (--fst), in its own directory
 ifeq ($(TRACE),1)
 BUILD  := build_trace
@@ -58,7 +61,7 @@ machine_tb: $(BUILD)/machine_tb
 
 $(BUILD)/VIBMRS6K7248_system.mk: $(CPU_SRCS) $(MACH_SRCS) $(HERE)tb_main.cpp $(CPU)/DSPPC604.qip $(MACH)/IBMRS6K7248_machine.qip $(HERE)Makefile
 	@mkdir -p $(BUILD)
-	@$(VERILATOR) $(VFLAGS) --top-module IBMRS6K7248_system -GUART_FAST=1 -GSTO_UNIT=2 -Mdir $(BUILD) -o machine_tb \
+	@$(VERILATOR) $(VFLAGS) --top-module IBMRS6K7248_system -GUART_FAST=1 -GRTC_FAST=$(RTC_FAST) -GSTO_UNIT=2 -Mdir $(BUILD) -o machine_tb \
 		-CFLAGS "-std=c++17 $(GCC_MEM)" \
 		$(CPU_SRCS) $(MACH_SRCS) $(HERE)tb_main.cpp \
 		> $(BUILD)/build.log 2>&1 || (cat $(BUILD)/build.log; false)
@@ -85,7 +88,7 @@ machine_sd: $(SD_BUILD)/machine_sd
 
 $(SD_BUILD)/VIBMRS6K7248_sdsys.mk: $(SD_SRCS) $(HERE)tb_main.cpp $(HERE)sdram_chip.h $(HERE)Makefile
 	@mkdir -p $(SD_BUILD)
-	@$(VERILATOR) $(VFLAGS) --top-module IBMRS6K7248_sdsys -GUART_FAST=1 -GSTO_UNIT=2 -Mdir $(SD_BUILD) -o machine_sd 		-CFLAGS "-std=c++17 -DSDRAM_CHIP -I$(HERE) $(GCC_MEM)" 		$(SD_SRCS) $(HERE)tb_main.cpp 		> $(SD_BUILD)/build.log 2>&1 || (cat $(SD_BUILD)/build.log; false)
+	@$(VERILATOR) $(VFLAGS) --top-module IBMRS6K7248_sdsys -GUART_FAST=1 -GRTC_FAST=$(RTC_FAST) -GSTO_UNIT=2 -Mdir $(SD_BUILD) -o machine_sd 		-CFLAGS "-std=c++17 -DSDRAM_CHIP -I$(HERE) $(GCC_MEM)" 		$(SD_SRCS) $(HERE)tb_main.cpp 		> $(SD_BUILD)/build.log 2>&1 || (cat $(SD_BUILD)/build.log; false)
 	@grep -E '^%Warning' $(SD_BUILD)/build.log || true
 
 $(SD_BUILD)/machine_sd: $(SD_BUILD)/VIBMRS6K7248_sdsys.mk FORCE
