@@ -62,12 +62,16 @@ start-up, the `eatabug` monitor).
 
 ### M4 Video
 
-**Status (2026-10-17):** written, not yet seen working: phase 1a
+**Status (2026-10-17):** phase 1 works on the bench: the firmware's S3
+driver sets 640x480x8 and draws the start-up screen (the PowerPC logo,
+the POST icons, the error triangle with its code) through the 8514
+engine, scanned out of VRAM in DDR3 (`docs/bringup_log.md`,
+`docs/images/first_screen_powerpc_logo.png`). Phase 1a
 (`IBMRS6K7248_s3.sv`: registers, frame buffer, vertical interrupt), 1b
 (`IBMRS6K7248_s3ge.sv`: the engine) and 1c (`IBMRS6K7248_s3video.sv`:
 VRAM in DDR3, CRTC, dot clock, palette, cursor), from
 `docs/s3_design.md`. The bench models the DDR3 port and keeps the
-picture's latest frame (`--frame`).
+picture's latest frame (`--frame`). Not yet on the board.
 
 S3 Vision864 + SDAC (PCI, 5333:88C0): VGA text and graphics modes, the
 linear frame buffer, the hardware cursor; 2 MB VRAM in the HPS's DDR3
@@ -78,9 +82,14 @@ linear frame buffer, the hardware cursor; 2 MB VRAM in the HPS's DDR3
 - Floppy (the PC87312's FDC) from an image: the SMS and diagnostics
   diskettes.
 - NCR 53C810 (PCI device 0x10 on the 7248): SCRIPTS, DMA through the
-  CPU's snoop port, SCSI disks and a CD-ROM from hps_io's block devices
-  (MacPPC7300's target models). QEMU's `lsi53c895a.c` and MAME's 53C810
-  as references.
+  CPU's snoop port, SCSI disks and a CD-ROM from hps_io's block devices.
+  **Status (2026-10-17): phase 1 written** (`docs/scsi_design.md` 5.8):
+  `IBMRS6K7248_ncr810.sv` (the HP 9000/715 core's 53C710 SCRIPTS engine
+  carried to the 810) and `IBMRS6K7248_scsitgt.sv` (the 715's byte-level
+  targets, not MacPPC7300's signal-level ones: no PHY needed, and the two
+  are proven together under HP-UX; a dual-clock buffer for hps_io); disks
+  at IDs 0 and 1, the CD-ROM at 3; the bench serves images (`--disk0`,
+  `--disk1`, `--cd`). First run on the bench under way.
 - Fire Coral's EIDE (1F0/170) if a boot path needs it.
 
 - The Main side (the user's direction, 2026-10-17): a new branch of
@@ -93,8 +102,9 @@ linear frame buffer, the hardware cursor; 2 MB VRAM in the HPS's DDR3
   overlap), the multi-block reads and tight service loop of
   `origin/fast-mac-scsi`, a CD-ROM layer as `hp9k_cdrom.cpp` /
   `mac_cdrom`, and only small hooks in `support.h` and `user_io.cpp`.
-  The FPGA side keeps to the same contracts: MacPPC7300's SCSI targets
-  (`MacPPC7300_scsidisk.sv`) behind the 53C810.
+  The FPGA side keeps to the same contracts as the 715's targets (8-bit
+  hps_io here; the CD's track table from the block at C000_0000 when the
+  Main serves one, as `support/hp9k` does).
 
 ### M6 AIX
 

@@ -53,17 +53,30 @@ machine):
   The patch and the resume prompt for MacPPC7300 are written
   (`docs/cpu_patches/`, `../MacPPC7300_MiSTer/RESUME_le_mode.md`, the latter
   left uncommitted there).
-- **The floppy controller** (drive empty) was added because `diskette_init`
-  waited out timeouts; **M4 (S3)** phases 1a/1b/1c (registers, engine,
-  scan-out with VRAM in DDR3) are written and building/running on the bench
-  for the first time. **Next check**: the run from reset with
-  `--frame scratch/work/frame.ppm --vram ... --com1 ...` (command below):
-  does `diskette_init` pass quickly now, does the S3 driver load (its mode
-  set, `s3_memory_size` = 2, no progress code 69), does the frame show the
-  firmware's screen (logo, menu)? Fix what it shows.
-- Then M5 (SCSI 53C810 per `docs/scsi_design.md`, the floppy with images and
-  the 8237's channel 2, the Main branch), M6 (AIX), M7 (PCnet, CS4232 sound,
-  the L2, the model option).
+- **The floppy controller** (drive empty) passes `diskette_init` (B1) in
+  1.3 M instructions.
+- **M4 (S3) phase 1 works on the bench**: the firmware's S3 driver draws
+  its start-up screen (PowerPC logo, the POST icons, then the error
+  triangle with 00017006: the console named in the blank NVRAM not found)
+  and idles at progress 7B around clock 950 M. Picture:
+  `docs/images/first_screen_powerpc_logo.png`; details in
+  `docs/bringup_log.md` (the last section).
+- **M5 phase 1 (the 53C810) is written and building/running for the first
+  time**: `rtl/machine/IBMRS6K7248_ncr810.sv` (the HP 9000/715 core's
+  53C710 SCRIPTS engine carried to the 810), `IBMRS6K7248_scsitgt.sv` (the
+  715's byte-level targets with a dual-clock hps buffer), the machine's
+  PCI I/O decode, DMA through the CPU's snoop port, IRQ 15; the bench's
+  `--disk0/--disk1/--cd` image server; the top's three hps_io slots.
+  **Next check**: a run from reset with `--cd` (the diagnostics ISO in
+  `scratch/downloads/fsck.technology/diag/`) and `--watch` on the driver
+  (9BA18 find_scsi_card, 9BC50 ncr_adapter_open, 9DD6C
+  get_script_and_patch, 9C27C ncr_execute, 9D5E4 the interrupt handler,
+  9E120 mem_test): does the adapter open (script self-test, own-ID
+  selection timeout), the scan find the CD, the firmware try to boot it?
+  `docs/scsi_design.md` sections 1.5-1.10 are the checklist.
+- Then: the Main_MiSTer branch (ask first), M6 (AIX), M7 (PCnet, CS4232
+  sound, the L2, the model option). Not yet done: a Quartus fit (the top
+  compiles only in the bench's subset so far: the first fit is due).
 
 ## The bench (sim/)
 
