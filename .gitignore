@@ -43,3 +43,6 @@ sim/build/
 
 # reference material: manuals, firmware archives, OS media, extractions (not source)
 scratch/
+sim/tests/*.o
+sim/tests/*.elf
+sim/tests/*.bin

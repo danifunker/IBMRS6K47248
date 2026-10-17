@@ -79,6 +79,15 @@
 //  address first: with data translation off the 604 treats every address
 //  as cacheable, so early firmware may reach devices through the cache.
 //
+//  Little-endian mode (LE_MODE): while the MPC105's PICR1 LE_MODE bit (5)
+//  is set, the bridge swaps the byte lanes of each doubleword between the
+//  CPU's bus and everything behind it (memory, ROM, PCI, ISA), which undoes
+//  the 604's address munging (DSPPC604, LE_MODE): a word access reaches the
+//  other word of its doubleword with its bytes reversed, a line has the
+//  bytes of each of its doublewords reversed. Memory then holds what the
+//  little-endian program meant. (To be checked against the MPC105 manual:
+//  docs/plan.md, the little-endian track.)
+//
 //  Also made here: tb_tick for the CPU's time base and decrementer, at
 //  TB_HZ on average (the 604 counts every fourth bus clock: 16.67 MHz on a
 //  66 MHz bus).
@@ -88,7 +97,8 @@
 module IBMRS6K7248_machine
 #(
 	parameter int unsigned CPU_HZ = 100_000_000,
-	parameter int unsigned TB_HZ  = 16_666_667
+	parameter int unsigned TB_HZ  = 16_666_667,
+	parameter int unsigned LE_MODE = 1             // 1: the MPC105's little-endian mode (PICR1's LE_MODE bit) swaps the bus
 )
 (
 	input  logic         clk,
@@ -197,7 +207,20 @@ logic [7:0][9:0] bank_start, bank_end;
 logic [31:0]     picr1;
 
 // ---- decode -------------------------------------------------------------------------------
-wire [31:0] a      = {c_addr, 2'b00};
+// ---- the bridge's byte-lane swap in little-endian mode ------------------------------------
+function automatic logic [31:0] rev32(input logic [31:0] x);
+	rev32 = {x[7:0], x[15:8], x[23:16], x[31:24]};
+endfunction
+// a line's bytes reversed within each doubleword: word i becomes word i ^ 1, reversed
+function automatic logic [255:0] swap_line(input logic [255:0] x);
+	for (int i = 0; i < 8; i++) swap_line[255 - 32 * i -: 32] = rev32(x[255 - 32 * (i ^ 1) -: 32]);
+endfunction
+wire          le_bus  = (LE_MODE != 0) & picr1[5];
+wire  [31:2]  x_addr  = le_bus & ~c_line ? {c_addr[31:3], ~c_addr[2]} : c_addr;
+wire  [3:0]   x_be    = le_bus ? {c_be[0], c_be[1], c_be[2], c_be[3]} : c_be;
+wire  [255:0] x_wdata = ~le_bus ? c_wdata : c_line ? swap_line(c_wdata) : {224'h0, rev32(c_wdata[31:0])};
+
+wire [31:0] a      = {x_addr, 2'b00};
 
 // the bank holding the address (the lowest if programmed to overlap), and its offset in the SDRAM
 logic       is_ram;
@@ -220,8 +243,8 @@ assign m_req   = c_req & to_mem & ~dev_busy;
 assign m_we    = c_we;
 assign m_line  = c_line;
 assign m_addr  = is_rom ? {5'd0, rom_at, 2'b00, rom_a} : {4'd0, ram_mb_at, a[19:2]};
-assign m_be    = c_be;
-assign m_wdata = c_wdata;
+assign m_be    = x_be;
+assign m_wdata = x_wdata;
 
 // ---- device accesses, a word at a time ----------------------------------------------------
 logic         dev_busy;                 // a device request taken, not yet answered
@@ -248,9 +271,9 @@ always_ff @(posedge clk) begin
 		dev_busy <= 1'b1;
 		d_we     <= c_we;
 		d_line   <= c_line;
-		d_addr   <= c_addr;
-		d_be     <= c_be;
-		d_wdata  <= c_wdata;
+		d_addr   <= x_addr;
+		d_be     <= x_be;
+		d_wdata  <= x_wdata;
 		d_k      <= 3'd0;
 		d_sel    <= 1'b1;
 	end
@@ -513,7 +536,9 @@ end
 
 // ---- to the CPU -------------------------------------------------------------------------
 assign c_ack   = m_ack | dev_ack;
-assign c_rdata = ~dev_ack ? m_rdata :
+logic [255:0] x_rdata;
+assign c_rdata = ~le_bus ? x_rdata : c_line ? swap_line(x_rdata) : {224'h0, rev32(x_rdata[31:0])};
+assign x_rdata = ~dev_ack ? m_rdata :
                  d_line   ? {line_buf[0], line_buf[1], line_buf[2], line_buf[3],
                              line_buf[4], line_buf[5], line_buf[6], line_buf[7]} :
                             {224'h0, line_buf[0]};
