@@ -1,0 +1,122 @@
+real-604 integer vectors through the pipeline (11,576 checks each):
+  wait states 0%                   pass  131770 instructions in 200286 cycles (1.52 cycles per instruction)
+    of 100 cycles: 65.8 an operation leaves EX; EX waits for MEM: the access granted 0.0, not granted 0.0, between two accesses 0.0, the data cache busy 0.0; a load's data 0.0, mul 1.4, div 3.4, FPU 0.0, else 0.0; EX empty after a redirect 0.0, for the fetch 29.3, for ID 0.0
+    branches 6 (taken 6, mispredicted 3, of them taken but predicted not 3); exceptions 0; refetches 2; loads 0, stores 0, doubles 0; memory transactions: data cache 0, instruction cache 16476; fetch wait cycles 65900, fetch not granted 66065
+  wait states 25%                  pass  131770 instructions in 205622 cycles (1.56 cycles per instruction)
+  wait states 60%                  pass  131770 instructions in 225092 cycles (1.71 cycles per instruction)
+  wait states 0%, a snoop every 2 cycles pass  131770 instructions in 593519 cycles (4.50 cycles per instruction)
+  wait states 30%, a snoop every 3 cycles pass  131770 instructions in 369806 cycles (2.81 cycles per instruction)
+real-604 floating-point vectors through the pipeline (25,598 checks each):
+  wait states 0%                   pass  281584 instructions in 569665 cycles (2.02 cycles per instruction)
+    of 100 cycles: 49.4 an operation leaves EX; EX waits for MEM: the access granted 4.5, not granted 0.0, between two accesses 4.7, the data cache busy 13.2; a load's data 9.1, mul 0.0, div 0.0, FPU 0.2, else 17.0; EX empty after a redirect 0.0, for the fetch 1.8, for ID 0.0
+    branches 6 (taken 6, mispredicted 3, of them taken but predicted not 3); exceptions 0; refetches 2; loads 127990, stores 0, doubles 127990; memory transactions: data cache 31998, instruction cache 35203; fetch wait cycles 148443, fetch not granted 124997
+  wait states 30%                  pass  281584 instructions in 586956 cycles (2.08 cycles per instruction)
+random floating-point programs against the software model:
+  seed 1, wait states 20%          pass  20337 instructions in 54240 cycles (2.67 cycles per instruction)
+  seed 2, wait states 50%          pass  20337 instructions in 64441 cycles (3.17 cycles per instruction)
+  seed 3, wait states 0%           pass  20320 instructions in 64831 cycles (3.19 cycles per instruction)
+    of 100 cycles: 31.9 an operation leaves EX; EX waits for MEM: the access granted 0.4, not granted 0.0, between two accesses 0.4, the data cache busy 0.4; a load's data 10.2, mul 0.0, div 0.0, FPU 22.6, else 32.5; EX empty after a redirect 0.0, for the fetch 1.6, for ID 0.0
+    branches 391 (taken 391, mispredicted 3, of them taken but predicted not 3); exceptions 0; refetches 2; loads 2466, stores 2500, doubles 2164; memory transactions: data cache 205, instruction cache 2545; fetch wait cycles 10201, fetch not granted 8894
+  seed 4, wait states 20%          pass  20332 instructions in 56546 cycles (2.78 cycles per instruction)
+  seed 5, wait states 50%          pass  20325 instructions in 64479 cycles (3.17 cycles per instruction)
+exceptions, interrupts, the update forms:
+  each exception once              pass  227 instructions in 1034 cycles (4.56 cycles per instruction)
+  update forms, rD = rB            pass  358 instructions in 1307 cycles (3.65 cycles per instruction)
+  update forms, with wait states   pass  358 instructions in 1354 cycles (3.78 cycles per instruction)
+  floating-point enabled exceptions pass  39 instructions in 648 cycles (16.62 cycles per instruction)
+  address translation, DSI, ISI    pass  319 instructions in 2169 cycles (6.80 cycles per instruction)
+  lwarx/stwcx., dcbz, cache ops    pass  206 instructions in 1363 cycles (6.62 cycles per instruction)
+  caches, cache ops, HID0, DMA     pass  312 instructions in 2321 cycles (7.44 cycles per instruction)
+  doubleword cache aliases         pass  302 instructions in 1882 cycles (6.23 cycles per instruction)
+  doublewords, wait states, snoops pass  302 instructions in 2633 cycles (8.72 cycles per instruction)
+  I/D ownership, held ACK          pass  8009 instructions in 12570 cycles (1.57 cycles per instruction)
+  I/D ownership, longer held ACK   pass  8009 instructions in 15971 cycles (1.99 cycles per instruction)
+  doublewords, held ACK, snoops    pass  302 instructions in 2360 cycles (7.81 cycles per instruction)
+  external interrupts              pass  30797 instructions in 60336 cycles (1.96 cycles per instruction)
+  decrementer interrupts           pass  25869 instructions in 49263 cycles (1.90 cycles per instruction)
+  both, with wait states           pass  42480 instructions in 85314 cycles (2.01 cycles per instruction)
+  FP operations queued behind EX   pass  24024 instructions in 83385 cycles (3.47 cycles per instruction)
+  the same, interrupts, wait states pass  42016 instructions in 120060 cycles (2.86 cycles per instruction)
+  overlap queue, external interrupts pass  72352 instructions in 109356 cycles (1.51 cycles per instruction)
+  overlap queue, both interrupts   pass  93490 instructions in 154231 cycles (1.65 cycles per instruction)
+  interrupts during page walks     pass  14259 instructions in 46710 cycles (3.28 cycles per instruction)
+  page walks, both interrupts      pass  23050 instructions in 65078 cycles (2.82 cycles per instruction)
+  cancelled walks that would fault pass  51349 instructions in 211976 cycles (4.13 cycles per instruction)
+  late fault after cancelled walk  pass  55078 instructions in 195058 cycles (3.54 cycles per instruction)
+  a walk into the vector's page as a DSI redirects pass  664 instructions in 4741 cycles (7.14 cycles per instruction)
+  the same, with wait states       pass  664 instructions in 4858 cycles (7.32 cycles per instruction)
+random programs in lockstep with dingusppc:
+  seed 1, wait states 15%          pass  17684 instructions in 41533 cycles (2.35 cycles per instruction)
+  seed 2, wait states 40%          pass  18187 instructions in 42308 cycles (2.33 cycles per instruction)
+  seed 3, wait states 70%          pass  17954 instructions in 46902 cycles (2.61 cycles per instruction)
+  seed 4, wait states 0%           pass  17677 instructions in 39575 cycles (2.24 cycles per instruction)
+    of 100 cycles: 51.8 an operation leaves EX; EX waits for MEM: the access granted 3.4, not granted 0.5, between two accesses 2.3, the data cache busy 2.7; a load's data 1.2, mul 1.7, div 1.7, FPU 0.0, else 0.0; EX empty after a redirect 15.4, for the fetch 18.6, for ID 0.0
+    branches 3440 (taken 2596, mispredicted 1427, of them taken but predicted not 1108); exceptions 287; refetches 311; loads 1850, stores 1688, doubles 0; memory transactions: data cache 364, instruction cache 2127; fetch wait cycles 8555, fetch not granted 9251
+  seed 5, wait states 15%, snooped pass  18116 instructions in 85402 cycles (4.71 cycles per instruction)
+  seed 6, wait states 40%          pass  17752 instructions in 41677 cycles (2.35 cycles per instruction)
+  seed 7, wait states 70%          pass  18107 instructions in 45766 cycles (2.53 cycles per instruction)
+  seed 8, wait states 0%           pass  17788 instructions in 39649 cycles (2.23 cycles per instruction)
+    of 100 cycles: 52.1 an operation leaves EX; EX waits for MEM: the access granted 3.4, not granted 0.6, between two accesses 2.4, the data cache busy 2.5; a load's data 1.3, mul 2.0, div 1.5, FPU 0.0, else 0.0; EX empty after a redirect 15.3, for the fetch 18.4, for ID 0.0
+    branches 3516 (taken 2671, mispredicted 1423, of them taken but predicted not 1106); exceptions 285; refetches 309; loads 1829, stores 1761, doubles 0; memory transactions: data cache 354, instruction cache 2125; fetch wait cycles 8535, fetch not granted 9227
+  seed 9, wait states 15%          pass  18272 instructions in 41122 cycles (2.25 cycles per instruction)
+  seed 10, wait states 40%, snooped pass  17739 instructions in 84404 cycles (4.76 cycles per instruction)
+  seed 11, wait states 70%         pass  17994 instructions in 46131 cycles (2.56 cycles per instruction)
+  seed 12, wait states 0%          pass  17465 instructions in 39729 cycles (2.27 cycles per instruction)
+    of 100 cycles: 51.0 an operation leaves EX; EX waits for MEM: the access granted 3.3, not granted 0.6, between two accesses 2.3, the data cache busy 3.0; a load's data 1.2, mul 1.6, div 1.5, FPU 0.0, else 0.0; EX empty after a redirect 16.1, for the fetch 18.6, for ID 0.0
+    branches 3523 (taken 2710, mispredicted 1537, of them taken but predicted not 1233); exceptions 277; refetches 313; loads 1783, stores 1660, doubles 0; memory transactions: data cache 485, instruction cache 2117; fetch wait cycles 8517, fetch not granted 9347
+  seed 13, wait states 15%         pass  17572 instructions in 40009 cycles (2.28 cycles per instruction)
+  seed 14, wait states 40%         pass  17904 instructions in 42753 cycles (2.39 cycles per instruction)
+  seed 15, wait states 70%, snooped pass  17420 instructions in 85820 cycles (4.93 cycles per instruction)
+  seed 16, wait states 0%          pass  17291 instructions in 39237 cycles (2.27 cycles per instruction)
+    of 100 cycles: 51.3 an operation leaves EX; EX waits for MEM: the access granted 3.6, not granted 0.6, between two accesses 2.3, the data cache busy 2.6; a load's data 1.2, mul 1.5, div 1.3, FPU 0.0, else 0.0; EX empty after a redirect 15.5, for the fetch 19.1, for ID 0.0
+    branches 3525 (taken 2700, mispredicted 1389, of them taken but predicted not 1097); exceptions 308; refetches 331; loads 1790, stores 1683, doubles 0; memory transactions: data cache 377, instruction cache 2101; fetch wait cycles 8439, fetch not granted 9199
+  seed 17, wait states 15%         pass  17828 instructions in 40608 cycles (2.28 cycles per instruction)
+  seed 18, wait states 40%         pass  17509 instructions in 41299 cycles (2.36 cycles per instruction)
+  seed 19, wait states 70%         pass  18364 instructions in 47242 cycles (2.57 cycles per instruction)
+  seed 20, wait states 0%, snooped pass  17851 instructions in 85289 cycles (4.78 cycles per instruction)
+random programs in lockstep with dingusppc, translation on:
+  seed 1, wait states 15%          pass  17417 instructions in 50484 cycles (2.90 cycles per instruction)
+  seed 2, wait states 40%          pass  17839 instructions in 50300 cycles (2.82 cycles per instruction)
+  seed 3, wait states 70%          pass  18090 instructions in 55307 cycles (3.06 cycles per instruction)
+  seed 4, wait states 0%           pass  18068 instructions in 49421 cycles (2.74 cycles per instruction)
+    of 100 cycles: 42.2 an operation leaves EX; EX waits for MEM: the access granted 4.1, not granted 19.2, between two accesses 1.9, the data cache busy 0.7; a load's data 1.0, mul 1.4, div 1.5, FPU 0.0, else 0.0; EX empty after a redirect 12.8, for the fetch 14.6, for ID 0.0
+    branches 3440 (taken 2599, mispredicted 1413, of them taken but predicted not 1067); exceptions 328; refetches 373; loads 1710, stores 1847, doubles 0; memory transactions: data cache 249, instruction cache 2194; fetch wait cycles 8720, fetch not granted 9327
+  seed 5, wait states 15%, snooped pass  17921 instructions in 90178 cycles (5.03 cycles per instruction)
+  seed 6, wait states 40%          pass  17850 instructions in 51180 cycles (2.87 cycles per instruction)
+  seed 7, wait states 70%          pass  17955 instructions in 53538 cycles (2.98 cycles per instruction)
+  seed 8, wait states 0%           pass  17869 instructions in 48818 cycles (2.73 cycles per instruction)
+    of 100 cycles: 42.3 an operation leaves EX; EX waits for MEM: the access granted 4.1, not granted 19.6, between two accesses 1.9, the data cache busy 0.7; a load's data 1.0, mul 1.4, div 1.3, FPU 0.0, else 0.0; EX empty after a redirect 12.5, for the fetch 14.6, for ID 0.0
+    branches 3529 (taken 2658, mispredicted 1426, of them taken but predicted not 1082); exceptions 278; refetches 330; loads 1613, stores 1849, doubles 0; memory transactions: data cache 249, instruction cache 2185; fetch wait cycles 8685, fetch not granted 9236
+  seed 9, wait states 15%          pass  18208 instructions in 50264 cycles (2.76 cycles per instruction)
+  seed 10, wait states 40%, snooped pass  17790 instructions in 90622 cycles (5.09 cycles per instruction)
+random programs in lockstep, repeated (folded branches):
+  seed 1, wait states 15%          pass  53096 instructions in 112187 cycles (2.11 cycles per instruction)
+  seed 2, wait states 40%          pass  54536 instructions in 113172 cycles (2.08 cycles per instruction)
+  seed 3, wait states 70%          pass  52432 instructions in 116974 cycles (2.23 cycles per instruction)
+  seed 4, wait states 0%           pass  53428 instructions in 107137 cycles (2.01 cycles per instruction)
+    of 100 cycles: 57.2 an operation leaves EX; EX waits for MEM: the access granted 4.0, not granted 0.7, between two accesses 2.7, the data cache busy 3.2; a load's data 1.3, mul 1.9, div 1.9, FPU 0.0, else 0.0; EX empty after a redirect 14.5, for the fetch 11.7, for ID 0.0
+    branches 9862 (taken 7576, mispredicted 3316, of them taken but predicted not 2216); exceptions 902; refetches 952; loads 5697, stores 4878, doubles 0; memory transactions: data cache 1160, instruction cache 2699; fetch wait cycles 10863, fetch not granted 11938
+  seed 5, wait states 15%, snooped pass  53612 instructions in 231388 cycles (4.32 cycles per instruction)
+  seed 6, wait states 40%          pass  53001 instructions in 110679 cycles (2.09 cycles per instruction)
+  seed 7, wait states 70%          pass  54829 instructions in 120262 cycles (2.19 cycles per instruction)
+  seed 8, wait states 0%           pass  52792 instructions in 104795 cycles (1.99 cycles per instruction)
+    of 100 cycles: 57.8 an operation leaves EX; EX waits for MEM: the access granted 3.9, not granted 0.6, between two accesses 2.6, the data cache busy 2.9; a load's data 1.5, mul 2.2, div 1.7, FPU 0.0, else 0.0; EX empty after a redirect 14.1, for the fetch 12.0, for ID 0.0
+    branches 9866 (taken 7580, mispredicted 3243, of them taken but predicted not 2173); exceptions 804; refetches 855; loads 5287, stores 5233, doubles 0; memory transactions: data cache 1053, instruction cache 2682; fetch wait cycles 10787, fetch not granted 11879
+  seed 9, wait states 15%          pass  54551 instructions in 110415 cycles (2.02 cycles per instruction)
+  seed 10, wait states 40%, snooped pass  53748 instructions in 233895 cycles (4.35 cycles per instruction)
+1071506 random instructions compared
+checked execution-overlap mixes    pass  
+the memory port across a clock boundary (CPU against memory clock):
+  66 against 100 MHz               pass  
+  66 against 130 MHz               pass  
+  66 against 66 MHz                pass  
+  100 against 66 MHz               pass  
+the SDRAM controller against a model of the board (100 MHz):
+  128 MB, CPU at 65 MHz            pass  
+  128 MB, CPU at 50 MHz            pass  
+  128 MB, CPU at 100 MHz           pass  
+  64 MB, CPU at 70 MHz             pass  
+  32 MB, CPU at 70 MHz             pass  
+
+RESULT: PASS
+RUN 642.26 s

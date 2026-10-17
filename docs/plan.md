@@ -127,9 +127,12 @@ MPC105's PICR1 bit 5 swapping each doubleword's byte lanes) pass
 `sim/tests/le_test.rom` and `le_test_dc.rom` (`docs/bringup_log.md`).
 The CPU change as a patch against MacPPC7300's tree:
 `docs/cpu_patches/0001-DSPPC604-little-endian-mode.patch` (applies to
-MacPPC7300 `21ba191`). MacPPC7300's real-604 golden vectors pass with it
-(`LE_MODE = 0`); its pipeline suite (`run_core.py`, lockstep with
-dingusppc) is the remaining check before it goes back there.
+MacPPC7300 `21ba191`). With it, at `LE_MODE = 0`, MacPPC7300's suites
+pass: the real-604 golden vectors (`run.py`) and the pipeline suite
+(`run_core.py`: every directed test and 1,071,506 random instructions in
+lockstep with dingusppc `3f070249`); the logs are beside the patch. The
+resume prompt for taking it into MacPPC7300 is that repository's
+`RESUME_le_mode.md` (2026-10-17).
 
 The original estimate follows.
 

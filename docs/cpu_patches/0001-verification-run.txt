@@ -1,0 +1,86 @@
+
+instruction   vectors     pass     fail   unimpl  cycles
+ADD                28       28        0        0       1
+ADDC               28       28        0        0       1
+ADDE             1324     1324        0        0       1
+ADDI                7        7        0        0       1
+ADDIC              14       14        0        0       1
+ADDIS               7        7        0        0       1
+ADDME             168      168        0        0       1
+ADDZE             168      168        0        0       1
+AND                12       12        0        0       1
+ANDC               12       12        0        0       1
+ANDI                6        6        0        0       1
+ANDIS               6        6        0        0       1
+CMP                 6        6        0        0       1
+CMPI                6        6        0        0       1
+CMPL                6        6        0        0       1
+CMPLI               6        6        0        0       1
+CNTLZW             66       66        0        0       1
+DIVW              664      664        0        0      12
+DIVWU             660      660        0        0      12
+EQV                 8        8        0        0       1
+EXTSB              12       12        0        0       1
+EXTSH              12       12        0        0       1
+MULHW             352      352        0        0       3
+MULHWU            352      352        0        0       3
+MULLI               8        8        0        0       3
+MULLW             708      708        0        0       3
+NAND               20       20        0        0       1
+NEG                20       20        0        0       1
+NOR                14       14        0        0       1
+OR                 14       14        0        0       1
+ORC                14       14        0        0       1
+ORI                 8        8        0        0       1
+ORIS                8        8        0        0       1
+RLWIMI            576      576        0        0       1
+RLWINM            576      576        0        0       1
+SLW               520      520        0        0       1
+SRAW              520      520        0        0       1
+SRAWI            2178     2178        0        0       1
+SRW               520      520        0        0       1
+SUBF               24       24        0        0       1
+SUBFC              24       24        0        0       1
+SUBFE            1320     1320        0        0       1
+SUBFIC              6        6        0        0       1
+SUBFME            164      164        0        0       1
+SUBFZE            164      164        0        0       1
+XOR                12       12        0        0       1
+XORI                6        6        0        0       1
+XORIS               6        6        0        0       1
+FADD             1770     1770        0        0      14
+FADDS            1780     1780        0        0      14
+FDIV             1800     1800        0        0      25
+FDIVS            1800     1800        0        0      18
+FMADD            1080     1080        0        0       8
+FMADDS           1080     1080        0        0       8
+FMSUB            1080     1080        0        0       8
+FMSUBS           1080     1080        0        0       8
+FMUL             1750     1750        0        0      12
+FMULS            1750     1750        0        0      12
+FNMADD           1080     1080        0        0       8
+FNMADDS          1080     1080        0        0       8
+FNMSUB           1080     1080        0        0       8
+FNMSUBS          1080     1080        0        0       8
+FSUB             1770     1770        0        0      14
+FSUBS            1770     1770        0        0      14
+FCMPO             300      300        0        0       3
+FCMPU             300      300        0        0       3
+FRSP              240      240        0        0      13
+FCTIW             240      240        0        0      13
+FCTIWZ            240      240        0        0      13
+FNEG              240      240        0        0       1
+FMR               240      240        0        0       1
+FNABS             240      240        0        0       1
+FABS              240      240        0        0       1
+FRES              240      240        0        0      17
+FRSQRTE           240      240        0        0       9
+FSEL                8        8        0        0       1
+RLWNM              84       84        0        0       1
+
+integer          11444 vectors   11444 pass       0 fail       0 unimplemented
+floating point   25598 vectors   25598 pass       0 fail       0 unimplemented
+undefined divides (kept apart): 132 vectors, 132 identical to the real chip, 0 differ
+
+RESULT: PASS
+RUN 426.63 s

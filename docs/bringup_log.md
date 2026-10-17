@@ -136,3 +136,9 @@ SRR1 (rfi ignores it). A waveform build (`make TRACE=1`, `--fst`,
 MacPPC7300's real-604 golden vectors (`verilator/run.py`, run from a
 scratch copy of MacPPC7300 `21ba191` with this core's `rtl/DSPPC604`,
 `LE_MODE = 0`): 11,444 integer and 25,598 FP vectors, all pass.
+
+MacPPC7300's pipeline suite (`run_core.py`, with dingusppc `3f070249`
+fetched for its lockstep reference), same scratch copy, `LE_MODE = 0`:
+**RESULT: PASS** (every directed test; 1,071,506 random instructions in
+lockstep). Both logs: `docs/cpu_patches/0001-verification-*.txt`. The
+resume prompt for MacPPC7300: `../MacPPC7300_MiSTer/RESUME_le_mode.md`.
