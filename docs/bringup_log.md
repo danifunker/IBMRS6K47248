@@ -142,3 +142,37 @@ fetched for its lockstep reference), same scratch copy, `LE_MODE = 0`:
 **RESULT: PASS** (every directed test; 1,071,506 random instructions in
 lockstep). Both logs: `docs/cpu_patches/0001-verification-*.txt`. The
 resume prompt for MacPPC7300: `../MacPPC7300_MiSTer/RESUME_le_mode.md`.
+
+## 2026-10-17: main_control, and the serial console
+
+`machine_tb --ram 8 --lat 1` on the -O2 binary (LE_MODE = 1, the CPU in
+big-endian mode throughout: this is also the big-endian regression of the
+LE change): the recovery block (CRC passed), the main block at clock
+103.7 million, its 8 MB RAM test, progress 1A-1D (the loader copied to
+RAM 0, caches and MMU, the LZW decompression of the firmware into RAM),
+1E, 1F, and **`main_control` (RAM 8398) at clock 520 million** (81.4
+million instructions). M1's goal.
+
+Then `main_control`'s checkpoints, mapped to its calls (its code at
+8398-8E10):
+
+| code | step | |
+|---|---|---|
+| 20 | `yo_cmos` | the MC146818's CMOS |
+| 30 | `setup_early_malloc` | |
+| 3A (7B) | `init_uart` | |
+| 40 | `init_interrupts` | the 8259s |
+| 50 | `rtc_clock`, `init_rtc_int` | the RTC's periodic interrupt |
+| 60 | `i8042_init` | self test 55; AE then a 500 ms wait for a byte no 8042 sends; keyboard reset FA AA |
+| 70, 71 | `debugger_init` | |
+| 80, 82 | `manager_init` | |
+| 90, 91 | `f_init`, `password_init` | the RAM disk's file system |
+| A0-AC, DE | `monitor_serial_port`, the console | 4690/4691 (an unknown device, stubbed) |
+| B0, C0, D0... | `out32`s, `cursor_size`, `spawn`: the console, the GUI, the boot | |
+
+During A0-AC **the firmware writes its ASCII terminal console to COM1**:
+VT100 sequences (reverse video, cursor positioning) and "Command..." a
+character at a time. At the firmware's 9600 baud a character costs the
+bench 100,000 clocks, so the bench now runs its serial ports at the
+clock / 16 (`UART_FAST`, the bench only); `--com1 FILE` keeps the bytes and
+`tools/vt.py FILE` draws the terminal's screen.
