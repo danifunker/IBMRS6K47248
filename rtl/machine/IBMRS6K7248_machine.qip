@@ -1,0 +1,5 @@
+# The machine around the CPU (sim/Makefile reads its file list from here too).
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) IBMRS6K7248_uart.sv]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) IBMRS6K7248_machine.sv]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) IBMRS6K7248_system.sv]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) IBMRS6K7248_sdram.sv]

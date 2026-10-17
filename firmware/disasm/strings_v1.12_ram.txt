@@ -1,0 +1,4544 @@
+      0 93x7075 RS/6000 Microcode - Property of IBM (C) Copyright IBM Corp. 1994, 1996. All rights reserved. U.S. Government Users Restricted Rights - Use, duplication or disclosure restricted  by GSA ADP Schedule Contract with IBM Corp.
+    106 ? 02261997 142711
+   4a98 |`%,9
+   4b3c |`%,H
+   4c48 8cB@|
+   4c5f ^|c+xT
+   4c66 D0|c#x}(
+   4f78 |`%,H
+   4ff8 |`%,H
+   5054 |`%,8
+   50b4 |`%,H
+   5110 |`%,8
+   516c |`%,H
+   51dc |`%,H
+   5320 |`%,~
+   5378 U$F>H
+   5724 }JRxH
+   5770 }JRxH
+   577f  }JRxN
+   5933 >V1@>6
+   5ac8 |`%,N
+   5b20 |`%,}
+   5b44 }kZx~s
+   5c40 |`%,W{
+   5dc4 ~lh0~
+   5dd5 9cx:s
+   5df9 Zcx:s
+   6254 |c08L
+   629c |c08L
+   62d4 |c 8L
+   66a8 |`%,8
+   6804 |`%,8
+   6874 |`%,8
+   714a transfer_uncompressed_image
+   722a transfer_compressed_image
+   72f2 transfer_ROM_code
+   73e6 out16
+   743a out16le
+   74b7 >Tc@.|c 
+   74f6 in16le|
+   753e out32
+   75a2 out32le
+   766a in32le|
+   77f0 |wR.2
+   7892 decompress
+   79e6 (@}jT0}I
+   7a50 }	T0A
+   7abe getcode
+   7b02 save_failed_checkpoint
+   7b82 checkpoint
+   7bf6 exitcheckpoint
+   7e86 version
+   7f96 format_build_time
+   7fca get_rom_version
+   8c8c MJRBH
+   8e26 main_control
+   8f02 drawbase
+   8fae InitFileTable
+   90da AnimateDisk
+   925e flash_utility
+   940a chk_valid_image
+   94de allocate_bigger_table
+   968a manager_init
+   9716 manager_query
+   97f2 manager_register
+   9872 version_err_hdlr
+   991e fw_call_vector|
+   9a2e manager_level_verify_ver
+   9a8e manager_level_verify
+   9ac2 manager_level_query
+   9b2a get_tbl_ptr
+   9b7e get_comp_img_entry<
+   9c5e chk_image_CRC
+   9d42 romcrc16
+   9f02 i8042_init|
+   9f76 i8042_self_test
+   9ffa read_8042_output_buffer
+   a0d2 write_8042_input_buffer
+   a186 Receive_Data_from_8042
+   a242 Write_Data_to_8042
+   a271 	cold_boot
+   a466 password_init
+   a563 ||cH.8
+   a5ea (.0`p	8
+   a656 (.0`p
+   a69e P.0`p
+   a6e6 P.0`p
+   a730 |cH.8
+   ab76 P.0`p
+   ac36 security
+   b3a2 yo_cmos
+   b8a5 	yo_eeprom
+   b991 	init_cmos
+   bb4e calc_and_put_errorCheck
+   bc4e password
+   bcf6 (.0c`
+   bd96 cold_boot_path
+   bf02 check_tamper_or_init_path
+   bf7e check_unattended_mode_path|
+   c3ba 8.|x8.8
+   c72e 8.|x8.H
+   c7ba prompt_pop_path
+   cbee H.|zH.8
+   cc8e H.|zH.H
+   cd1a prompt_pap_path
+   cd82 0.|e0.8
+   ce12 8.||8.H
+   cf86 check_pop_change_path
+   d0aa 8.0cp
+   d16a pap_is_locked_path|
+   d272 convert_pw|
+   d2f6 createFileTable
+   d497 :|y!.
+   d4bb :}{P.
+   d4e7 :|y@.H
+   d537  }zA.K
+   d58e SetFile
+   d682 FindFile
+   d77a putbmp|
+   d7fa All_free
+   d838 W&020
+   d8d4 Wf02|~
+   d92b 0Wf020
+   d973 0Wf020
+   d9bc Wg020
+   da36 Entry
+   dada isfrebelkey
+   db3d 	clear_kbd
+   ddf2 Set_Disp
+   de7a Error_Indicate
+   df28 0`2pH
+   df86 set_drive_cmd
+   e07e spawn
+   e62a spawn_external|
+   e6e0 0d34A
+   e708 0c3LH
+   e724 0c3dH
+   e796 bad_cmd
+   e82d 	fix_reloc
+   e882 bad_subcmd|
+   e8f9 	parse_cmd
+   ea08 0`4,A
+   ea82 debugger_init
+   ec72 resident_monitor
+   ed2e test_cmd
+   ed56 rem_cmd
+   edba iat_dskt_cmd
+   ee16 iat_mem_cmd
+   f106 check_internal_cmd
+   f13a quiet_mode
+   f16a set_quiet_mode|
+   f23a more_prompt
+   f47a read_token
+   f51d 	read_line
+   f73e new_line
+   f7b2 step_cmd
+   f905 	pstep_cmd
+   f9b2 go_cmd
+   fd29 	break_cmd
+  10092 monitor_cmd
+  1038a regs_cmd
+  10965 	sregs_cmd
+  10c1e at_msg
+  10e9a deb_int_handler
+  10f2e address_of|
+  110de disasm_cmd
+  11112 exit_cmd
+  11333 \|d.p|c^pTg
+  11502 dir_cmd
+  1153e isolate_byte
+  11582 mem_fill
+  115c2 mem_fill_16
+  11602 mem_fill_32
+  11728 ~'&p|
+  1186a mem_dump
+  1190d 	rb_strcmp
+  11a1e mem_search|
+  11b4a in_cmd|
+  11c4e out_cmd
+  1202e load_cmd
+  12106 call_cmd
+  121ca font_cmd
+  122b2 aprt_cmd
+  12346 help_cmd
+  1242e dump_cmd
+  125b6 fill_cmd
+  126f2 search_cmd|
+  1278a reboot_cmd|
+  128fe read_cmd
+  12a8e frba_cmd
+  12c01 	write_cmd
+  12c82 leapyear
+  12d42 get_date
+  12dde get_time
+  13152 date_cmd
+  13396 time_cmd
+  1344a boot_cmd
+  1355a dc_cmd|
+  1359e cls_cmd
+  136da mode_cmd
+  137e0 |hFp}
+  13856 blocks_cmd|
+  1397e type_cmd
+  13be9 	erase_cmd
+  13e25 	copy_file
+  140d2 copy_dir
+  1443a copy_cmd
+  144d5 	mkdir_cmd
+  14571 	rmdir_cmd
+  147d6 cd_cmd|
+  14876 rename_cmd|
+  148d2 mfg_diag_cmd
+  14a62 cmos_cmd
+  14bd5 	nvram_cmd
+  14d99 	VDisk_cmd
+  14e5d 	FDisk_cmd
+  14efa hex_cmd
+  14faa beep_cmd
+  1509f xW @.d
+  15152 diskette_init
+  1521a diskette_read
+  15316 diskette_read_RBA
+  153e2 diskette_write
+  154de diskette_write_RBA
+  15732 detdata
+  159a6 detmedia
+  15a6e determine_drive
+  15a9e get_cb_ptr|
+  15b06 get_version
+  15b46 get_diskette_id
+  15baa dskt_present
+  15c52 specify
+  15ce6 dskt_config
+  15e61 	reset_fdc
+  15efa start_motor_and_wait
+  15f76 dskt_stop_motor
+  160ae seek_or_recal
+  16162 read_id
+  162ca setup_globals
+  16352 set_mode
+  1641e wait_int
+  16542 issue_verify_cmd
+  166ae issue_read_floppy_cmd
+  1670a read_floppy_cmd_check
+  167ee wait_to_write_first_cmd_byte
+  1686e write_first_fifo_cmd
+  16952 wait_to_write_cmd_byte|
+  169ca write_fifo_cmd|
+  16aca wait_for_result_byte
+  16b42 read_fifo_result
+  16c99 	dma_setup
+  16cf1 	dma_check
+  16d79 	sens_intr
+  16dfa get_results
+  16ef2 dskt_int_hdlr
+  16f46 get_diskette_count
+  17046 dkt_read
+  170f1 	dkt_write
+  17115 	null_proc
+  171f5 	dasd_read
+  172d6 dasd_writeT`D.P`
+  17306 endian_swap16
+  1731f .P`F>0`
+  17342 endian_swap32
+  17422 Disk_BPB
+  179b6 VDisk_InitT
+  17a0e VDisk_ReadT
+  17a66 VDisk_Write
+  180fa FDisk_Init
+  182ae cmd_file_load
+  1835a cmd_file_flush|
+  18466 goto_cmd
+  1857a echo_cmd
+  18725 	sleep_cmd
+  18740 Tc 6|
+  1876a bin2bcd
+  187a2 bcd2bin
+  188d9 	get_value
+  18a11 	out_value
+  18a69 	rtc_clock
+  18d62 rtc_int
+  18fa6 init_rtc_int
+  190da init_interrupts
+  1928e proc_int_registrar
+  1956e ext_int_registrar
+  195e6 get_ext_int_ptr
+  197f6 ext_int_handler
+  19aba bad_int
+  19b1a check_vector_valid
+  19b66 get_branch_address
+  19bfa set_branch_address|
+  19cee init_8259s|
+  19d56 enable_8259A_int
+  19dc6 enable_8259B_int
+  19e36 disable_8259A_int
+  19ea6 disable_8259B_int
+  19f19 	get_masks
+  19f86 restore_masks
+  1a01e ReadPC87312Regs
+  1a0c6 WritePC87312Regs
+  1a146 Default87312
+  1a1e6 CheckSerialSpecialCharacter
+  1a5d6 rxchar|
+  1a636 txbusy|
+  1a86e txchar
+  1a96e CheckSerialPort
+  1ac6e InitSerial
+  1ad72 InitParallel
+  1b16e PC87312Init
+  1b266 initSerialRegs|
+  1b2f1 	init_uart
+  1b31e GetSuperIOChipID
+  1b39e GetNumberOfSerialPorts8`
+  1b3fa GetNumberOfParallelPorts
+  1b4c6 GetSerialPortInfo
+  1b556 GetParallelPortInfo
+  1b58e GetSerial1Port
+  1b5be GetPlanarParallelPort
+  1b6ba GetPlanarSerialPortInfo
+  1b71b 8|	 .8
+  1b756 GetPlanarParallelPortInfo
+  1b8fe async_interrupt_handler
+  1bad2 monitor_serial_port
+  1bb0a query_terminal_type
+  1bb8a query_terminal_state
+  1bbf6 get_first_dd
+  1bcae console_diag
+  1bd46 console_init2
+  1c1aa console_init
+  1c1f6 getchar
+  1c276 Getchar
+  1c352 putchar
+  1c436 PUTCHAR
+  1c516 putchar_at|
+  1c5a6 open_window
+  1c63a cursor|
+  1c6be abs_cursor
+  1c75e rel_cursor
+  1c7aa get_cursor
+  1c862 move_cursor
+  1c8d6 right
+  1ca72 scroll
+  1cb51 	scroll_up
+  1cc3a scroll_down
+  1ce4e set_attribute
+  1cf09 	rect_fill
+  1cfa2 load_palette
+  1d04d 	putbitmap
+  1d109 	getbitmap
+  1d1aa cursor_size
+  1d29a font_select
+  1d33e console_query
+  1d3e2 console_query_device
+  1d42a get_console_info
+  1d466 set_autoscroll|
+  1d586 console_register
+  1d61a con_mouse_register|
+  1d6b6 con_keybd_get_info|
+  1d752 con_keybd_set_info
+  1d7d2 check_for_pause_key
+  1d856 check_key_avail
+  1da66 set_active_console,
+  1daa6 query_active_console
+  1dba6 console_quiesce
+  1dd90 }gQ.0
+  1dde7 :|j8.8
+  1de0b :|jX.|
+  1de2f :|jX.|
+  1de53 :|jX.|
+  1de77 :|jX.|
+  1e09b :|k`.|
+  1e0ef :|k`.|
+  1e278 |uP.8
+  1e297 :|j8.8
+  1e2dc |x8.8
+  1e2f7 :|j8.8
+  1e367 :|j8.|
+  1e4cf :|j8.8
+  1e4f3 :|jX.|
+  1e517 :|jX.|
+  1e53b :|jX.|
+  1e55f :|jX.|
+  1e618 }gQ.|{Q.|
+  1e688 |gQ.0
+  1e6b7 :|jX.|
+  1e6db :|jX.|
+  1e713 :|j8.0
+  1e72f :|j8.0
+  1e772 Q.|{Q.|
+  1e7bf x|gQ.H
+  1e7d8 |j9.0
+  1e810 }gQ.9`
+  1e818 }oQ.0
+  1e81f d~gQ.8
+  1e846 Q.|{Q.|
+  1e8b4 |y9.|g
+  1e8db :|jX.|
+  1e8ff :|jX.|
+  1e923 :|jX.|
+  1e947 :|jX.|
+  1e97f :|j8.0
+  1e99b :|j8.0
+  1e9bf $|gP.8
+  1e9df :|j8.8
+  1ea58 ~xQ.K
+  1ea66 Q.~uQ.K
+  1eb78 |gQ.0
+  1eb7f (~gQ.K
+  1ebac ~u9.K
+  1ebfe Q.|{Q.|
+  1ec4b x|gQ.H
+  1ec64 |j9.0
+  1ec9c }gQ.9`
+  1eca4 }oQ.0
+  1ecb0 }gQ.8
+  1ed06 build_boot_table
+  1ed18 T`F>Td
+  1ed4e little_to_big_endian
+  1ef2e setboot
+  1f047 :|iP.
+  1f0ba X.|iX.H
+  1f162 old_setdevice
+  1f3d5 	setdevice
+  1f4a2 old_set_message
+  1f576 set_message
+  1f79a new_set_message
+  1f8a6 old_set_sequence
+  1f99e insert_boot_seq
+  1fa92 sort_boot_seq
+  1fbba lock_unlock_boot_devices
+  1fbf2 get_boot_seq
+  1fc1e get_numdevs
+  1fc4a get_boot_drives
+  1fc7a get_seqBuffer
+  1fca6 get_sys_boot_req
+  1fd06 limited_get_default_sequence
+  1fe8a get_default_sequence
+  1ff1a search_tbl|
+  201e2 build_of_strings
+  20362 set_sequence
+  2045e set_all_isa_dev_numbers
+  205ce print_boot_text
+  2063e coral_pci_config_read
+  206a2 Get_PrintableModel|
+  2085a build_residual
+  208ae init_residual
+  20b05 	build_vpd
+  20b71 	build_cpu
+  20ddd 	build_mem
+  20ece build_mem_ctl
+  20fde build_op
+  21321 	build_aud
+  2143d 	build_dkt
+  21601 	build_dma
+  2176d 	build_int
+  21a55 	build_isa
+  21b61 	build_key
+  21c6d 	build_mou
+  21edd 	build_par
+  221bd 	build_pci
+  222d5 	build_rtc
+  22519 	build_scs
+  22755 	build_ide
+  22a4d 	build_ser
+  22b81 	build_tmr
+  22cfe build_pm
+  22e5a build_l2
+  22f5a build_nvram
+  22f76 TjTc-
+  22fa6 CompressName
+  23066 compress_id
+  230c9 	GetVPDptr
+  2313a pputchar
+  232e2 pgetchar
+  235c2 ParallelBoot
+  23642 lock_flash
+  2366e get_flash_lock_status
+  236df 9Tc@.
+  236e7 8|cCx
+  23752 get_flash_id
+  23846 flash_query
+  238fa reset_flash
+  239ae write_autoselect
+  23a32 UU3:*
+  23c3e erase_sectors
+  23e76 erase_chip
+  2402a program_byte
+  24038 TdD.|
+  2408e coral_pci_config_read
+  240af >TdD.
+  24106 coral_pci_config_write
+  24162 disassemble
+  2440a extended_memory
+  244fa determine_mem_size
+  2458a clear_extended_memory
+  2464a test_extended_memory
+  247a6 test_first_dword
+  248e6 test_next_meg
+  2499e rwc_pattern
+  249f6 fill_cache|
+  24a56 read_and_clear_parity
+  24a97  |~0.H
+  24ab2 0.|}0.H
+  24ace 0.|}0.H
+  24b1e setup_progress_indicator
+  24b96 update_progress
+  24d0e check_base_mem_result
+  24d8e display_mem_err_msg
+  24dc2 check_fast_path
+  24df0 |`A `e
+  24e36 check_parity_err
+  24e6a get_bad_mem_head
+  24e9e get_memory_size
+  24ef2 get_SIMM_regs
+  251b2 set_SIMMs_status
+  2534a get_memory_info
+  255b6 test_in_4k_blks
+  2560e get_id_pres
+  2565a turn_ext_ints_off
+  256a6 turn_ext_ints_on
+  256e8 }(Cx} I
+  25762 div_double_by_short
+  25812 mult_double_by_short
+  258aa get_rtc
+  25959 	add_lower
+  25a1a rtc_add
+  25aca subtract_lower
+  25b56 div_rtc_by_short
+  25be6 mult_rtc_by_short
+  25c52 rtc_compare
+  25cfe init_rtc_parms
+  25d72 get_time_base_divisor
+  25e7a convert_tics_to_rtc
+  25f2e convert_rtc_to_tics
+  2614a convert_to_rtc|
+  26252 convert_from_rtc
+  2630a get_timeout_value
+  26406 time_til_timeout
+  26492 timeout
+  264d6 delay
+  26562 sleep
+  26632 init_pci_stuff|
+  26682 pci_config_query_slots|
+  26742 pci_config_read_8
+  267fe pci_config_write_8|
+  268c2 pci_config_read_16|
+  2697e pci_config_write_16
+  26a36 pci_config_read_32|
+  26af2 pci_config_write_32
+  26ba6 pci_config_slot_2_dev
+  26c22 pci_logical_2_physical_slot
+  26c7a __exit|
+  26d1e pci_reset_slots
+  26da6 NVRAM_write_byte
+  26e2a NVRAM_read_byte
+  26e73 IT`D.
+  26eb6 NVRAM_read_word
+  26f3a NVRAM_write_word
+  2706d 	nvramdump
+  270a0 |!an0c
+  27281 	nvramload
+  2734e CMOS_read_byte
+  2741a CMOS_write_byte
+  2744e get_NMI
+  274c2 set_NMI
+  27565 	show_cmos
+  27573 >TdD.Tc
+  2757f xTe@.T
+  27587 >Tf`&|
+  27594 |d#x|
+  275a6 "xTcD&|
+  275ce crcgen|
+  276e6 cmosdump
+  27816 cmosinit
+  279e6 cmosload
+  27ab6 get_CMOS_time
+  27b2f qT`@.
+  27b8e get_CMOS_date
+  27c76 safe_CMOS_read|
+  27cde battery_valid
+  27d42 memchr(
+  27d9a memcmp|
+  27dd6 memcpy|
+  27e4a memmove
+  27e8a memset|
+  27f1a strcatT
+  27f5e strchr
+  27fc2 strcmp
+  280aa strcmpi
+  280ea strcoll
+  28132 strcpy
+  281ae strcspn
+  281f6 strlen8
+  28282 strncat
+  282e2 strncmp
+  283aa strnicmp
+  2840a strncpy
+  28476 strpbrk
+  284d6 strrchr
+  2854a strspn
+  285de strstr0c
+  28846 strerror
+  288a6 strdup
+  2891a strupr
+  2898e strlwr
+  289f6 isalnum
+  28a5e isalpha
+  28aa2 iscntrl
+  28ade isdigit
+  28b1a isgraph
+  28b56 islower
+  28b92 isprint
+  28c02 ispunct
+  28c62 isspace
+  28c9e isupper
+  28cfe isxdigit
+  28d52 tolower
+  28da6 toupper
+  28e2a reverse
+  29166 srand
+  2927c Tc 6|
+  292be malloc|
+  2932a calloc|
+  293f6 realloc
+  2955a setup_early_malloc
+  2966a setup_full_malloc
+  2971a malloc_query_free_space
+  29756 malloc_high_water_mark|
+  2981f  |f).
+  29846 atexit
+  2994a perror
+  299b2 printf
+  29a2a sprintf
+  29ac2 fprintf
+  29b2e scanf
+  29b9a sscanf
+  2a34e _Printf
+  2a3b6 _Outchar
+  2a520 }/H.})p
+  2a8e4 WF 6A
+  2ac3a _Scanf|
+  2acae _Inchar
+  2ad42 f_init|
+  2add2 f_shutdown|
+  2ae6e f_shutdown2
+  2af6a _fillbuf
+  2b05e _flush
+  2b0d9 	_flushbuf
+  2b13a fflush
+  2b2ae fopen
+  2b326 fclose|
+  2b3ce fseek
+  2b442 ftell
+  2b492 rewind
+  2b582 fgets
+  2b61a fputs
+  2b67a fgetc
+  2b6e6 fputc
+  2b776 fread
+  2b806 fwrite|
+  2b846 remove|
+  2b886 rename
+  2b8b2 clearerr
+  2b8f6 mk_dir|
+  2b936 rm_dir
+  2ba8e _file_init|
+  2baf6 _file_shutdown|
+  2bb6a _file_shutdown2
+  2bcce creat
+  2bd26 lseek
+  2bdd6 write
+  2be2e fs_flush
+  2be8a close
+  2bf0e unlink
+  2bfb2 _rename
+  2c026 change_dir|
+  2c0d2 ffind_first
+  2c152 ffind_next
+  2c1da _mk_dir
+  2c262 _rm_dir
+  2c2f5 	freespace
+  2c3d2 parse_filename
+  2c6bd 	_fat_init
+  2c832 _fat_shutdown
+  2c901 	open_file
+  2c9de fat_open
+  2cb34 0c!PK
+  2cb6d 	fat_creat
+  2cc05 	fat_lseek
+  2cc55 }"x8`
+  2cdc6 fat_fillbuf
+  2cec2 "h~V+
+  2cf15 1"T3^"\
+  2d0de fat_read
+  2d242 "h~5;
+  2d471 	fat_write
+  2d575 	fat_flush
+  2d63d 	fat_close
+  2d6e2 fat_unlink8`
+  2d70a fat_rename,
+  2d76e cluster_to_rba<
+  2d842 @.|c8
+  2d8a2 next_cluster
+  2da42 alloc_cluster
+  2dbda set_cluster
+  2dc46 alloc_file_handle
+  2dce1 %"X8`
+  2df76 "laD`
+  2e032 login_disk
+  2e10a logical_block_read
+  2e252 single_rba_read
+  2e31a phys_block_read
+  2e422 phys_block_write
+  2e5c6 compare_name
+  2e655 	file_size
+  2e862 srch_dir
+  2e972 fill_entry
+  2ed95 	srch_file
+  2eeae start_srch|
+  2ef5e fat_find_next
+  2f072 update_dir|
+  2f45e fat_parse_name
+  2f54e init_entry
+  2f79d 	fat_mkdir
+  2f925 	fat_rmdir
+  2f9f6 fat_freespace
+  2fafa number_of_partitions
+  2fbba allocate_new_vdisk|
+  2fc86 remove_vdisk
+  2fe42 _cdrom_init
+  2feee _cdrom_shutdown
+  2ff6a cdrom_close
+  2ff96 cdrom_creat
+  2ffc2 cdrom_find_first
+  30022 cdrom_find_next
+  30052 cdrom_flush
+  3007e cdrom_freespace
+  3010e cdrom_lseek
+  3013a cdrom_mkdir
+  301f6 cdrom_open|
+  30522 cdrom_parse_name
+  30752 cdrom_read8`
+  3077a cdrom_rename
+  307a6 cdrom_rmdir
+  307d2 cdrom_unlink
+  307fe cdrom_write
+  30866 alloc_file_handle
+  3095e cd_fillbuf
+  30ad2 compare_name
+  30c0e cmp_name
+  30ea8 W#X(K
+  30f36 login_cd
+  30ff1 	open_file
+  310b2 physical_block_read
+  313ea P@}4P
+  31422 H@}TH
+  315fb !UJ(4}
+  3161f 1UJX(
+  3162e (4}Jcx
+  316ea start_srch|
+  3176e SetOffsetTable|
+  319c6 SearchPath
+  31a86 SearchLinear
+  31b52 strncmpi
+  31b9e cache_init|
+  31c2a get_from_cache|
+  31cda put_in_cache
+  31d22 copy_block
+  31e32 filtered_getchar
+  31e66 SetGuiFlag
+  31e92 GetGuiFlag
+  31ebe SetErrorMsgStopOnError
+  31ef2 GetLanguage
+  31f22 SetLanguage
+  3203a InitTextScreen
+  3227e text_newwindow
+  322fe new_window
+  3244a text_putwindow
+  3254a wind_putchar
+  326f1 	win_frame
+  327d2 draw_hdividebar
+  3297d 	win_blank
+  32b62 text_removewindow
+  32db6 text_inwind
+  32ece text_countrows
+  32f31 	win_print
+  33022 win_print_tr
+  3319a new_menu
+  332de minimenu
+  33406 menulist
+  33502 menu_itemsel
+  3355a redrawmenu
+  33612 service_menu
+  33692 service_menulist
+  33726 handle_menu
+  337a2 remove_menu
+  33816 popuprow
+  338ce popupcol
+  33945 	popupcol2
+  33a0e text_newmsg
+  33aa6 text_newmsg_tr|
+  33b3e text_responsemsg
+  33bda text_responsemsg_tr
+  33c6f 0|`&p|
+  33e4e @.}X@.
+  33f1a text_errormsg
+  340bb :|{0.K
+  3412f :}[8.
+  34173 <}[8.
+  341ab :|f8.W
+  34236 text_errormsg_tr
+  34332 rspmsgcommon
+  34502 buildmsg
+  345ca text_changemsg_tr
+  34742 textmsgfill
+  34966 text_msgkeys
+  34a6a text_scrollmsg
+  34c06 draw_scrollbar
+  34c7e text_msgend
+  35152 create_buttons
+  35216 format_buttons
+  35412 draw_buttons
+  3549a remove_buttons
+  3550e free_button
+  35562 get_key
+  355aa sound_beep
+  355d6 add_hotkeys
+  35606 block_button_inherit
+  358a1 	textentry
+  358f6 charlen
+  359e5 	checklist
+  35a3a redraw_clist
+  35b2a service_clist
+  35d6a handle_checkbox
+  35dea remove_clist
+  35eae make_clist
+  35f1e unmake_clist
+  3605a progressmsg
+  361de redrawprogmsg
+  36294 }J.p0
+  3631a drawprogbar
+  3638a remove_progmsg
+  3647e showlist
+  364ee service_showlist
+  3656e remove_showlist
+  365e6 free_showlist
+  3665a free_entrylist
+  36e01 	entrylist
+  36f2e redraw_elist
+  3734e draw_elist
+  37506 service_elist
+  37623 :|z(.
+  377e2 service_list
+  37866 update_elist
+  378de remove_elist
+  37b36 show_entry
+  37f62 handle_entry
+  38076 make_entrylist
+  3810a unmake_entrylist
+  382ea DrawYesNoButtons
+  384c7 :|x(.K
+  384e3 :|x0.|
+  3850f :|w(.K
+  3852b :|w0.|
+  385a2 HandleYesNo
+  3862b 0|`&p|
+  3874a ErrorLogMgr
+  388a0 }E89T
+  388c0 }EX91)
+  3895a put_text
+  38a82 put_erroricon
+  38ab2 GetErrorCode
+  38b8e DispGUIerr|
+  38c42 EEPROM_init
+  38d6a EEPROM_read
+  38e6a EEPROM_write
+  38ece EEPROM_lock
+  38f3e EEPROM_Write_Enable
+  38fb6 EEPROM_Write_Disable
+  3915e EEPROM_Wait
+  3921e EEPROM_Lock_Error
+  392b6 EEPROM_Address_Check
+  393b2 EEPROM_Create_Command
+  3944a EEPROM_Send_Command
+  394ba EEPROM_Read_Size
+  39516 EEPROM_Use_Base_Ports
+  3957a EEPROM_Use_Alternate_Ports|
+  395db P|gFp
+  395f0 0cB?H
+  39652 GetEEPROMSerialNumber
+  396e6 talk_to_eeprom
+  39822 calc_non_lockable_crc
+  398a6 check_EE_serial
+  398f6 GetNVRAMSize
+  3999a ReadNVRAMArea
+  39a16 WriteNVRAMArea|
+  39ab6 NVRAMCalcCRC
+  39c06 NVRAMCRCGen
+  39c5e GetNVRAMHeader
+  39cee NVRAMMoveIn
+  39d92 NVRAMMoveOut
+  39ede FindPnPPacket
+  39f92 FindPnPPacketSize
+  39ff6 SaveNVRAMHeader
+  3a064 U)@.}
+  3ace2 NVRAMAccess
+  3ae0a initfwNVRAM
+  3aedc T}D.8`
+  3afee nvram_good|
+  3b045 	nvraminit
+  3b071 	debugflag
+  3b25e wait_for_int
+  3b33e audio_sgt_int_handler
+  3b672 ct|	@@1
+  3b69e ta|	@@2
+  3b91a audio_play8
+  3b9b6 audio_default
+  3be4a audio_init_setup
+  3bf3e wait_til_ready|
+  3bfea audio_quiesce
+  3c03a network_get_first_dd
+  3c136 network_register
+  3c1da network_query
+  3c27a network_query_device
+  3c302 network_init
+  3c3aa Send_Data_to_Network_Device
+  3c462 Read_Data_from_Network_Device
+  3c546 Open_Network_Device
+  3c622 Close_Network_Device
+  3c6fe Reset_Network_Device
+  3c7b2 Set_or_Get_Network_Device_Info
+  3c862 network_residual_build
+  3c912 start_RIPLing
+  3c9b6 Get_Network_Protocol_Info
+  3ca52 dasd_quiesce
+  3ca82 get_first_dasd|
+  3cb1a get_dasd_entry_point
+  3cc26 register_dasd
+  3cc52 fs_refresh|
+  3cd22 dasd_devio
+  3cd4e get_dasd_dev_count
+  3ce12 get_occurance_count
+  3ceea get_dev_LDN
+  3d00e diskette_main
+  3d0e2 diskette_devioTc
+  3d120 |c@.|cH
+  3d1de diskette_io
+  3d316 ide_main
+  3d3e5 	ide_devio
+  3d4c2 ide_io|
+  3d5b2 drive_busy|
+  3d6a1 	ide_reset
+  3d7d6 set_controller
+  3dba6 ide_identify_drive|
+  3ddce ATAPI_identify
+  3df1e ide_initialize
+  3e09a ide_recalibrate
+  3e176 ide_write_RBA
+  3e476 ide_write_CHS
+  3e7b6 ide_write_LBA
+  3e88e ide_read_RBA
+  3eb92 ide_read_CHS
+  3eeaa ide_read_LBA
+  3efa2 setup_coral_ide
+  3f0e6 ide_init
+  3f1d6 ide_device_query
+  3f23a ide_send_cmd
+  3f29e SetResidualDeviceID
+  3f352 SetResidualBusAccess
+  3f3a2 SetResidualAllocated
+  3f3f2 SetResidualPossible
+  3f442 SetResidualCompatible
+  3f482 UpdateResidualDeviceHandle
+  3f4f2 CreateCompatibleDeviceIDPacket
+  3f556 CreateIRQPacket
+  3f5b2 CreateIRQInfoPacket
+  3f60a CreateDMAPacket
+  3f656 CreateDFStartPacket
+  3f6a6 CreateDFEndPacket
+  3f716 CreateIOPacket
+  3f76e CreateFixedIOPacket
+  3f7be CreateEndPacket
+  3f862 CreateMemPacket
+  3f8ce CreateChipIDPacket
+  3f97e CreateDsktInfoPacket
+  3f9e3 >T`F>T
+  3fa2e CreateL2Packet|
+  3faf4 3h*&3
+  3fb92 CreatePCIPacket
+  3fc0f >U,F>
+  3fc82 CreateDispPacket
+  3fd16 CreateSCSIIDPacket
+  3fdaa CreatePMPacket
+  3fe72 CreateVendorIOPacket
+  3ff2a CreateISAInfoPacket
+  3ffab >U	F>
+  4002e CreateAddrXltDesc
+  4007f >TdF>
+  400ae CreateBridgeAttDesc
+  40306 ECPDMASetup
+  40367 >|c 98`
+  403a2 ECPDMACheck
+  40416 WriteSig750ControlBit
+  4065a QuiesceMisc
+  4078d 	ATAPImain
+  4085e atapi_devio
+  40893 $}	@.}
+  408e2 atapi_io
+  4094a WriteCmdByte
+  40970 |f .H
+  40a06 ResetDevice
+  40a9e InitReadCapacityData
+  40b56 InitInquiryData
+  40baa InitializeBaseRegs|
+  40d52 ATAPIdriveBusy|
+  40e06 ATAPIdeviceReadyForPacket
+  40eae ATAPIreset
+  41036 WritePacketBytes
+  411ac TdD.S
+  41360 TdD.S
+  414d6 IssuePacketCommand
+  41548 V%@.|
+  41912 ReadData
+  41a96 UtilizeSenseData
+  41b32 AssignReadData|
+  41b92 ReadTOC
+  41bea PlayAud
+  41c36 StopAud
+  41caa PauseResumeAud
+  41d82 ReadSubChannel
+  41e2a ModeSelect
+  41ecd 	ModeSense
+  41f8a StartStopUnit
+  41fea ReadCapacity
+  4204a Inquiry
+  420ce RequestSenseData
+  421fa ATAPIpacketIdentifyDriveCmd
+  42276 ReadHeader|
+  422c2 TestUnitReady
+  423e6 PreventAllowMediaRemoval
+  42430 }	@.}
+  425ee ATAPIsendCmd
+  426e1 	PacketCmd
+  42886 ATAPIidentifyDrives
+  428e0 |d(.K
+  42b26 ATAPIreadRBA
+  42c96 SetMode
+  42d76 CheckATAPIsignature
+  42f22 InitialScan
+  42f91 	ATAPIinit
+  42fc4 |f8.T
+  431ce ATAPIissueDiagCmd
+  432f2 ATAPIdeviceQuery
+  43f1f IBM PPS 
+  44d1c DAKOTA VDSK(
+  44d3c PW      PPC
+  44d5c AUTOEXEC6MD
+  44d7c AS      6XS
+  44d9c S3      6XS
+  44dbc P9      6XS
+  44ddc BBL     6XS
+  44dfc RUBY    6XS
+  44e12 0qZ"2
+  44e1c KEYBD   6XS
+  44e32 \qZ"H
+  44e3c MOUSE   6XS
+  44e52 bqZ"a
+  44e5c SEL_IPBT6XE
+  44e7c ETHER   6XS
+  44e9c PCI_C9706XS
+  44ebc TKRING  6XS
+  44edc TRPCI   6XS
+  44efc TCPIP   6XS
+  44f1c SCSI    6XS
+  44f3c BMP     6XE
+  44f5c AUDIO   BMP
+  44f7c NETWORK BMP
+  44f9c OEM     BMP
+  44fbc KEYBRD  BMP
+  44fdc RAMCHIP BMP
+  44ffc DASD    BMP
+  4501c BOOT    6XE
+  46b1c POWERONL.PIC
+  46bc1 333Fh
+  46bd8 3334F
+  46bef 33333Fh
+  46c06 333334F
+  46c1d 3333333Fh
+  46c34 33333334F
+  46c51 333Fh
+  46c81 333Fh
+  46cb1 333Fh
+  46ce1 333Fh
+  46d11 333Fh
+  46d41 333Fh
+  46d6c 333:3333Fh
+  46d84 33333334F
+  46d9c 333333
+  46db4 33333
+  46f4f UUUUR{
+  46f68 UUUR+
+  46fee SUPERL.PIC
+  4708c DDDDD
+  470d3 DDDDDK
+  470ea DDDDDDDK
+  47101 DDDDDDDH
+  4713c K"%UU
+  47187 UUUUU
+  4719f R"UUUU
+  471b8 ""UUUU
+  471d1 ""UUUU
+  471ea ""UUU
+  47203 ""UU\
+  47239 DDDKDDDD
+  47251 DDDDDDDH
+  47269 DDDDDD
+  47281 DDDDD
+  47287 33333
+  472cc 3336f
+  472e3 33336f
+  4741c ffffc
+  47435 fffc<
+  474c0 CURRENT.PIC
+  47515 vUD4333333333333333DU
+  4752d eTC2""""""""""""""34E
+  47545 eC2""
+  4755c vUC"!
+  47874 wUC"!
+  4788d eC2""
+  478a5 eT3#""""""""""""""33E
+  478bd vUDC333333333333333DU
+  478d5 weUDDCCCCCCCCCCD4DDUV
+  478ee veUUUUUUUUUUUUUUUUVg
+  47907 vvffffffffffffffgwx
+  47920 wwwwwwwwwwwwwwwwx
+  47992 KEY.PIC
+  479e4 UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU""UUUUUUUUUUUUUUUUUUUUU3"
+  47a61 "UUUUUUUUUUUUUUUUUUUS3$A
+  47a7a "UUUUUUUUUUUUUUUUUUS3$
+  47a93 "UUUUUUUUUUUUUUUUUS3$
+  47aac "UUUUUUUUUUUUUUUUS3$
+  47ac5 "UUUUUUUUUUUUUUUS3$
+  47ad9 ""$A"UUUUUUUUUUUUUUUS3$
+  47af6 %UUUUUUUUUUUUUUS3$
+  47b0a """A%UUUUUUUUUUUUUUS3$
+  47b23 ""A"UUUUUUUUUUUUUUS3$
+  47b39 D2""$
+  47b3f UUUUUUUUUUUUUUS3$
+  47b51 D2""$
+  47b57 UUUUUUUUUUUUUUS3$
+  47b69 $2""$
+  47b6f UUUUUUUUUUUUUUS3$
+  47b81 "2""$
+  47b87 UUUUUUUUUUUUUUS3$
+  47b99 """"$
+  47b9f UUUUUUUUUUUUUUS
+  47bb1 """"$
+  47bb7 UUUUUUUUUUUUUUQ
+  47bc7 "A""""$
+  47bcf UUUUUUUUUUUUUUQ
+  47be7 UUUUUUUUUUUUUUU
+  47bf8 "A"""$
+  47bff UUUUUS%UUUUUUUU
+  47c17 UUUUU3"%UUUUUUUQ
+  47c2c """UUUUU3$"UUUUUUUU
+  47c45 """UUUU3$
+  47c4f UUUUUUUUQ
+  47c5e """UUU3$
+  47c67 US%UUUUUU
+  47c77 """UU3$
+  47c7f U3"%UUUUUU
+  47c90 """U3$
+  47c97 U3$"UUUUUUU
+  47ca9 """3$
+  47cb3 UUUUUUUU
+  47ccb UUUUUUUUU
+  47ce3 UUUUUUUUUU
+  47cfb UUUUUUUUUUU
+  47d13 UUUUUUUUUUUU
+  47d2b UUUUUUUUUUUUU
+  47d43 UUUUUUUUUUUUUU
+  47d5b UUUUUUUUUUUUUUU
+  47d73 UUUUUUUUUUUUUUUU
+  47d8b UUUUUUUUUUUUUUUUU
+  47d9f ""D"UUUUUUUUUUUUUUUUUU
+  47db8 """UUUUUUUUUUUUUUUUUUU
+  47dd1 ""UUUUUUUUUUUUUUUUUUUU
+  47dea "UUUUUUUUUUUUUUUUUUUUU
+  47e03 UUUUUUUUUUUUUUUUUUUUUU
+  47e1a UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUFRAME1.PIC
+  47eb6 """""
+  47ec0 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+  47fdc !"""""""""""!!!!
+  48105 !!!""""""FRAME2.PIC
+  48746 !"!""
+  4874e !"!""
+  48754 ""!""
+  4875a """""
+  48760 """"""""""""""""""""""""FRAME3.PIC
+  4999c weD2!
+  499a6 wwfTC2
+  499b2 vfUD3"
+  499bc wweUDC2"
+  499c8 vfEDC3"
+  499d4 eUC32""
+  499e0 ED3"""
+  499ec C3"""
+  49a12 FRAME4.PIC
+  4a04c !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  4a173 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""!
+  4a29e ""#33333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333#"""
+  4a3c9 "#334CDCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCD433"!
+  4a4f4 "#3DDUETUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUTTDC2"
+  4a620 "3DEUUfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffVUUDC2!
+  4a74c #4EVgwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwfUD3"!
+  4a877 "3DVgwx
+  4a997 wfTC2
+  4a9a3 "4Efw
+  4aac4 weD2!
+  4b1d4 KEYERROR.PIC
+  4b226 wwwwwwwwwwwwwwwwwwwwwwww
+  4b23f wwwwq
+  4b245 wt33wwwww
+  4b255 wD2"3wwwwq
+  4b264 wwD5U"3wwww
+  4b274 wwD5#V"7wwwq
+  4b283 wwwD5#3U#wwww
+  4b293 wwwD5##3R7wwwq
+  4b2a2 wwwwD5#R3R3www
+  4b2b3 wwwD5#U35#wwq
+  4b2c3 wwwD5#U35#ww
+  4b2d4 wwD5#535#wq
+  4b2e4 wwB5#335#w
+  4b2f5 w"3R335#w
+  4b2ff wwwwq
+  4b305 w"#5#35#wwwwwwwwwr"3R#5#wwwt7wwwww"#5R#3wwwD3wwwwwr"35b#3wwD37t7www""35R#3wD57D3wwwr""35R#3D57D37wwwr""35R#457D57wwwwr""35R$57D57wwwwwr""35R#3D57wwwwwwr""35R#457wwwwwwwr""35R#57wwwwwwwwr""35R#7wwwwwwwwwr""35R7wwwwwwwwwwr""357wwwwwwwwwwwr""37wwwwwwwwwwwwr""wwwwwwwwwwwwwwr'wwwwwwwwwwwwwwwwwPASSWORD.PIC
+  4b4cb 333Fh
+  4b4e2 3334F
+  4b4f9 33333Fh
+  4b510 333334F
+  4b527 3333333Fh
+  4b53e 33333334F
+  4b55b 333Fh
+  4b58b 333Fh
+  4b5bb 333Fh
+  4b5eb 333Fh
+  4b61b 333Fh
+  4b64b 333Fh
+  4b676 333:3333Fh
+  4b68e 33333334F
+  4b6a6 333333
+  4b6be 33333
+  4b8f8 SUPER.PIC
+  4b94a wwwwwwwwwwwwwwwwwwwwwwwww
+  4b966 wwwwwwwwwwwwwwwwwwwwwwwww
+  4b982 wwwwwwxwwwwwwwwwwwwwww
+  4b99e wwwwwwxwwwwwwwwwwwwwwwxww
+  4b9ce xwxww
+  4b9e0 wxwxw
+  4ba2e wwwwwwwwwwwwwwwwwwwww
+  4ba49 wwwwwwwwwwww
+  4ba56 wwwwwwwww
+  4ba62 wwwwwwwwwwwwwwwwwwwwwwwww
+  4ba7e wwwwwwwwwwwwwwwwwwwwwwwww
+  4ba9a wwwwwwwwwwwwwwwwwwwwwwwww
+  4bab6 wwwwwwwwwwwwwwwwwwwwwwwww
+  4bad2 wwwwwwwwwwwwwwwwwwwwwwwww
+  4baee DRV_DSK.PIC
+  4bb40 wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
+  4bb8c wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
+  4bbd8 wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
+  4bc24 wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
+  4bc70 wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
+  4bcbc wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
+  4bd08 wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww|
+  4bd43 wwwwwwwwwwwwwwww
+  4bd54 wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
+  4bd8f wwwwwwwwwwwwwwww
+  4bda0 wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww{
+  4bddb wwwwwwwwwwwwwwww
+  4bdec wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww{
+  4be27 wwwwwwwwwwwwwwww
+  4be38 wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww{
+  4be73 wwwwwwwwwwwwwwww
+  4be84 wwwwwwwwwwwwwwww
+  4bec7 wwwwwwww
+  4bed0 wwwwwwwwwwwwwwwz
+  4bf13 wwwwwwww
+  4bf1c wwwwwwwwwwwwwwwz
+  4bf5f wwwwwwww
+  4bf68 wwwwwwwwwwwwwww
+  4bfab wwwwwwww
+  4bfb4 wwwwwwwwwwwwwwz
+  4bff7 wwwwwwww
+  4c000 wwwwwwwwwwwwww
+  4c043 wwwwwwww
+  4c04c wwwwwwwwwwwwww
+  4c08f wwwwwwww
+  4c098 wwwwwwwwwwwwwz
+  4c0db wwwwwwww
+  4c0e4 wwwwwwwwwwwww
+  4c0f6 wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
+  4c127 wwwwwwww
+  4c130 wwwwwwwwwwwww
+  4c142 wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwy
+  4c173 wwwwwwww
+  4c17c wwwwwwwwwwwwz
+  4c18d wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
+  4c1bf wwwwwwww
+  4c1c8 wwwwwwwwwwww
+  4c20b wwwwwwww
+  4c214 wwwwwwwwwwww
+  4c257 wwwwwwww
+  4c260 wwwwwwwwwwwz
+  4c2a3 wwwwwwww
+  4c2ac wwwwwwwwwww
+  4c2ef wwwwwwww
+  4c2f8 wwwwwwwwwwz
+  4c33b wwwwwwww
+  4c344 wwwwwwwwwwz
+  4c387 wwwwwwww
+  4c390 wwwwwwwwww
+  4c3d3 wwwwwwww
+  4c3dc wwwwwwwwwz
+  4c41f wwwwwwww
+  4c428 wwwwwwwwwz
+  4c46b wwwwwwww
+  4c474 wwwwwwwwwz
+  4c4b7 wwwwwwww
+  4c4c0 wwwwwwwwwz
+  4c503 wwwwwwww
+  4c50c wwwwwwwwwz
+  4c54f wwwwwwww
+  4c558 wwwwwwwwwz
+  4c59b wwwwwwww
+  4c5a4 wwwwwwwwwz
+  4c5e7 wwwwwwww
+  4c5f0 wwwwwwwwwz
+  4c633 wwwwwwww
+  4c63c wwwwwwwwwz
+  4c67f wwwwwwww
+  4c688 wwwwwwwwwz
+  4c6cb wwwwwwww
+  4c6d4 wwwwwwwwwz
+  4c717 wwwwwwww
+  4c720 wwwwwwwwwz
+  4c763 wwwwwwww
+  4c76c wwwwwwwwwz
+  4c7af wwwwwwww
+  4c7b8 wwwwwwwwwz
+  4c7fb wwwwwwww
+  4c804 wwwwwwwwwz
+  4c847 wwwwwwww
+  4c850 wwwwwwwwwz
+  4c893 wwwwwwww
+  4c89c wwwwwwwwwz
+  4c8df wwwwwwww
+  4c8e8 wwwwwwwwwz
+  4c92b wwwwwwww
+  4c934 wwwwwwwwwz
+  4c977 wwwwwwww
+  4c980 wwwwwwwwwz
+  4c9c3 wwwwwwww
+  4c9cc wwwwwwwwwz
+  4ca0f wwwwwwww
+  4ca18 SMSDSK.PIC
+  4cb3b wwww"
+  4cb64 wwwwq
+  4cb6f wwww"
+  4cb98 wwwwq
+  4cba3 wwww"
+  4cbcc wwwws3
+  4cbd7 wwww"
+  4cc00 wwwws3
+  4cc0b wwww"
+  4cc34 wUUWs33
+  4cc3f wwww"
+  4cc68 w""'s33
+  4cc73 wwww"
+  4cc9c w""'s33
+  4cca7 wwww"
+  4ccd0 w""'s333
+  4ccdb wwww"
+  4cd04 w""'s333
+  4cd0f wwww"
+  4cd38 wDDGs333
+  4cd43 wwww"
+  4cd6c wwwws333
+  4cd77 wwww"
+  4cda0 wwwws333
+  4cdab wwww"
+  4cdd4 wwwws333
+  4cddf wwww"
+  4ce08 wwwws333
+  4ce13 wwww"
+  4ce3c wwwws333
+  4ce47 wwww"
+  4ce70 wwwws333
+  4ce7b wwww"
+  4cea4 wwwws333
+  4ceaf wwww"
+  4ced8 wwwws333
+  4cee3 wwww"
+  4cf0c wwwws333
+  4cf17 wwww"
+  4cf40 wwwws333
+  4cf4b wwww"
+  4cf74 wwwws333
+  4cf7f wwww"
+  4cfa8 wwwws333
+  4cfb3 wwww"
+  4cfdc wwwws333
+  4cfe7 wwww"
+  4d010 wwwws333
+  4d01b wwww"
+  4d044 wwwws333
+  4d04f wwww"
+  4d078 wwwws333
+  4d083 wwww"
+  4d0ac wwwws333
+  4d0b7 wwww"
+  4d0e0 wwwws333
+  4d0eb wwww"
+  4d114 wwwws333
+  4d11f wwww"
+  4d148 wwwws333
+  4d153 wwww"
+  4d17c wwwws333
+  4d187 wwww"
+  4d1b0 wwwws333
+  4d1bb wwww"
+  4d1e4 wwwws333
+  4d1ef wwww"
+  4d218 wwwws333
+  4d223 wwww"
+  4d24c wwwws333
+  4d257 wwww"
+  4d280 wwwws333
+  4d28b wwww"
+  4d2b4 wwwws333
+  4d2bf wwww"
+  4d2e8 wwwws333
+  4d2f3 wwww"
+  4d31c wwwws333
+  4d327 wwww"
+  4d350 wwwws333
+  4d35b wwww"
+  4d384 wwwws333
+  4d38f wwww"
+  4d3b8 wwwws333
+  4d3c3 wwww"
+  4d3ec wwwws333
+  4d3f7 wwww"
+  4d420 wwwws333
+  4d42b wwww"
+  4d454 wwwws333
+  4d488 wwwws333
+  4d4bc wwwws333
+  4d4c7 wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwws333
+  4d4fb wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwws333
+  4d52f wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwws333
+  4d563 wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwws333
+  4d597 wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwws333
+  4d5cb wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwws333
+  4d5ff wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwws333
+  4d633 wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwws333
+  4d667 wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwws333
+  4d69b wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwws333
+  4d6cf wwwwwwwwwwwtDDDDDDDDDDDDDDDDDDDDDDDDDDwwwwwwws333
+  4d703 wwwwwwwwwwwr""""""""""""""""""""""""""wwwwwwws333
+  4d737 wwwwwwwwwwwr""""""""""""""""""""""""""wwwwwwws333
+  4d76b wwwwwwwwwwwr$
+  4d78b ""gww
+  4d794 wwwws333
+  4d79f wwwwwwwwwwwr$
+  4d7bf ""gww
+  4d7c8 wwwws333
+  4d7d3 wwwwwwwwwwwr$
+  4d7f3 ""gwww
+  4d7fc wwwws333
+  4d807 wwwwwwwwwwwr$
+  4d827 ""gwww
+  4d830 wwwws333
+  4d83b wwwwwwwwwwwr$
+  4d85b ""gwww
+  4d864 wwwws333
+  4d86f wwwwwwwwwwwr$
+  4d88f ""gwww
+  4d898 wwwws333
+  4d8a3 wwwwwwwwwwwr$
+  4d8c3 ""gwww
+  4d8cc wwwws333
+  4d8d7 wwwwwwwwwwwr$
+  4d8f7 ""gwww
+  4d900 wwwws333
+  4d90b wwwwwwwwwwwr$
+  4d91c """"""
+  4d92b ""gwww
+  4d934 wwwws333
+  4d93f wwwwwwwwwwwr$
+  4d950 """"""
+  4d95f ""gwww
+  4d968 wwwws333
+  4d973 wwwwwwwwwwwr$
+  4d984 "wwwww
+  4d993 ""gwww
+  4d99c wwwws333
+  4d9a7 wwwwwwwwwwwr$
+  4d9b8 "wwwww
+  4d9c7 ""gwww
+  4d9d0 wwwws333
+  4d9db wwwwwwwwwwwr$
+  4d9ec "wwwww
+  4d9fb ""gwww
+  4da04 wwwws333
+  4da0f wwwwwwwwwwwr$
+  4da20 "wwwww
+  4da2f ""gwww
+  4da38 wwwws333
+  4da43 wwwwwwwwwwwr$
+  4da54 "wwwww
+  4da63 ""gwww
+  4da6c wwwws333
+  4da77 wwwwwwwwwwwr$
+  4da88 "wwwww
+  4da97 ""gwww
+  4daa0 wwwws333
+  4daab wwwwwwwwwwwr$
+  4dabc "wwwww
+  4dacb ""gwww
+  4dad4 wwwws333
+  4dadf wwwwwwwwwwwr$
+  4daf0 "wwwww
+  4daff ""gwww
+  4db08 wwwws333
+  4db13 wwwwwwwwwwwr$
+  4db24 "wwwww
+  4db33 ""gwww
+  4db3c wwwws333
+  4db47 wwwwwwwwwwwr$
+  4db58 "wwwww
+  4db67 ""gwww
+  4db70 wwwws333
+  4db7b wwwwwwwwwwwr$
+  4db8c "wwwww
+  4db9b ""gwww
+  4dba4 wwwws333
+  4dbaf wwwwwwwwwwwr$
+  4dbc0 "wwwww
+  4dbcf ""gwww
+  4dbd8 wwwws333
+  4dbe3 wwwwwwwwwwwr$
+  4dbf4 "wwwww
+  4dc03 ""gwww
+  4dc0c wwwws333
+  4dc17 wwwwwwwwwwwr$
+  4dc37 ""gwww
+  4dc40 wwwws333
+  4dc4b wwwwwwwwwwwr$
+  4dc6b ""gwww
+  4dc74 wwwws333
+  4dc80 wwwwwwwwwwr$
+  4dc9f ""gwww
+  4dca8 wwws333
+  4dcb4 wwwwwwwwwwr$
+  4dcd3 ""gwww
+  4dcdc wwws333
+  4dce8 wwwwwwwwwwr$
+  4dd07 ""gwww
+  4dd10 wwws333
+  4dd1d 3333333333333333333333333333333333333333333333
+  4dd51 3333333333333333333333333333333333333333333333
+  4dd86 333333333333333333333333333333333333333333333
+  4ddba 333333333333333333333333333333333333333333333
+  4ddee 333333333333333333333333333333333333333333333
+  4de23 3333333333333333333333333333333333333333333
+  4de57 3333333333333333333333333333333333333333333
+  4deba WARNING.PIC
+  4df0c 3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333331
+  4e012 33331
+  4e02a 33331
+  4e042 33333
+  4e059 333333
+  4e071 3333331
+  4e089 3333331
+  4e0a1 3333333
+  4e0b8 333333331
+  4e0d0 333333331
+  4e0e8 333333333
+  4e0ff 3333333333
+  4e117 33333333331
+  4e12f 33333333331
+  4e147 33333333333
+  4e15e 3333333333331
+  4e176 3333333333331
+  4e18e 3333333333333
+  4e1a5 33333333333333
+  4e1bd 333333333333331
+  4e1d5 333333333333331
+  4e1ed 333333333333333
+  4e204 33333333333333331
+  4e21c 33333333333333331
+  4e234 33333333333333333
+  4e24b 333333333333333333
+  4e263 3333333333333333331
+  4e27b 3333333333333333331
+  4e293 3333333333333333333
+  4e2aa 33333333333333333333
+  4e2c2 333333333333333333331
+  4e2da 333333333333333333333
+  4e2f1 3333333333333333333333
+  4e309 33333333333333333333331
+  4e321 33333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333TEXT3.PIC
+  4e3de wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
+  4e412 wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
+  4e446 wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
+  4e47a wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
+  4e4ae wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
+  4e4e2 wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
+  4e516 wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
+  4e54a wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
+  4e57e wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
+  4e5b2 wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
+  4e5dd wwwwwww
+  4e5e6 wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwxww
+  4e612 wwwwww
+  4e61a wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwxwwwwww
+  4e64e wxwwwwwx
+  4e657 wwwwwwwwwwwwwx
+  4e682 wxwwwww
+  4e68c wwwwwwwwwwww
+  4e6ae wxwxww
+  4e6b6 wxwwwwxwwxwwwwwwwwwwwxwwwxw
+  4e6d5 xwwxw
+  4e6de xwwxw
+  4e6ea wxwwwwxwwxwwwx
+  4e700 wwwww
+  4e709 xwwxw
+  4e712 xwwxw
+  4e71e wxwwwwxwwxwwwwwwwwwww
+  4e734 wwwww
+  4e746 xwwxw
+  4e752 wxwwwwxwwxwwwwwwwwwww
+  4e768 wwwww
+  4e77a xwwxw
+  4e790 wwwwwwwwwww
+  4e79c wwwww
+  4e7a5 xwwxw
+  4e7ae xwwxw
+  4e7ba wxwwwwxx
+  4e7c3 wwwwx
+  4e7d0 wwwww
+  4e7e6 wxwxww
+  4e7ee wxwwwwxwwwwwwwwwwwwww
+  4e804 wwwww
+  4e822 wxwwwwxwwxwwwwwwwwwwwxwwwxw
+  4e83e wwwwwwwwwwwwwwwwwwwwww
+  4e856 wxwwwww
+  4e860 wwwwwwwwwwww
+  4e872 wwwwwwwwwwwwwwwwwwwwww
+  4e893 wwwwwwwwwwwwwx
+  4e8a6 wwwwwwwwwwwwwwwwwwwwww
+  4e8be wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
+  4e8f2 wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
+  4e926 wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
+  4e95a wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
+  4e98e wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
+  4e9c2 wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
+  4e9f6 PAPERCUT.PIC
+  4ebec """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""" 333333333333333333333333333333333333333333333333333333333333333333333333333333333330CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC@UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUPfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff`wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwp
+  56dcd wweTC"
+  56e21 geUD3"
+  56e75 UUTC2!
+  56ec9 tD32"
+  5731c rem  @(#)57 1.7 oem/autoexec.6md, esw_oem, carol100, car.mvt110 6/23/96 16:08:01
+  5736e rem System Initialization Command File
+  57395 rem The following statements have a DEFINITE order.
+  573c9 rem bbl driver out for DVT 7 build - PAW 8/19
+  573f7 rem f682 changes (syy 8/24/94)
+  57416 rem scsi now a driver DLR
+  57431 rem WARNING:  LINES IN THIS FILE MUST BE LESS THAN 80 CHARS                    *
+  57486 rem Step 1: Load console drivers.
+  574c0 rem Step 2: Initialize Console by issuing a mode command for 640x480
+  57505 mode 0 -1 0
+  57512 rem Step 3: Start off with initial Out of Box bitmap and Sound
+  57551 bmp oem.bmp y-50
+  57562 rem wave play open16m.wav
+  5757d rem Step 4: Initialize keyboard and mouse
+  575a7 bmp keybrd n x-240 y180
+  575bf keybd
+  575c5 rem Load Mouse Device Driver
+  575e2 mouse
+  575e8 rem bmp f1msg.bmp n x-140 y110
+  57608 rem Tweedle to indicate O.K to press Fkeys on either keyboard at this point
+  57654 beep 1000 50
+  57661 beep 2000 50
+  5766e beep 1000 50
+  5767c rem Step 5: Initialize other sub systems.
+  576a6 rem The following IAT_* commands are INTERNAL, and MUST REMAIN IN THIS ORDER
+  576f3 rem until the fully replacable functions are developed.
+  5772c rem WARNING:  No audio can play during memory test.  Memory test
+  5776d rem           MAY cause parity checks after power on, and a
+  577a9 rem           parity check halts PCI Bus Activity
+  577dc bmp ramchip n x-120 y180
+  577f5 rem wave exit *
+  57805 iat_mem
+  5780e bmp network.bmp n x0 y180
+  57828 iat_dskt
+  57832 bmp dasd.bmp n x120 y180
+  57851 rem For remote IPL - always load network adapter drivers first
+  57890 rem  If no adapter driver is installed, protocol driver will not be installed
+  578de bmp audio.bmp n x240 y180
+  578f8 pci_c970
+  57901 ether
+  57907 tkring
+  5790e trpci
+  57914 rem network protocol driver
+  57930 tcpip
+  57937 rem wave unix28b.wav
+  5794c rem bmp bootdisk.bmp n x240 y180
+  5796d rem wave exit *
+  57b44 XXXXXXX 
+  57b5c  PPS Firmware Licensed Materials - Property of IBM (C) Copyright IBM Corp. 1994. All rights reserved. U.S. Government Users Restricted Rights - Use, duplication or disclosure restricted  by GSA ADP Schedule Contract with IBM Corp.
+  57e81 	init_main
+  581ea as_query
+  5821a as_query_device
+  5825a as_diags_hook
+  58286 build_as
+  58332 as_init
+  583ea as_set_highlight
+  58532 as_putchar
+  585be as_clear_screen
+  586ba as_goto_xyN
+  586de as_putbitmap
+  58796 as_scroll_window
+  58802 as_set_colors
+  588de as_rect_fill
+  5890e as_cursor_sizeN
+  58936 as_load_palette
+  589e9 	as_printf
+  58a3a as_read
+  58a62 as_check_pause_key8`
+  58a92 as_check_key_avail8`
+  58ac2 as_get_info
+  58aea as_set_info
+  58b3c      
+  58b69 [%d;%dH
+  58b75 Y%c%c
+  58c04 IBM Async console driver for VT100 compatible terminals
+  58c3c IBM Async Serial Port 1
+  58f44 XXXXXXX 
+  58f5c  PPS Firmware Licensed Materials - Property of IBM (C) Copyright IBM Corp. 1994. All rights reserved. U.S. Government Users Restricted Rights - Use, duplication or disclosure restricted  by GSA ADP Schedule Contract with IBM Corp.
+  59281 	init_main
+  595e2 s3_query
+  59656 s3_query_device
+  5970e s3_diags_hook
+  5981b :|cH.
+  59e2a build_s3
+  59fa1 	S3_Unlock
+  59fec 3 S3A
+  5a000 3@S3<
+  5a0fa s3_Found
+  5a59a s3_POS
+  5a6ce Async_Reset
+  5ad1a dac_init
+  5ad38 T}F>T
+  5ade6 s3_bt485_read
+  5ae0b >T~F>T|
+  5aeb6 s3_bt485_write
+  5af82 s3_sdac_write
+  5b08a s3_sdac_write2
+  5b18a s3_rgb525_read
+  5b28a s3_rgb525_write
+  5b3d2 s3_load_palette
+  5b5f2 s3_video_int_handler
+  5b6ae s3_get_base_address
+  5b72c =`UV=@ZZ= 
+  5b936 s3_memory_size|
+  5bb5a s3_init
+  5bdd4 Tc%6@
+  5c4c8 Tc 6T
+  5c55c U) 6Tc
+  5c9ad 	s3_init_2
+  5cb16 vsync_wait
+  5cc5d 	fifo_wait
+  5cd9a ge_wait
+  5cf1e s3_clear_screen
+  5d082 s3_rect_fill
+  5d392 s3_scroll_window
+  5d3f6 3x|c#xN
+  5d416 color_xform
+  5d6ce s3_putchar
+  5d6ec |gFpT
+  5d7ea nearest
+  5d8f2 compute_pad
+  5dab6 s3_getbitmap
+  5dd84 U)@.|
+  5dfdb 8TgD.
+  5e1fe s3_putbitmap
+  5e3ce bt485_goto_xy
+  5e456 rgb525_goto_xy
+  5e562 s3dac_goto_xy
+  5e5f6 s3_goto_xy,
+  5e63a s3_set_colors
+  5e6a6 init_cursor
+  5e926 init_cursor_bt485
+  5ecd6 init_cursor_rgb525|
+  5eeb6 init_cursor_s3dac
+  5ef32 s3_cursor_size
+  5f030  $!0"O#
+  5f03c &G'Y(
+  5f10d 89:;<=>?
+  5f123 B;<1:@PT]`abX3C
+  5f133 ^Q\4U
+  5f194 89:;<=>?
+  5f1cc 89:;<=>?
+  5f1fc  !"#$%&'()*+,-./
+  5f263 3 U@e
+  5f286 3 U@e
+  5f379 H3 UHe
+  5f426 3 U@e
+  5f504 3 U@e
+  5f527 3 U@e
+  5f54a 3 U@e
+  5f692 H3 UHe
+  5f6b5 H3 UHe
+  5f791 H3 UHe
+  5f8bb 3 U@e
+  5f8ec 3 U@e
+  5f91d 3 U@e
+  5f94e 3 U@e
+  5f970 h3 U@e
+  5f993 h3 U@e
+  5fab6 kLeOP
+  5fafe H3 UHe
+  5fb21 H3 UHe
+  5fc70 3 U@e
+  5fc93 3 U@e
+  5fcb6 3 U@e
+  5ff93 +$U+$
+  5ff9f +IU+I
+  5ffab +mU+m
+  5fff3 U$UU$
+  5ffff UIUUI
+  6000b UmUUm
+  60080    )))111999AAAJJJRRRZZZbbbjjjsss{{{
+  6025c PNP0909
+  6026a sPIBM Power Series S15 Video Driver for 928, 864, and 964 PCI
+  602a8 IBM Power Series S15 928 PCI Adapter
+  602d0 IBM Power Series S15 864 PCI Adapter
+  602f8 IBM Power Series S15 964 PCI Adapter
+  61344 XXXXXXX 
+  6135c  PPS Firmware Licensed Materials - Property of IBM (C) Copyright IBM Corp. 1994. All rights reserved. U.S. Government Users Restricted Rights - Use, duplication or disclosure restricted  by GSA ADP Schedule Contract with IBM Corp.
+  61681 	init_main
+  619fe p9_query
+  61a5e p9_query_device
+  61b4a p9_diags_hook
+  61c93 $}*H.})8
+  61eea build_p9
+  61f52 quiesce_p9
+  62c8e +xU(@.|
+  62c96 Cx}$+x0~"
+  62cfe +xU(@.|
+  62d06 Cx}$+x0~"
+  62dde weitek_init
+  62eda P9000Found
+  6309f h0{0XK
+  631f6 vid_blit
+  632ce p9_putchar|
+  6336e p9_set_colors
+  63402 p9_scroll_window
+  635d6 @.|c#x|
+  63646 @.|c#x|
+  63afa @.|c#x
+  63b66 @.|c#x
+  63bd2 xscroll
+  63c4a p9_cursor_size|
+  63c8e setupCursorBitMap
+  63f82 p9_rgb525_cinit
+  63ffe p9_goto_xy
+  6407a SetHWcursor
+  6411a #x0|"
+  64186 3x0|"
+  641c2 setFBcolors
+  641ee p9_getbitmap
+  6505e p9_putbitmap
+  65085 	next_char
+  6511e p9_rect_fill
+  6580e p9_metadraw_mgr
+  65a5e setPixelClk
+  65b9a p9_load_palette
+  65bc6 p9_clear_screen
+  65ce4 |`A @
+  65db4 |`A @
+  65f64 |`A @
+  6614a init_P9100_base
+  662ae p9_rgb525_write
+  663b8 |eFpT
+  663ea p9_rgb525_readN
+  66412 SetRGB525PixelClk
+  66496 enableRGB525
+  66861 	setRefClk
+  66af3 +$U+$
+  66aff +IU+I
+  66b0b +mU+m
+  66b53 U$UU$
+  66b5f UIUUI
+  66b6b UmUUm
+  66be0    )))111999AAAJJJRRRZZZbbbjjjsss{{{
+  66dcc PNP090E
+  66ddc IBM Power Series H10 Graphics Adapter Driver
+  66e0c IBM Power Series H10 Graphics Adapter
+  66e34 IBM Power Series H10 Graphics Adapter
+  67344 XXXXXXX 
+  6735c  PPS Firmware Licensed Materials - Property of IBM (C) Copyright IBM Corp. 1994. All rights reserved. U.S. Government Users Restricted Rights - Use, duplication or disclosure restricted  by GSA ADP Schedule Contract with IBM Corp.
+  67681 	init_main
+  679be bblue_dd_string
+  67a1a bblue_device_string
+  67c0a bblue_register_console_dd
+  67cca bblue_init<
+  67d4a bblue_diagnostics
+  67e16 bblue_clear_screen
+  67ee2 bblue_move_cursor
+  68000 |zKx3`
+  68252 bblue_putchar
+  683b2 bblue_load_palette8`
+  683e2 bblue_get_bitmap
+  687de bblue_put_bitmap
+  6890a bblue_scroll_window
+  6895a bblue_set_txt_colors
+  68a46 bblue_fill_rectangle
+  68b6a bblue_cursor_size
+  68d62 build_bblue_packet|
+  68e46 bb_write
+  68f06 bb_read
+  68fb5 	log_error
+  6901e bblue_card_init
+  690fd 	blt_sc_sc
+  69232 poly_fill_rect|
+  693aa qpax_reg_init
+  6949d 	qpax_poll
+  694f2 usleep
+  697ba sbl_init_adpt
+  69eae sbl_config_adpt
+  6a0ae sbl_cursor_init
+  6a1ce sbl_put_cursor
+  6a286 sbl_turn_cursor_off
+  6a3a2 sbl_blt_sc_sc
+  6a4ae sbl_poly_fill_rect
+  6a54a sbl_fifo_reset|
+  6a596 sbl_wait_complete
+  6a646 sbl_busy_poll
+  6a7f2 sbl_get_monitor_id
+  6a87a sbl_rd_cable_id
+  6a8fa sbl_monitor_defaults
+  6a95a bl_init
+  6aa6e bluelake_init
+  6ade0 Tc@.|
+  6aebe bl_get_monitor_id
+  6afc2 bl_get_monitor_index
+  6b382 bl_dtgc_init
+  6b502 bl_cursor_init|
+  6b5ba bl_lut_init
+  6b646 bl_lut_write
+  6b742 bl_put_cursor
+  6b7aa bl_turn_cursors_off
+  6b802 bl_turn_cursor_on
+  6b922 bl_wat_init
+  6ba82 wat_init_sub
+  6baf5 	bl_write2
+  6bbee bl_read
+  6bce6 bl_write
+  6bd54 IBM GXT150P Graphics Adapter
+  6bd74 IBM GXT150P Graphics Adapter Console Device Driver
+  6bda8 IBM GXT250P/GXT255P Graphics Adapter
+  6bdd0 IBM GXT250P/GXT255P Graphics Adapter Console Device Driver
+  6be10 PNP090E
+  6c41b +$U+$
+  6c427 +IU+I
+  6c433 +mU+m
+  6c47b U$UU$
+  6c487 UIUUI
+  6c493 UmUUm
+  6c508    )))111999AAAJJJRRRZZZbbbjjjsss{{{
+  6cb44 XXXXXXX 
+  6cb5c  PPS Firmware Licensed Materials - Property of IBM (C) Copyright IBM Corp. 1994. All rights reserved. U.S. Government Users Restricted Rights - Use, duplication or disclosure restricted  by GSA ADP Schedule Contract with IBM Corp.
+  6ce81 	init_main
+  6d326 ruby_register_console_dd
+  6d3b5 	ruby_init
+  6d6a6 ruby_card_init|
+  6d776 ruby_ready=c
+  6d7d2 ruby_write_io_regs
+  6d832 ruby_read_io_regs
+  6d8ba ruby_write_config_regs
+  6d93e ruby_read_config_regs
+  6dc5e build_ruby,
+  6dcca ruby_diags_hook
+  6dd06 ruby_query
+  6dd36 ruby_query_device
+  6de2e ruby_initialize_rendering
+  6df3e ruby_clear_screen
+  6e012 ruby_goto_xy
+  6e133 `}$;x
+  6e1d6 ruby_scroll_window|
+  6e2b2 ruby_set_text_colors
+  6e3d2 ruby_fill_rectangle
+  6e4ba ruby_toggle_cursor|
+  6e606 ruby_cursor_init
+  6e70a ruby_cursor_size
+  6e95e ruby_putchar
+  6ea6a ruby_load_palette
+  6ee12 ruby_putbitmap8`
+  6ee3e ruby_getbitmap
+  6ef1c IBM Power Series GXT1000 Video Driver for PCI
+  6ef4c IBM Power Series GXT1000P PCI Adapter
+  6f00b +$U+$
+  6f017 +IU+I
+  6f023 +mU+m
+  6f06b U$UU$
+  6f077 UIUUI
+  6f083 UmUUm
+  6f0f8    )))111999AAAJJJRRRZZZbbbjjjsss{{{
+  6f2da (dPNP090R
+  6f744 XXXXXXX 
+  6f75c  PPS Firmware Licensed Materials - Property of IBM (C) Copyright IBM Corp. 1994. All rights reserved. U.S. Government Users Restricted Rights - Use, duplication or disclosure restricted  by GSA ADP Schedule Contract with IBM Corp.
+  6fa81 	init_main
+  6fe2e keyboard_query
+  6fec6 keyboard_query_device
+  6ffb2 keyboard_set_info
+  7006e keyboard_get_info
+  702c6 process_keystroke
+  70a3a keyboard_state0
+  70ade keyboard_state1
+  70c76 keyboard_state6
+  70ce2 turnLEDsOnOff
+  7106e scanCode2stroke
+  7141a debug_scanCode2stroke
+  71592 keyboard_check_for_pause_key
+  715ea keyboard_check_key_avail
+  71684 |	 @8`
+  716a8 |h .|
+  716e2 keyboard_Getchar
+  71986 Keyboard_Init
+  71bb6 check_keyboard_port
+  71c92 enable_keyboard_IRQ
+  71d06 ctrl_alt_del_key
+  71dee keyboard_diags
+  71e93 8Tc@.
+  71ec6 Read_keyboard_ID
+  71f3a reset_keyboard_StateMachine
+  722dc The keyboard is not attached!!!
+  722fc Failed to register keyboard Interrupt!!!
+  72328 The keyboard is in the wrong port!
+  7234c Restarting the system...
+  72368 IBM Enhanced Keyboard Driver
+  72388 IBM 101/102 Enhanced Keyboard
+  723a8 IBM Ferrari 101/102 Keyboard
+  723c8 IBM Space Saver 84 Key Keyboard
+  723e8 IBM Space Saver 84 Key Keyboard
+  72408 Unknown keyboard
+  7241c Keyboard
+  72944 XXXXXXX 
+  7295c  PPS Firmware Licensed Materials - Property of IBM (C) Copyright IBM Corp. 1994. All rights reserved. U.S. Government Users Restricted Rights - Use, duplication or disclosure restricted  by GSA ADP Schedule Contract with IBM Corp.
+  72c81 	init_main
+  73002 mouse_query
+  73044 |c .N
+  7304b  |c .N
+  73053  |c .N
+  7305b  |e .N
+  7307a mouse_query_device8`
+  730aa mouse_diags
+  73356 mouse_register_mouse
+  7361a read_mouse_type
+  73812 read_mouse_data
+  73ba6 Mouse_Init
+  73c96 set_mouse_sampling_rate
+  73d96 set_mouse_resolution
+  73e47 tIBM Enhanced Keyboard Driver
+  73e68 IBM Enhanced Keyboard Driver
+  73e88 IBM Enhanced Keyboard Driver
+  73eb4 The Mouse Failed Internal Self Test!!!
+  73edc IBM Mouse Device Driver
+  73ef4 IBM/Logitech 3-Button Mouse
+  73f10 Logitech 2-Button Mouse
+  73f28 IBM 2-Button Mouse
+  73f3c Unknown Mouse
+  74144 XXXXXXX 
+  7415c  PPS Firmware Licensed Materials - Property of IBM (C) Copyright IBM Corp. 1994. All rights reserved. U.S. Government Users Restricted Rights - Use, duplication or disclosure restricted  by GSA ADP Schedule Contract with IBM Corp.
+  74481 	init_main
+  748de remote_ipl_utility
+  7493f L}'(.}
+  74a8e net_IP_or_parm_menu
+  757be (.|l(.8
+  7581e (.|l(.8
+  7587e (.|l(.8
+  758de (.|l(.8
+  75b98 |e .|
+  75c6e (.|l(.8
+  75d2a net_IP_menu
+  75ed6 check_IP_format
+  761a6 @.|{@.K
+  76286 @.||@.K
+  762d2 @.|~@.8
+  7633e user_entered_hw_addr
+  763ea check_HW_addr_format
+  7655e convert_string_to_unint
+  76590 UdF>0a
+  76662 convert_unint_to_string
+  7671e char_to_hex
+  7676e lower_hex_to_char
+  767da two_hex_to_char
+  769b4 }51.}
+  76a2a Q.}'X
+  76b88 |p0.K
+  76be4 |p0.K
+  76c3b :};@.
+  76c52 1.}51.K
+  76c6b @|{8.K
+  76cc6 net_adapter_parm_menu
+  76e36 pci_eth_def_or_parm_menu
+  76e6a pci_eth_get_adapter_info
+  76e9a pci_eth_set_parm_menu
+  76eca pci_eth_connection_type
+  76efe pci_eth_set_default
+  76f2a pci_save_eth_config
+  7715a (.|c(.8
+  771a6 trpci_def_or_parm_menu|
+  77302 trpci_set_parm_menu
+  773b6 GetTrpci_HW_address
+  77472 nb_read_trpci_info|
+  77592 eth_def_or_parm_menu
+  775c7 :}((.
+  775db <}((.
+  775e7 @}((.
+  775f3 D}((.
+  775ff H}((.
+  77623 T})(.}
+  7762a (.}J(.|
+  77894 MJRBM
+  77984 MJRBH
+  77a0e eth_set_parm_menu
+  77cca isa_eth_get_adapter_info
+  77d43 h|c .|
+  77d86 actual_update_ethernet_eeprom
+  77f66 eth_HW_address|
+  781a7 x|f8.H
+  781b7 :|x0.H
+  781c7 :|t0.H
+  781d7 :|r0.H
+  781e7 :|w0.H
+  781f7 :|y0.H
+  78207 :||0.H
+  78217 :|~0.H
+  78460 |w8.8
+  78486 8.|w8.8
+  7852a eth_int_assignment|
+  786bb :|~0.H
+  786db :|{0.H
+  786eb :|}0.H
+  788b6 8.|{8.K
+  78918 ||8.8
+  7893e 8.||8.8
+  789d6 eth_io_assignment
+  78a50 |d(.H
+  78a57 L|f(.H
+  78bec |e8.|
+  78c60 |e0.|
+  78cca eth_adapter_architecture_menu
+  78eb2 eth_adapter_shared_memory
+  78f88 |d(.H
+  78f90 |h0.H
+  78f98 |h0.H
+  78fa7 :|e .H
+  791e7 :|d0.
+  79213 :|d0.
+  7928a eth_connection_type
+  792ba eth_set_default
+  79318 |c .|
+  7935a save_u_ent_eth_config
+  794e6 write_to_Eth_Parms_Structure
+  7956a read_from_Eth_Parms_Structure
+  7959e nb_write_eth_pnp
+  795c6 nb_read_eth_pnp
+  796e2 0.|e0.
+  797ce tok_def_or_parm_menu
+  79afe tok_set_parm_menu
+  79b2a tok_set_default
+  79d02 tok_HW_address
+  79ed6 tok_adapter_shared_memory
+  7a0a6 tok_io_assignment
+  7a26e tok_rom_mem
+  7a422 tok_int_assignment
+  7a5d6 tok_size_sm
+  7a786 tok_size_nsm
+  7a99a tok_ring_speed
+  7ac0e nb_read_tok_info
+  7ac82 save_u_ent_tok_config
+  7acb2 nb_write_tok_pnp
+  7acde nb_read_tok_pnp
+  7add0 |i0.|
+  7b047 :||9.
+  7b097 :|n9.
+  7b0eb 8|gI.
+  7b532 search_for_other_adapters
+  7b5a6 run_other_adapt_config
+  7b62a UpdateSelectedOptions_other
+  7bdb2 run_real_config
+  7bde2 mfgmode_adapt
+  7bfc4 Set Network IP Parameters 
+  7bfe0 Select this choice to set the IP Parameters. 
+  7c010 Network Utilities
+  7c024 Select Boot Device 
+  7c038 Select this choice to view or modify the boot sequence. Press the ESCAPE key at the Network Utilities menu to begin downloading the diagnostic files. 
+  7c0d0 Network Parameters 
+  7c0e4 Select this choice to view or set IP or adapter card parameters. Press the ESCAPE key at the Network Utilities menu to begin downloading the diagnostic files. 
+  7c1b0 0123456789.
+  7c1bc                
+  7c1cc 255.255.255.0
+  7c1dc ClientIPAddr=               
+  7c1fc ServerIPAddr=               
+  7c21c GatewayIPAddr=               
+  7c23c NetMask=               
+  7c254 GET_IP_ADDRESSES
+  7c268 SET_IP_ADDRESSES
+  7c2dc 1234567890.
+  7c2e8 %d.%d.%d.%d
+  7c2f4 0123456789ABCDEF
+  7c308 000000000000
+  7c318 UserHWAddr=000000000000
+  7c340 0123456789ABCDEF
+  7c354 0123456789ABCDEF
+  7c368 GET_ALL_ADAPTERS
+  7c37c IBM PCI Ethernet
+  7c390 IBM ISA Token Ring
+  7c3b8 %23s : %s
+  7c3c4 %23s : %s
+  7c3d0 %23s : %s
+  7c3dc %02X%02X%02X%02X%02X%02X
+  7c3f8 GET_ETHERNET_INFO
+  7c428 %s  : %s
+  7c438 %s : %s
+  7c444 GET_TOKENRING_INFO
+  7c458    %s 
+  7c468 %s : %s
+  7c474 0123456789ABCDEF
+  7c488 %s : %s
+  7c494 0123456789ABCDEF
+  7c4a8 %s : %s
+  7c4b4 0123456789ABCDEF
+  7c4c8 %s : %s
+  7c4d4 0123456789ABCDEF
+  7c4e8 %s : %d
+  7c4f4 0123456789ABCDEF
+  7c508 %s : %dK
+  7c51c 0123456789ABCDEF
+  7c530 %s : %dK
+  7c544 0123456789ABCDEF
+  7c558 %s : %s
+  7c560 Auto Sense
+  7c56c %s : %d Mbps
+  7c57c Auto Sense
+  7c588 %d Mbps
+  7c59c 1234proc.6dg -q dev1  
+  7c5b4 F6  Run Selected Choice 
+  7c5d0 lan*.6xe
+  7c5dc File %s is empty
+  7c5f0 %s -q dev%i
+  7c60c x234scsi.6dg -r int mfg wrap dev1
+  7c640 wrap 
+  7c648 %s -s %s dev%d
+  7c668 wrap 
+  7c670 %s -s %s dev%d
+  7c680   loop %d of %d   
+  7c6a4 wrap 
+  7c6ac %s -r %s dev%d
+  7c6bc  complete: %d loops 
+  7c6d4 stopped: %d of %d 
+  7c6e8 %s -f %s dev%d
+  7c6f8                       
+  7c714 Select this choice if you would like to view the adapter's parameters.
+  7c75c Cette option permet de visualiser les param
+  7c788 tres de la carte.
+  7c79c Mit dieser Auswahl k
+  7c7b1 nnen die Parameter des Adapters angezeigt werden.
+  7c7e4 Selezionare questa voce per visualizzare i parametri dell'adattatore.
+  7c82c Seleccione esta opci
+  7c841 n si desea ver los par
+  7c858 metros del adaptador.
+  7c872 lj alternativet om du vill se adapterparametrarna.
+  7c8a8 View Parameters
+  7c8b8 View Parameters
+  7c8c8 View Parameters
+  7c8d8 View Parameters
+  7c8e8 View Parameters
+  7c8f8 View Parameters
+  7c908 Select this choice if you would like to view the adapter's parameters.
+  7c950 Cette option permet de visualiser les param
+  7c97c tres de la carte.
+  7c990 Mit dieser Auswahl k
+  7c9a5 nnen die Parameter des Adapters angezeigt werden.
+  7c9d8 Selezionare questa voce per visualizzare i parametri dell'adattatore.
+  7ca20 Seleccione esta opci
+  7ca35 n si desea ver los par
+  7ca4c metros del adaptador.
+  7ca66 lj alternativet om du vill se adapterparametrarna.
+  7ca9c Set Default Parameters
+  7cab6 finition des param
+  7cac9 tres par d
+  7cadc Standardparameter festlegen
+  7caf8 Impostare i parametri assunti
+  7cb18 Establecer par
+  7cb27 metros por omisi
+  7cb3f ll in standardparametrar
+  7cb58 Select this choice if you would like to configure the adapter with the default parameters.
+  7cbb4 Cette option permet d'attribuer 
+  7cbd5  la carte les param
+  7cbe9 tres de configuration par d
+  7cc05 faut.
+  7cc0c Mit dieser Auswahl kann der Adapter mit den Standardparametern konfiguriert werden.
+  7cc60 Selezionare questa voce per configurare l'adattatore secondo i parametri assunti.
+  7ccb4 Seleccione esta opci
+  7ccc9 n si desea configurar el adaptador con los par
+  7ccf8 metros por omisi
+  7cd0e lj alternativet om adaptern ska konfigureras med standardparametrarna.
+  7cd58 Hardware Address 
+  7cd6c Adresse mat
+  7cd78 rielle 
+  7cd80 Hardwareadresse 
+  7cd94 Indirizzo hardware
+  7cda8 Direcci
+  7cdb0 n de hardware 
+  7cdc0 Maskinvaruadress 
+  7cdd4 Select this choice to view the adapter's hardware address.
+  7ce10 Cette option permet de visualiser l'adresse mat
+  7ce40 rielle de la carte.
+  7ce54 Mit dieser Auswahl kann die Hardwareadresse des Adapters ausgew
+  7ce94 hlt werden.
+  7cea0 Selezionare questa voce per visualizzare l'indirizzo hardware dell'adattatore.
+  7cef0 Seleccione esta opci
+  7cf05 n para ver la direcci
+  7cf1b n de hardware del adaptador.
+  7cf3a lj alternativet om du vill se adapterns maskinvaruadress.
+  7cf74 Network Speed
+  7cf84 Vitesse du r
+  7cf98 Netzwerkgeschwindigkeit
+  7cfb0 Velocit
+  7cfb8  di rete
+  7cfc4 Velocidad de la red
+  7cfda tverkshastighet
+  7d004 Network Connection Type
+  7d01c Type de connexion r
+  7d038 Netzwerkverbindungsart
+  7d050 Tipo di collegamento della rete
+  7d070 Tipo de conexi
+  7d07f n de la red
+  7d08e tverksanslutningstyp
+  7d0a4 The Network Connection Type is shown.
+  7d0cc Le type de connexion r
+  7d0e3 seau est affich
+  7d0f8 Die Netzwerkverbindungsart wird angezeigt.
+  7d124 Il tipo di collegamento della rete 
+  7d148  stato visualizzato.
+  7d160 Aparece el Tipo de conexi
+  7d17a n de la red.
+  7d18a tverksanslutningstypen visas.
+  7d1a8 Autosense
+  7d1b6 tect. auto.
+  7d1c4 Automatisch erkennen
+  7d1dc Rilevazione automatica
+  7d1f4 Detecci
+  7d1fc n autom
+  7d20c Autosense
+  7d248 Configure IBM Auto 16/4 ISA Token Ring 
+  7d270 In order to be able to read the full text of this information window you must scroll by using the UP/DOWN arrow keys. This choice would be selected to invoke additional configuration files for adapters which may be installed in your system. If for example you would like to configure your ISA Token-Ring adapter, some values you would select would be 0xA20 (Primary) for the I/O address, Interrupt 9, RAM at D0000, RAM Size of 32K(or 16K), ROM at DC000, RIPL disabled, Autosense disabled.  The next time the system is powered up the changes will be in effect. When assigning system resources such as interrupt levels, RAM and ROM locations, I/O addresses and others, care must be taken such that these devices have not been assigned conflicting resources, since conflicting resources may cause unexpected system behavior. If in addition you would like a second ISA Token-Ring adapter you must first remove the other ISA adapters in the system then for the adapter you are configuring  you would select 0xA24 for the I/O address, Interrupt 11, RAM at D8000, RAM Size of 16K, ROM at DE000, RIPL disabled, Autosense disabled. 
+  7d6d4 If Loop Tests is selected above, this number specifies the number of times to run the selected tests.
+  7d73c Loop Count
+  7d748 This selection will cause the tests to be run repetitively.  The tests will loop for the number of times specified by the Loop Count parameter below, or until an error is encountered (if Stop on Error is selected above.
+  7d824 Loop Tests
+  7d830 Stop on Error will stop the tests when an error is encountered.
+  7d870 Stop on Error
+  7d880 This selection will enable the wrap tests.  These tests ask you to install a wrap plug.  If you do not have a wrap plug, do not select this choice.
+  7d914 Run Wrap Tests
+  7d924 This selection will run tests that require your interaction. For example, if this is selected, the video tests will ask you to verify that certain patterns are displayed.
+  7d9d0 Run Interactive Tests
+  7d9e8 0123456789
+  7d9f4 Select Adapter to Configure 
+  7da14 Select this choice to run all configuration files. 
+  7da48 Run all configuration files  
+  7da68 Additional Configuration Files
+  7da88 Loading additional configuration files...
+  7dab4 Successful Completion 
+  7dacc The configuration programs you selected have been run without any errors. Press Enter to continue.
+  7db30 Errors Occurred
+  7db40 The configuration programs you selected have been run. Errors occurred.  Please attempt to run the program again. Press Enter to continue.
+  7dbcc No additional configuration files found.  Insert media containing configuration files and retry the Search for Other Adapters option.  Configuration files are found on the System Management Services diskette and on diskettes packaged with options.  
+  7dcc8 Adapter's Hardware Address 
+  7dce4 Hardware Address 
+  7dcf8 The Adapter's Hardware Address is shown, please make a note of it. 
+  7dd3c In order to look at the adapter's Hardware Address, the architecture assignment must be in Shared Memory mode. 
+  7ddac User Selectable Hardware Address 
+  7ddd0 Hardware Address 
+  7dde4 Enter the hardware address  you would like the communication software to use. The value you enter will be used in place of the value found in the adapter. 
+  7de80 Invalid Hardware Address 
+  7de9c The User Selectable Hardware Address must be twelve characters long and may only include 0123456789ABCDEF .
+  7df08 User Hardware Address Set 
+  7df24 The User Selectable Hardware Address has been set... 
+  7df5c Making Changes Effective 
+  7df78 If changes were made those changes will now become effective. 
+  7dfb8 Recording Information
+  7dfd0 The selection has been recorded. 
+  7dff4 The selection can not be recorded because an error has been occurred. 
+  7e03c The selection can not be recorded because an adapter has been found at this port or an error has been detected. 
+  7e0b0 Select Interrupt Assignment 
+  7e0d0 Disabled 
+  7e0dc IRQ 9 
+  7e0e4 IRQ 3 
+  7e0ec IRQ 4 
+  7e0f4 IRQ 5 
+  7e0fc IRQ 7 
+  7e104 IRQ 10 
+  7e10c IRQ 11 
+  7e114 Invalid Setting 
+  7e128 Select your choice for Interrupt Assignment. If the adapter was found at an invalid setting that would be displayed at this time. Select your choice as something other than Invalid Setting. When selecting a choice for the Interrupt Assignment other adapters that you may want to install in your system should be kept in mind such that only one adapter is set to a particular Interrupt Assignment. 
+  7e2b8 View Interrupt Assignment 
+  7e2d4 The Interrupt Assignment is shown. 
+  7e2f8 Select I/O Port Assignment 
+  7e314 0x300 
+  7e31c Software 
+  7e328 0x240 
+  7e330 0x280 
+  7e338 0x2C0 
+  7e340 0x320 
+  7e348 0x340 
+  7e350 0x360 
+  7e358 Invalid Setting 
+  7e36c Select your choice for I/O Port Assignment. If the adapter was found at an invalid setting that would be displayed at this time. Select your choice as something other than Invalid Setting. When selecting a choice for the I/O Port Assignment other adapters that you may want to install in your system should be kept in mind such that only one adapter is set to a particular I/O Port. 
+  7e4ec View I/O Port Assignment 
+  7e508 The I/O Port Assignment is shown. 
+  7e52c  Architecture Assignment 
+  7e548 Shared Memory 
+  7e558 I/O Port 
+  7e564 In order to boot from the network the architecture assignment must be set to Shared Memory. 
+  7e5c4 After you press ENTER indicating you have read this message you can either press ESC or ENTER.  Pressing ESC leaves the architecture assignment unchanged, pressing ENTER will set the architecture assignment to Shared Memory if not already selected. Shared Memory is the  default setting and required in order to be able to boot from the network. 
+  7e720 There is an error occurred while attempting to change the adapter's architecture.  No change was made. 
+  7e788 You have selected to change to IO Port architecture.  This architecture will not allow you to boot the machine using this Ethernet adapter.  You must change the architecture to Shared Memory in order to boot from this adapter. 
+  7e86c Select Shared Memory Assignment 
+  7e890 0xC0000 
+  7e89c 0xC4000 
+  7e8a8 0xC8000 
+  7e8b4 0xCC000 
+  7e8c0 0xD0000 
+  7e8cc 0xD4000 
+  7e8d8 0xD8000 
+  7e8e4 0xDC000 
+  7e8f0 Select your choice for Shared Memory Assignment.
+  7e924 Select Physical Connection Assignment 
+  7e94c TPI   10BaseT  CSL 
+  7e960 Thin  Ethernet 10Base2 BNC 
+  7e97c Thick Ethernet 10Base5 AUI 
+  7e998 TPI   RSL 
+  7e9a4 Auto Select
+  7e9b0 TPI CSL
+  7e9b8 Coaxial
+  7e9c4 TPI RSL
+  7e9cc Select your choice for Physical Connection Assignment. 
+  7ea04 View Physical Connection Assignment 
+  7ea2c The Physical Connection Assignment is shown. 
+  7ea5c Adapter Parameters 
+  7ea70 Hardware Address 
+  7ea84 Select this choice to view the adapter's hardware address.
+  7eac0 User Selectable Hardware Address 
+  7eae4 Select this choice to view or set the adapter's user selectable hardware address.
+  7eb38 Interrupt Assignment 
+  7eb50 Select this choice to view or set the adapter's interrupt assignment. 
+  7eb98 I/O Port Assignment 
+  7ebb0 Select this choice to view or set the adapter's I/O port assignment. 
+  7ebf8 Select this choice to view the adapter's I/O port assignment. 
+  7ec38 Adapter Architecture 
+  7ec50 Select this choice to view the adapter's architecture, either I/O or shared memory. 
+  7eca8 Shared RAM Address 
+  7ecbc Select this choice to view the adapter's shared memory address. 
+  7ed00 Connection Type 
+  7ed14 Select this choice to view or set the adapter's connection type. 
+  7ed58 Select this choice to view the adapter's connection type. 
+  7ed94 Hardware Address 
+  7eda8 Select this choice to view the adapter's hardware address.
+  7ede4 Shared RAM Address 
+  7edf8 Select this choice to view the adapter's shared memory address. 
+  7ee3c Interrupt Setting 
+  7ee50 Select this choice to view the adapter's interrupt setting. 
+  7ee90 I/O Port Address 
+  7eea4 Select this choice to view the adapter's I/O Port address. 
+  7eee0 ROM Address 
+  7eef0 Select this choice to view the adapter's ROM address. 
+  7ef28 Shared RAM Size 
+  7ef3c Select this choice to view the adapter's Shared RAM Size. 
+  7ef78 ROM Size 
+  7ef84 Select this choice to view the adapter's  ROM Size. 
+  7efbc Defaults or Manual Configuration 
+  7efe0 Configuration 
+  7eff0 Configuration 
+  7f000 Set Default Parameters 
+  7f018 Select this choice if you would like to configure the adapter with the default parameters.
+  7f074 View or Set Parameters 
+  7f08c Select this choice if you would like to view or manually configure the adapter's parameters.
+  7f0ec View Parameters 
+  7f100 Select this choice if you would like to view the adapter's parameters.
+  7f148 Set Default Parameters 
+  7f160 Select this choice if you would like to configure the adapter with the default parameters.
+  7f1bc View Parameters 
+  7f1d0 View Parameters 
+  7f1e4 View or Set Parameters 
+  7f1fc Select this choice if you would like to view or manually configure the adapter's parameters.
+  7f25c Select this choice if you would like to view the adapter's parameters.
+  7f2a4 Select this choice if you would like to view the adapter's parameters.
+  7f2ec  Adapter Parameters 
+  7f304 Select this choice to view or set the ethernet adapter parameters.
+  7f348 Select this choice to view the ethernet adapter parameters.
+  7f384 Select this choice to view the token-ring adapter parameters.
+  7f3c4 Select this choice to view or set the token-ring adapter parameters.
+  7f40c Network Parameters 
+  7f420 1. IP Parameters 
+  7f434 Select this choice to view or set the IP parameters.
+  7f46c 2. Adapter Parameters 
+  7f484 Select this choice to view or set adapter parameters.
+  7f4bc 3. Ping 
+  7f4c8 Select this choice to PING a server. It is used mostly for debugging purposes.
+  7f518 Network IP Parameters 
+  7f530 Client IP Address 
+  7f544 This Client's IP Address is shown. If you would like to enter a value make sure the format is similar to 112.111.2.34 .
+  7f5bc Invalid Client IP Address
+  7f5d8 The Client's IP Address you entered is not valid. If you would like to enter a value make sure the format is similar to 112.111.2.34 .
+  7f660 Server IP Address 
+  7f674 The Server's IP Address is shown. If you would like to enter a value make sure the format is similar to 112.111.2.34 . Note: In a local network the value entered for the Gateway's IP Address must be the same as the value entered for the Server's IP Address. 
+  7f778 Invalid Server IP Address
+  7f794 The Server's IP Address you entered is not valid. If you would like to enter a value make sure the format is similar to 112.111.2.34 .
+  7f81c Gateway IP Address 
+  7f830 The Gateway's IP Address is shown. If you would like to enter a value make sure the format is similar to 112.111.2.34 . Note: In a local network the value entered for the Gateway's IP Address must be the same as the value entered for the Server's IP Address. 
+  7f934 Invalid Gateway IP Address
+  7f950 The Gateway's IP Address you entered is not valid. If you would like to enter a value make sure the format is similar to 112.111.2.34 .
+  7f9d8 Subnet Mask 
+  7f9e8 Field to contain the Subnet Mask. If you would like to enter a value make sure the format is similar to 255.255.255.0 .
+  7fa60 Invalid Subnet Mask 
+  7fa78 The Subnet Mask you entered is not valid. If you would like to enter a value make sure the format is similar to 255.255.255.0 .
+  7faf8 Network IP Parameters Set
+  7fb14 The Network IP Parameters have been set...
+  7fb40 Problem accessing non-volatile storage. 
+  7fb6c Access Problem 
+  7fb7c Invalid Shared RAM 
+  7fb90 The value you have entered for a shared RAM value is incorrect, please enter one of the following: 0E0000, 0C0000, 0D0000 
+  7fc0c Shared RAM 
+  7fc18 The current value for the adapter's shared RAM is shown. 
+  7fc54 Adapter's Shared RAM 
+  7fc6c Adapter detected in I/O Mode 
+  7fc8c Adapter was detected in I/O Port Mode, it is now being configured to Shared RAM as required by Remote Initial Program Load sequence.
+  7fd14 F2=Permanently Save Choices
+  7fd38 Information has been saved 
+  7fd54 The information has been saved in non-volatile storage. 
+  7fd90 Adapter Not Found 
+  7fda4 The adapter you requested has not been found. 
+  7fdd4 11. Remote Initial Program Load Setup 
+  7fdfc Select this choice to view or set some of the necessary parameters  to enable Remote Initial Program Load (RIPL) through a network such as Ethernet or Token-Ring.  Please also refer to your operating system documentation. 
+  7fedc Configuration Difficulty 
+  7fef8 Adapter configuration difficulty. 
+  7ff1c Can not set the I/O port or the Interrupt value.  Please making sure the setting are different from other adapter.
+  7ff90 Select Ring Speed 
+  7ffa4  4-Mbps 
+  7ffb0 16-Mbps 
+  7ffbc Select your choice for Ring Speed Assignment.
+  7ffec Ring Speed Setting 
+  80000 Current Setting for Ring Speed is shown.
+  8002c Select Shared RAM Size 
+  80044  8-KBytes 
+  80050 16-KBytes 
+  8005c 32-KBytes 
+  80068 64-KBytes 
+  80074 Select your choice for Shared RAM Aperture Size.
+  800a8 Ring Speed 
+  800b4 Ring Speed 
+  800c0 Select this choice to view the adapter's ring speed setting. 
+  80100 Select this choice to view or set the adapter's ring speed setting. 
+  80148 Shared RAM Size 
+  8015c Select this choice to view or set the adapter's shared ram size. 
+  801a0 I/O Port Address
+  801b4 Interrupt Setting
+  801c8 ROM Address
+  801d4 Shared RAM Size
+  801e4 ROM Size
+  801f0 Adapter's I/O port address is shown please make a note of it. 
+  80230 Adapter's interrupt setting is shown please make a note of it. 
+  80270 Adapter's ROM address is shown please make a note of it. 
+  802ac Adapter's Shared RAM Size is shown please make a note of it. 
+  802ec Adapter's ROM Size is shown please make a note of it. 
+  80324 Ring Speed
+  80330 Adapter's Ring Speed is shown please make a note of it. 
+  8036c Ring Speed
+  80378 Show/Configure IBM ISA Ethernet
+  80398 Show IBM PCI Ethernet
+  803b0 Show IBM PCI Integrated Ethernet
+  803d4 Show IBM ISA Token Ring
+  803ec Show IBM Auto 16/4 ISA Token Ring
+  80410 Show IBM PCI Token Ring
+  80428 IBM ISA Token Ring
+  8043c IBM Auto 16/4 ISA Token Ring
+  81b44 XXXXXXX 
+  81b5c  PPS Firmware Licensed Materials - Property of IBM (C) Copyright IBM Corp. 1994. All rights reserved. U.S. Government Users Restricted Rights - Use, duplication or disclosure restricted  by GSA ADP Schedule Contract with IBM Corp.
+  81e81 	init_main
+  822bf :|c .N
+  822de ethernet_query8
+  82333 :|c .N
+  82352 ethernet_query_device
+  823b8 |c .|cH
+  825ce ethernet_SetGetInfo
+  8281a ethernet_residN
+  8283e ethernet_init
+  82bb6 valid_port
+  82cbe probe
+  82eda ethernet_open
+  82fd6 ethernet_close
+  8322a ethernet_write
+  83422 ethernet_read
+  83596 remove_buffer
+  8378e overflow_warning
+  837ee initialize
+  83a92 adapter_reset
+  83b86 wait_for_status
+  83c1e enable_16bit_access
+  83cb2 disable_16bit_access
+  83d32 select_device
+  83da2 get_logical_port
+  83ee2 set_default_registers
+  840e6 update_eeprom
+  84152 get_interrupt_level
+  8426e set_interrupt_level
+  84392 set_io_port
+  84436 get_io_addr_bit
+  844fa get_new_io_base
+  846c9 #check_for_adapter_from_printer_port
+  8476e get_physical_hardware_addr
+  848aa initialize_the_control_block
+  84a62 switch_to_memory_mode
+  84b5c IBM Ethernet Driver
+  84b70 IBM ISA Ethernet
+  84b84 UNKNOWN DEVICE DRIVER             
+  84ba8 UNKNOWN ADAPTER                   
+  84bcc IBM0010
+  84bd4 IBM Ethernet Driver
+  84be8 IBM ISA Ethernet
+  84c64 UNKNOWN DEVICE DRIVER             
+  84c88 UNKNOWN DEVICE DRIVER             
+  84cac UNKNOWN DEVICE DRIVER             
+  84cd0 UNKNOWN DEVICE DRIVER             
+  84cf4 UNKNOWN DEVICE DRIVER             
+  84d18 UNKNOWN DEVICE DRIVER             
+  84d3c UNKNOWN DEVICE DRIVER             
+  84d60 UNKNOWN DEVICE DRIVER             
+  84d84 UNKNOWN DEVICE DRIVER             
+  84da8 UNKNOWN DEVICE DRIVER             
+  84dcc UNKNOWN DEVICE DRIVER             
+  84df0 UNKNOWN DEVICE DRIVER             
+  84e14 UNKNOWN DEVICE DRIVER             
+  84e38 UNKNOWN DEVICE DRIVER             
+  84e5c UNKNOWN DEVICE DRIVER             
+  84e80 UNKNOWN DEVICE DRIVER             
+  84ea4 UNKNOWN DEVICE DRIVER             
+  84ec8 UNKNOWN DEVICE DRIVER             
+  84eec UNKNOWN DEVICE DRIVER             
+  84f10 UNKNOWN DEVICE DRIVER             
+  84f34 UNKNOWN DEVICE DRIVER             
+  84f58 UNKNOWN ADAPTER                   
+  84f7c UNKNOWN ADAPTER                   
+  84fa0 UNKNOWN ADAPTER                   
+  84fc4 UNKNOWN ADAPTER                   
+  84fe8 UNKNOWN ADAPTER                   
+  8500c UNKNOWN ADAPTER                   
+  85030 UNKNOWN ADAPTER                   
+  85054 UNKNOWN ADAPTER                   
+  85078 UNKNOWN ADAPTER                   
+  8509c UNKNOWN ADAPTER                   
+  850c0 UNKNOWN ADAPTER                   
+  850e4 UNKNOWN ADAPTER                   
+  85108 UNKNOWN ADAPTER                   
+  8512c UNKNOWN ADAPTER                   
+  85150 UNKNOWN ADAPTER                   
+  85174 UNKNOWN ADAPTER                   
+  85198 UNKNOWN ADAPTER                   
+  851bc UNKNOWN ADAPTER                   
+  851e0 UNKNOWN ADAPTER                   
+  85204 UNKNOWN ADAPTER                   
+  85228 UNKNOWN ADAPTER                   
+  8524c UNKNOWN DEVICE DRIVER             
+  85270 UNKNOWN DEVICE DRIVER             
+  85294 UNKNOWN DEVICE DRIVER             
+  852b8 UNKNOWN DEVICE DRIVER             
+  852dc UNKNOWN DEVICE DRIVER             
+  85300 UNKNOWN DEVICE DRIVER             
+  85324 UNKNOWN DEVICE DRIVER             
+  85348 UNKNOWN DEVICE DRIVER             
+  8536c UNKNOWN DEVICE DRIVER             
+  85390 UNKNOWN DEVICE DRIVER             
+  853b4 UNKNOWN DEVICE DRIVER             
+  853d8 UNKNOWN DEVICE DRIVER             
+  853fc UNKNOWN DEVICE DRIVER             
+  85420 UNKNOWN DEVICE DRIVER             
+  85444 UNKNOWN DEVICE DRIVER             
+  85468 UNKNOWN DEVICE DRIVER             
+  8548c UNKNOWN DEVICE DRIVER             
+  854b0 UNKNOWN DEVICE DRIVER             
+  854d4 UNKNOWN DEVICE DRIVER             
+  854f8 UNKNOWN DEVICE DRIVER             
+  8551c UNKNOWN DEVICE DRIVER             
+  85540 UNKNOWN ADAPTER                   
+  85564 UNKNOWN ADAPTER                   
+  85588 UNKNOWN ADAPTER                   
+  855ac UNKNOWN ADAPTER                   
+  855d0 UNKNOWN ADAPTER                   
+  855f4 UNKNOWN ADAPTER                   
+  85618 UNKNOWN ADAPTER                   
+  8563c UNKNOWN ADAPTER                   
+  85660 UNKNOWN ADAPTER                   
+  85684 UNKNOWN ADAPTER                   
+  856a8 UNKNOWN ADAPTER                   
+  856cc UNKNOWN ADAPTER                   
+  856f0 UNKNOWN ADAPTER                   
+  85714 UNKNOWN ADAPTER                   
+  85738 UNKNOWN ADAPTER                   
+  8575c UNKNOWN ADAPTER                   
+  85780 UNKNOWN ADAPTER                   
+  857a4 UNKNOWN ADAPTER                   
+  857c8 UNKNOWN ADAPTER                   
+  857ec UNKNOWN ADAPTER                   
+  85810 UNKNOWN ADAPTER                   
+  85b44 XXXXXXX 
+  85b5c  PPS Firmware Licensed Materials - Property of IBM (C) Copyright IBM Corp. 1994. All rights reserved. U.S. Government Users Restricted Rights - Use, duplication or disclosure restricted  by GSA ADP Schedule Contract with IBM Corp.
+  85e81 	init_main
+  863b7 :|c .N
+  863d6 pci_ethernet_query
+  8645a pci_ethernet_query_device
+  86622 pci_79c970_resid
+  8671a pci_79c970_init
+  868ca pci_79c970_open
+  869de pci_79c970_close
+  86b36 pci_79c970_write
+  86bd3 .Q%F>
+  86c76 pci_79c970_read
+  86e04 |`A T~
+  86fba pci_79c970_set_or_get_info|
+  8711e read_reg32
+  872ae write_reg32
+  87506 probe
+  87552 initialize
+  8760a adapter_soft_reset
+  8777a get_physical_hardware_addr
+  8789e allocate_buffers
+  87a22 setup_desc_rings
+  87b9c |f08d
+  87c9e setup_initialization_block|
+  87d66 start_xmit_receive
+  87e06 return_buffers|
+  87efe setup_adapter_regs
+  8801a wait_for_status
+  88112 out_of_resource
+  8818e select_device
+  88202 get_slot
+  882b6 enabling_burst_mode
+  88358 IBM PCI Integrated Ethernet Driver
+  8837c IBM PCI Integrated Ethernet
+  88398 IBM PCI Ethernet Driver
+  883b0 IBM PCI Ethernet
+  883c4 UNKNOWN DEVICE DRIVER             
+  883e8 UNKNOWN ADAPTER                   
+  8840c IBM0016
+  88415 Danger! PCI ethernet_SetGetInfo(), Shouldn't be here!!
+  8844d eth_ctl_ptr = NULL
+  88461 Press any key....
+  884cc UNKNOWN DEVICE DRIVER             
+  884f0 UNKNOWN DEVICE DRIVER             
+  88514 UNKNOWN DEVICE DRIVER             
+  88538 UNKNOWN DEVICE DRIVER             
+  8855c UNKNOWN DEVICE DRIVER             
+  88580 UNKNOWN DEVICE DRIVER             
+  885a4 UNKNOWN DEVICE DRIVER             
+  885c8 UNKNOWN DEVICE DRIVER             
+  885ec UNKNOWN DEVICE DRIVER             
+  88610 UNKNOWN DEVICE DRIVER             
+  88634 UNKNOWN DEVICE DRIVER             
+  88658 UNKNOWN DEVICE DRIVER             
+  8867c UNKNOWN DEVICE DRIVER             
+  886a0 UNKNOWN DEVICE DRIVER             
+  886c4 UNKNOWN DEVICE DRIVER             
+  886e8 UNKNOWN DEVICE DRIVER             
+  8870c UNKNOWN DEVICE DRIVER             
+  88730 UNKNOWN DEVICE DRIVER             
+  88754 UNKNOWN DEVICE DRIVER             
+  88778 UNKNOWN DEVICE DRIVER             
+  8879c UNKNOWN DEVICE DRIVER             
+  887c0 UNKNOWN ADAPTER                   
+  887e4 UNKNOWN ADAPTER                   
+  88808 UNKNOWN ADAPTER                   
+  8882c UNKNOWN ADAPTER                   
+  88850 UNKNOWN ADAPTER                   
+  88874 UNKNOWN ADAPTER                   
+  88898 UNKNOWN ADAPTER                   
+  888bc UNKNOWN ADAPTER                   
+  888e0 UNKNOWN ADAPTER                   
+  88904 UNKNOWN ADAPTER                   
+  88928 UNKNOWN ADAPTER                   
+  8894c UNKNOWN ADAPTER                   
+  88970 UNKNOWN ADAPTER                   
+  88994 UNKNOWN ADAPTER                   
+  889b8 UNKNOWN ADAPTER                   
+  889dc UNKNOWN ADAPTER                   
+  88a00 UNKNOWN ADAPTER                   
+  88a24 UNKNOWN ADAPTER                   
+  88a48 UNKNOWN ADAPTER                   
+  88a6c UNKNOWN ADAPTER                   
+  88a90 UNKNOWN ADAPTER                   
+  88ab4 UNKNOWN DEVICE DRIVER             
+  88ad8 UNKNOWN DEVICE DRIVER             
+  88afc UNKNOWN DEVICE DRIVER             
+  88b20 UNKNOWN DEVICE DRIVER             
+  88b44 UNKNOWN DEVICE DRIVER             
+  88b68 UNKNOWN DEVICE DRIVER             
+  88b8c UNKNOWN DEVICE DRIVER             
+  88bb0 UNKNOWN DEVICE DRIVER             
+  88bd4 UNKNOWN DEVICE DRIVER             
+  88bf8 UNKNOWN DEVICE DRIVER             
+  88c1c UNKNOWN DEVICE DRIVER             
+  88c40 UNKNOWN DEVICE DRIVER             
+  88c64 UNKNOWN DEVICE DRIVER             
+  88c88 UNKNOWN DEVICE DRIVER             
+  88cac UNKNOWN DEVICE DRIVER             
+  88cd0 UNKNOWN DEVICE DRIVER             
+  88cf4 UNKNOWN DEVICE DRIVER             
+  88d18 UNKNOWN DEVICE DRIVER             
+  88d3c UNKNOWN DEVICE DRIVER             
+  88d60 UNKNOWN DEVICE DRIVER             
+  88d84 UNKNOWN DEVICE DRIVER             
+  88da8 UNKNOWN ADAPTER                   
+  88dcc UNKNOWN ADAPTER                   
+  88df0 UNKNOWN ADAPTER                   
+  88e14 UNKNOWN ADAPTER                   
+  88e38 UNKNOWN ADAPTER                   
+  88e5c UNKNOWN ADAPTER                   
+  88e80 UNKNOWN ADAPTER                   
+  88ea4 UNKNOWN ADAPTER                   
+  88ec8 UNKNOWN ADAPTER                   
+  88eec UNKNOWN ADAPTER                   
+  88f10 UNKNOWN ADAPTER                   
+  88f34 UNKNOWN ADAPTER                   
+  88f58 UNKNOWN ADAPTER                   
+  88f7c UNKNOWN ADAPTER                   
+  88fa0 UNKNOWN ADAPTER                   
+  88fc4 UNKNOWN ADAPTER                   
+  88fe8 UNKNOWN ADAPTER                   
+  8900c UNKNOWN ADAPTER                   
+  89030 UNKNOWN ADAPTER                   
+  89054 UNKNOWN ADAPTER                   
+  89078 UNKNOWN ADAPTER                   
+  89544 XXXXXXX 
+  8955c  PPS Firmware Licensed Materials - Property of IBM (C) Copyright IBM Corp. 1994. All rights reserved. U.S. Government Users Restricted Rights - Use, duplication or disclosure restricted  by GSA ADP Schedule Contract with IBM Corp.
+  89881 	init_main
+  89c92 tr_query
+  89d0e tr_query_device
+  89ef6 tr_SetGetInfo
+  8a18a tr_resid
+  8a1c4 Td[dd
+  8a224 UJ 6Qj
+  8a416 tr_init
+  8a722 tr_probe
+  8a8fe trreset
+  8ab86 tr_open
+  8ac52 trproc_open
+  8ad2d 	tropensap
+  8afc6 tr_write
+  8b0ce trsend
+  8b2ae tr_read
+  8b3de trrint|
+  8b41a tr_close
+  8b4cf :|c0.|c8
+  8b6c2 trmisc_check
+  8b7fa trbcopy
+  8b852 bzero
+  8b87e TR_MM_OUTW
+  8b8b1 	TR_MM_INW
+  8b91e select_device
+  8b972 get_logical_port
+  8bac2 +hDanger! In tr_SetGetInfo() -> Funct=%d, Shouldn't be here!!
+  8bb04 PNP80CC
+  8bb0c PICO6110990 
+  8bb1c DEEP : return press key 
+  8bb38 tr%d: Invalid command in ASB =%x
+  8bb5c tr%d: SSB error, invalid command =%x
+  8bbdc IBM Token Ring Driver
+  8bbf4 IBM Token Ring Driver
+  8bc0c IBM Token Ring Driver
+  8bc24 IBM Token Ring Driver
+  8bc3c IBM Token Ring Driver
+  8bc54 IBM Token Ring Driver
+  8bc6c IBM Token Ring Driver
+  8bc84 IBM Token Ring Driver
+  8bc9c IBM Token Ring Driver
+  8bcb4 IBM Token Ring Driver
+  8bccc IBM Token Ring Driver
+  8bce4 IBM Token Ring Driver
+  8bcfc IBM Token Ring Driver
+  8bd14 IBM Token Ring Driver
+  8bd2c IBM Token Ring Driver
+  8bd44 IBM Token Ring Driver
+  8bd5c IBM Token Ring Driver
+  8bd74 IBM Token Ring Driver
+  8bd8c IBM Token Ring Driver
+  8bda4 IBM Token Ring Driver
+  8bdbc IBM Token Ring Driver
+  8bdd4 IBM ISA Token Ring
+  8bde8 IBM ISA Token Ring
+  8bdfc IBM ISA Token Ring
+  8be10 IBM ISA Token Ring
+  8be24 IBM ISA Token Ring
+  8be38 IBM ISA Token Ring
+  8be4c IBM ISA Token Ring
+  8be60 IBM ISA Token Ring
+  8be74 IBM ISA Token Ring
+  8be88 IBM ISA Token Ring
+  8be9c IBM ISA Token Ring
+  8beb0 IBM ISA Token Ring
+  8bec4 IBM ISA Token Ring
+  8bed8 IBM ISA Token Ring
+  8beec IBM ISA Token Ring
+  8bf00 IBM ISA Token Ring
+  8bf14 IBM ISA Token Ring
+  8bf28 IBM ISA Token Ring
+  8bf3c IBM ISA Token Ring
+  8bf50 IBM ISA Token Ring
+  8bf64 IBM ISA Token Ring
+  8bf78 IBM Auto 16/4 ISA Token Ring
+  8c544 XXXXXXX 
+  8c55c  PPS Firmware Licensed Materials - Property of IBM (C) Copyright IBM Corp. 1994. All rights reserved. U.S. Government Users Restricted Rights - Use, duplication or disclosure restricted  by GSA ADP Schedule Contract with IBM Corp.
+  8c881 	init_main
+  8cdee trpci_init
+  8ce4a trpci_query
+  8ceaa trpci_query_device|
+  8d0fe trpci_SetGetInfo
+  8d402 trpci_open
+  8d64e trpci_write
+  8d69b <W` 6|c
+  8d6d4 Wy 6@
+  8d80e trpci_read
+  8da5e trpci_close
+  8dbea trpci_resid
+  8dca6 get_physical_hardware_addr
+  8dd3e find_pci_adapter
+  8ddda trpci_enable_adapt
+  8de72 trpci_disable_adapt
+  8df62 trpci_soft_reset_adapt
+  8e2c2 trpci_run_diag
+  8e35a trpci_get_memory
+  8e416 trpci_setup_memory
+  8e57e lap_access
+  8e6da trpci_proc_open
+  8e74a  6|e .K
+  8e84e trpci_init_resc
+  8e936 trpci_init_chan
+  8ecc6 trpci_intr_check
+  8ed32 trpci_get_slot
+  8edba )XIBM PCI Token Ring Driver
+  8edd8 Pilote de r
+  8ede4 seau en anneau 
+  8edf4  jeton PCI IBM
+  8ee04 IBM PCI Token Ring Treiber
+  8ee20 Programma di controllo Token Ring PCI IBM
+  8ee4c Controlador de Red en Anillo IBM PCI
+  8ee74 Drivrutin f
+  8ee80 r IBM PCI Token Ring
+  8ee98 IBM PCI Token Ring Adapter
+  8eeb4 Carte anneau 
+  8eec2  jeton PCI 
+  8eed0 IBM PCI Token Ring Adapter
+  8eeec Adattatore Token Ring PCI IBM
+  8ef0c Adaptador de Red en Anillo IBM PCI
+  8ef30 IBM PCI Token Ring Adapter
+  8ef88 PNP8327
+  8f544 XXXXXXX 
+  8f55c  PPS Firmware Licensed Materials - Property of IBM (C) Copyright IBM Corp. 1994. All rights reserved. U.S. Government Users Restricted Rights - Use, duplication or disclosure restricted  by GSA ADP Schedule Contract with IBM Corp.
+  8f881 	init_main
+  8fbca tcpip_query
+  8fbfe tcpip_query_device
+  8fc86 tcpip_init
+  90666 ripl_tcpip0
+  9069f `}k8.}k@
+  9073e tcpip_get_info
+  90876 go_tftp
+  90a5a net_config|
+  90b2e register_gateway
+  90bda ifconfig
+  90ce6 bootp
+  90e52 tftp_get
+  90f8a tftp_put
+  91019 	tftp_read
+  9109e tftp_write
+  9114e rand_valueT
+  911e2 ipcsum,
+  9124a compare_HW_address
+  9129b 8|d$0T
+  91335 	inet_ntoa
+  914e5 	inet_aton
+  9153a read_rtc
+  91b2a do_bootp
+  91c89 	udp_write
+  91e52 udp_read
+  91fc4 }KX8B
+  9220a ip_write
+  92a02 ip_read
+  92d12 net_error_handler
+  930ae net_read
+  93206 resolve_host_addr
+  938ca do_arp|
+  93c76 answer_arp|
+  93d0a get_HW_address|
+  93e1e icmp_write|
+  93f31 	icmp_read
+  94052 check_redirect|
+  94198 MJRB3/
+  946f1 	tftp_recv
+  947c6 end_tftp_recv
+  94efd 	tftp_xmit
+  94fac GatewayIPAddr
+  94fbc ServerIPAddr
+  94fcc ClientIPAddr
+  94fdc NetMask
+  94fe4 boot-file=
+  95000 %s/%s/netdgs.img
+  95014 /tftpboot/sms
+  95034 %s/%s/netdgs.img
+  95048 /tftpboot/sms
+  95058 GatewayIPAddr=
+  95068 ServerIPAddr=
+  95078 ClientIPAddr=
+  95088 NetMask=
+  95094 boot-file=
+  950a0 Danger!! Unknown funct %d in tcpip_get_info()
+  950d4 IBM TCP/IP Network Driver
+  950f0 IBM Personal Aix
+  95130 255.255.255.255
+  95140 BOOTP:  S=%d   R=%d
+  95154 BOOTP:  S=%3d   R=%3d
+  9516c 255.255.255.255
+  9517c TFTP:  S=%d R=%d
+  96f44 XXXXXXX 
+  96f5c  PPS Firmware Licensed Materials - Property of IBM (C) Copyright IBM Corp. 1994. All rights reserved. U.S. Government Users Restricted Rights - Use, duplication or disclosure restricted  by GSA ADP Schedule Contract with IBM Corp.
+  97281 	init_main
+  9770a scsi_devio
+  97db3 :|e0.K
+  97de0 |m(.8
+  97e04 |t(.8
+  97e24 |y(.8
+  97e4c |z(.8
+  97e8b :|e0.K
+  97eac |m0.K
+  97ecc |t0.K
+  97eec |y0.K
+  97f0c |z0.K
+  981bf :|e0.K
+  981e3 :|e0.K
+  98220 |m(.8
+  9824c |t(.8
+  9826c |y(.8
+  9829c |z(.8
+  9840a (@Nd#
+  984ac |f(.K
+  9869d 	scsi_init
+  9875a Close_up_shop
+  98872 maybe_open,
+  98922 device_num_valid_check
+  992fe scsi_io
+  993a2 scsi_tur
+  995ea scsi_start_motor
+  996e2 prep_scsi_device
+  99972 scsi_cap
+  99b1a position_tape
+  99c16 set_tape_block_size
+  99d35 	read_tape
+  99dda get_fru_id
+  99e5e bus_reset_cleanup
+  99faa wide_bus_check
+  9a08c |h8.8
+  9a539 	log_error
+  9a54b >TcB.|c
+  9a5c5 	swap_word
+  9a61d 	hf_led_on
+  9a676 hf_led_off
+  9a76a get_ge_variable
+  9aa52 controller_id
+  9aa7e sys_mem_address
+  9aafe scsigetplanarid
+  9ab5e get_ddid
+  9adb2 scsi_mem_dump
+  9b50e scsi_cmd
+  9b586 xlat_sense
+  9ba0e ncr_cmd
+  9bc42 find_scsi_card
+  9bdfe ncr_adapter_open
+  9c0ff :|x!.|
+  9c12b :|z!.A
+  9c157 :|x!.|
+  9c183 :|z!.A
+  9c1bb &}(Cx}
+  9c26e ncr_fun_setup
+  9c8cb :|p!.A
+  9ccbb :|p!.A
+  9cd4b :|p!.A
+  9d15b :|p!.A
+  9d1d3 :|p!.A
+  9d24f :|p!.A
+  9d2b2 ncr_execute
+  9d4ef :|z .K
+  9d51f :|z!.|} .K
+  9d55b :|}!.A
+  9d5d2 ncr_cleanup_script
+  9d7fa SCSI_int_hndlr
+  9d8d6 Reset_SCSI_Bus
+  9dc4e ncr_default_setup
+  9dd5e ncr_soft_reset|
+  9ddd7 :}* .}#H
+  9dde0 }*!.B
+  9df0a get_script_and_patch
+  9e10e controller_diags
+  9e283 :|}A.A
+  9e2b3 :|}A.A
+  9e39a mem_test
+  9e58c IBM SCSI
+  9e59c NCR 53C810
+  9e5b0 fw-scsicfg
+  9e5c4 /pci@80000000/pci1000,%x@%x,%x:%x;
+  9e5ec /pci@80000000/pci1000,
+  9e608 %x@%x,%x:%x,%x,%x,%x,%x,%x,%x,%x;
+  9e664 %%%ds
+  9e66d Buffer at %p
+  9e67c address   0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F
+  9e6cd %08X 
+  9e6d4 %02X 
+  9e6dc %%%ds
+  9e700 fw-scsicfg
+  9e714 /pci@80000000/pci1000,%x@%x,%x:%x;
+  9e73a x /pci@80000000/pci1000,
+  9e756 x<%x@%x,%x:%x,%x,%x,%x,%x,%x,%x,%x;
+  9e8cc IBM     
+  9e8d8 %128s%%s
+  9e8e8 %%%ds
+  9e904 R2/scsi_ctl.c, rosipl_601, rosipl_13000 2/23/93 12:12:27
+  9e942 z(fw-scsicfg
+  9e956 z</pci@80000000/pci1000,%x@%x,%x:%x;
+  9e97e zd/pci@80000000/pci1000,
+  9e99c %x@%x,%x:%x,%x,%x,%x,%x,%x,%x,%x;
+  9ea02 UY`VaWb
+  9ea11 U V!g'W(h)i0
+  9ea1e 1q:eZuU
+  9ea3e {$fw-scsicfg
+  9ea52 {8/pci@80000000/pci1000,%x@%x,%x:%x;
+  9ea7a {`/pci@80000000/pci1000,
+  9ea96 {|%x@%x,%x:%x,%x,%x,%x,%x,%x,%x,%x;
+  9eb58 53C810
+  9eb60 53C825
+  9eb68 8100  
+  9eb70 8251s 
+  9f02c Checking 
+  9f038 Ctrlr %d, 
+  9f044 Bus %d, 
+  9f050 ID %d
+  9f058 , LUN %d
+  9f07c Printer
+  9f084 Processor
+  9f098 CD-ROM
+  9f0a0 Scanner
+  9f0a8 R/W Optical
+  9f0b4 Changer
+  9f0bc Communications
+  9f0cc Unknown device type
+  9f0e0 Vendor specific type
+  9f0f8 (product information not available)
+  9f120 SCSI Initialization error
+  9f13c Insufficient memory to initialize SCSI subsystem.
+  9f170 Unable to access SCSI Bus.
+  9f18c SCSI Bus terminator power not driven by the computer.
+  9f1c4 Device detected at controller's ID.
+  9f1e8 Controller interface error.
+  9f204 Cntlr %d
+  9f210 SCSI Bus %d
+  9f220       ID %X
+  9f230  SCSI ID %X
+  9f240      LUN %d
+  9f250 FRU code %c
+  9f2bc Select one:
+  9f2c8 Enter
+  9f2d0 Press Y(Yes) or N(No).
+  9f2f8 Esc=Quit
+  9f304 F3=Exit
+  9f30c F2=Save
+  9f314 Enter
+  9f31c F1=Help
+  9f324 F5=Previous
+  9f330 F6=Next
+  9f338 F10=Save
+  9f358 F7=Bkwd
+  9f360 F8=Fwd
+  9f37c Use the Spacebar to select one of the following:
+  9f3b0 Use the Spacebar to select from the following:
+  9f3e0 Spacebar=Choose
+  9f3f0 F2=Deselect All
+  9f400 F3=Select All
+  9f448 0123456789
+  9f454 Error
+  9f45c Error Code:
+  9f468 Location: 
+  9f474 Restarting the system...
+  9f490 Insert Media
+  9f4a0 Insert the Systems Management Services diskette or CD-ROM, and then press Enter.
+  9f4f4 Version Error
+  9f504 The level of the System Management Services program invoked does not match the level of the system firmware.  The system firmware is 0x%x.  The System Management Services program is 0x%x.  System firmware should be of higher or ofsame level as the service program.  
+  9f610 System firmware corrupted.  Press Enter to update the system firmware.
+  9f658 The level of System Management Services Program invoked does not match the level of the system firmware.
+  9f6c4 Power Personal System Firmware
+  9f6e4 Version
+  9f6ec built on %c%c%c%c%c%c%c%c at %s%c%s%c%s
+  9f714 (C)Copyright IBM Corporation, 1994.  All rights reserved.
+  9fd44 XXXXXXX 
+  9fd5c  PPS Firmware Licensed Materials - Property of IBM (C) Copyright IBM Corp. 1994. All rights reserved. U.S. Government Users Restricted Rights - Use, duplication or disclosure restricted  by GSA ADP Schedule Contract with IBM Corp.
+  a0081 	init_main
+  a03a2 print_help
+  a03da short_little
+  a0426 long_little
+  a0443 >|gFpT
+  a046b >2gUV:
+  a0542 nearest
+  a1043 p|hFp
+  a12dc BMP bitmap-file-name [.ICO | .BMP] [N] [P] [Xn] [Yn]
+  a1314 The bitmap file name extension may be omitted. When omitted, BMP will
+  a135c search for a bitmap with the extension of .BMP.  If no .BMP file is found,
+  a13a8 BMP will try .ICO. If the extension is supplied, it must be .ICO or .BMP.
+  a13f4 N indicates not to blank (ie white out) the display.
+  a142c P indicates that the BMP's exact palette to be loaded.
+  a1468 X, if specified, is a horizontal adjustment in pels. - is left, + is right.
+  a14b8 Y, if specified, is a vertical adjustment in pels. - is down, + is up.
+  a1500 With no other operands, BMP will draw the bitmap centered on the display.
+  a1554 Unknown parameter to BMP - %s
+  a1580 The file extension of %s is not supported.  Use BMP and ICO only
+  a15d8 Unable to open file - %s
+  a15f4 Internal consistency error locating %s
+  a161c Unable to get memory to load bitmap
+  a1644 Unable to read icon file %s
+  a1664 Unsuported bitmap type type %2.2x,(%c)
+  a168c BMPDSPL only supports single plane bitmaps
+  a16b8 BMPL only supports 4, 8, and 24 bit color bitmaps
+  a16ec BMPDSPL cannot use in storage trick to build BITMAP structure
+  a172c BMP compression format (code %d)not supported
+  a175c BMPDSPL only supports single plane bitmaps
+  a1788 BMPL only supports 4, 8, and 24 bit color bitmaps
+  a17bc BMPDSPL cannot use in storage trick to build BITMAP structure
+  a186b +$U+$
+  a1877 +IU+I
+  a1883 +mU+m
+  a18cb U$UU$
+  a18d7 UIUUI
+  a18e3 UmUUm
+  a1958    )))111999AAAJJJRRRZZZbbbjjjsss{{{
+  a26b7 5           
+  a26e8      
+  a26f1 5         
+  a272b 5     
+  a275c      
+  a2765 5       
+  a279f 5      
+  a280d 5     
+  a2881 5    
+  a28a1       
+  a2a51 5    
+  a2ac5 5    
+  a2aff 5     
+  a2b39 5       
+  a2ba9 5           
+  a2cb5 5             
+  a5415 W      
+  a5471 W      
+  a5521 W       
+  a5535      
+  a5f7e &(&(&('&(&('('
+  a5f9c &('&'
+  a5fb6 '&(&(&)(
+  a5fc6 '&&$'$&$&"'&$'$'
+  a5fda '((&('%(
+  a5fe8 &(&&'
+  a5ff2 $'%&%"
+  a6028 '&"&%
+  a6044 '&$'&$
+  a6068 !"!"!"!
+  a607c %$$&$&'&'&
+  a60a0 %""!"!"!"!"
+  a60bb $%"&$&$'&
+  a60c8 &(((&
+  a60d5 	&(&'&$"%!
+  a60f8 !"!$%$&'&$
+  a6134 "!"%$%'$'
+  a614e &(&'$&
+  a6174 !"#"%&$&'
+  a618e '&&$%"!"
+  a61ba %$$'$&$'&(
+  a61cb L&(&&$'%""!
+  a61f5 "!$"%%&$'&&&&((((&((&((((((((((((((
+  a621d 	&'&$%$!"!
+  a6252 $%%'$'&'&'&(&
+  a6265 L(((&&"$!"
+  a6294 "!""%&$'&'&&'&'(&(&(((((((((((
+  a62b5 L((&$'&%"!!
+  a62e7 !$$%%$&$'&&&&'(&(&(((((((((
+  a6306 &('&%$"%"
+  a633c !""%$&%$'$'$&'&('
+  a6355 	&''$%"!
+  a6386 "!$"%$%
+  a6392 '&'&	(
+  a63a3 	$&%"
+  a63d8 #"$%$&$&$(&
+  a63ea &(&&'&$"$
+  a6426 %$'&'
+  a6433 L((&'&$&%%
+  a6472 !"%%$&&'((((((
+  a6483 L&((&&($'$
+  a64c2 "!"$%'$&('((((
+  a64d4 &(&('
+  a650f !""$&'
+  a651c &(((&('
+  a654e !"#%&$
+  a65cc !"!%&$'
+  a660b ""&$&
+  a663c %$&&'
+  a6708 !$'(&
+  a7944 XXXXXXX 
+  a795c  PPS Firmware Licensed Materials - Property of IBM (C) Copyright IBM Corp. 1994. All rights reserved. U.S. Government Users Restricted Rights - Use, duplication or disclosure restricted  by GSA ADP Schedule Contract with IBM Corp.
+  a7c81 	init_main
+  a950e get_stored_sequence
+  a987a netboot
+  a98ee check_netdgs
+  a9a2e parse_bootpath|
+  a9b26 find_devices_in_drives9
+  a9bd6 update_bseq_with_drives_offsets
+  a9cca of_get_drive_number
+  a9da1 	eagle_fix
+  a9dd4 Press F1 for System Management Programs
+  a9e04 Boot Sequence Selection
+  a9e1c  1. Display Current Settings 
+  a9e3c  2. Restore Default Settings 
+  a9e5c  3. Configure 1st Boot Device 
+  a9e7c  4. Configure 2nd Boot Device 
+  a9e9c  5. Configure 3rd Boot Device 
+  a9ebc  6. Configure 4th Boot Device 
+  a9edc  7. Boot Other Device 
+  a9ef4 Boot Device Selection  
+  a9f0c                        
+  a9f24 None                   
+  a9f3c Diskette Drive    
+  a9f50 SCSI CDROM  Cntlr 
+  a9f64 SCSI Disk   Cntlr 
+  a9f78 IDE  CDROM  Cntlr 
+  a9f8c IDE  Disk   Cntlr 
+  a9fa0 Network Device    
+  a9fb4 1.44MB, 3.5-in. diskette
+  a9fd0 1.2MB, 5.25-in. diskette
+  a9fec 2.88MB, 3.5-in. diskette
+  aa008 Primary 
+  aa014 Secondary 
+  aa020 Default Boot Sequence
+  aa038 Your default boot sequence has been restored. The current settings are: 1.                                  2.                                  3.                                  4.                                  
+  aa114 Current Boot Sequence
+  aa12c Your current boot sequence is:                                          1.                                  2.                                  3.                                  4.                                  
+  aa208 Saving Device
+  aa218 Your current device selection is being saved. 
+  aa248 Booting Device
+  aa258 Please wait...Selected device is booting. 
+  aa284 Device Conflict
+  aa294 A device conflict has been detected and resolved. 
+  aa2c8 Boot Subsystem Failure
+  aa2e0 Boot Subsystem Failure...The System Programs are being loaded. 
+  aa328 Select this choice to set or view the boot devices. 
+  aa368 Select this choice to display the current boot-device settings. 
+  aa3b4 Select this choice to restore the default boot-device settings. 
+  aa400 Select this choice to set or change a particular boot device. For SCSI and IDE devices Ctlr denotes the controller number, immediately following the controller number the device number is shown. For SCSI devices the device number denotes the SCSI ID number. For ISA network cards the ISA I/O Port is shown. 
+  aa53c Select this choice to start from a boot device not in the current boot sequence. 
+  aa598 Select a boot device from the list. For SCSI and IDE devices Ctlr denotes the controller number, immediately following the controller number the device number is shown. For SCSI devices the device number denotes the SCSI ID number. For ISA network cards the ISA I/O Port is shown. 
+  aa6b4 In order to select this device to boot from the network, the architecture assignment must be set to Shared Memory mode.  You can change the architecture assignment from IO to Shared Memory mode via the 'Adapter Parameters' menu.  To get there select the Utilities menu entry and from that point select the Remote Initial Program Load menu entry.   
+  aa814 An error occurred while selecting the device.  Please try again or select another device. 
+  aa874 fwBD=%x %x %x
+  aa884 /pci@80000000/scsi@c,0/disk@
+  aa8a4 Usage : boot <Drive number>
+  aa8c4         Drive number = 0 for A:, 1 for B:, 2 for C: ...
+  aa900 IBM Enhanced Keyboard Driver
+  aa920 mfgdiags.6xe
+  aa930 sel_ipbt
+  aa93c IBM TCP/IP Network Driver
+  aaafc fw-boot-path=
+  aab0c fw-boot-device=
+  aab1c /pci@80000000/pci%x,%x@%x,%x/%s@%x:%x,%x
+  aab4c /pci@80000000/pci%x,%x@%x,%x:%x,%x
+  aab74 /pci@80000000/pci%x,%x@%x,%x/%s@%x:%x
+  aab9c /pci@80000000/pci%x,%x@%x,%x:%x
+  f7f2f 0 1.12test
+  f7f59 """333DDDUUUfffwww
+  f7f8d f3f33f
+  f8258 flash -f
+  f8264 boot 0
+  f8274 eatabug
+  f827c english.6xe
+  f8288 english
+  f8290 WARNING.PIC
+  f829c 00017015
+  f82a8 english
+  f82b0 diags.6xe
+  f82bc diags
+  f82c4 WARNING.PIC
+  f82d0 00017015
+  f82dc diags
+  f82e4 drv_dsk.pic
+  f82f0 frame1.pic
+  f82fc frame2.pic
+  f8308 frame3.pic
+  f8314 frame4.pic
+  f8320 Create file table error
+  f833c PW.PPC
+  f8344 Set files error
+  f8358 smsdsk.pic
+  f8364 smsdsk.pic
+  f8370 smsdsk.pic
+  f837c a:\flash.6xe
+  f838c drv_dsk.pic
+  f8398 smsdsk.pic
+  f83a4 WARNING.PIC
+  f83b0 Loading firmware update program...
+  f89dc IBM Manager Manager ROM V1.00
+  f89fc Out of Memory in manager_level_verify_ver()
+  f8a2e E(@(#)08  1.11.1.3  rom/i8042.c, esw_keyboard, carol100, car.mvt110 1/18/95 12:32:18
+  f8a90 The 8042 controller failed an internal self-test.  Have your computer serviced.
+  f8af8 98321234
+  f8b37 hCMOS Error!!
+  f8b48 Error was detected in CMOS!  Please turn off the computer and then turn it back on.  If you see this error message again, replace your battery!
+  f8bd8 CMOS error was detected due to battery drainage.  Replace your battery! 
+  f8c24 EEPROM Error!!
+  f8c34 EEPROM locked during cold boot!  Have your system board replaced!!  
+  f8c7c Primary Access Switch jumper is not in WRITE ENABLE position.  Power off the computer. Adjust the jumper and try again!
+  f8cf4 Power interruption occured during last Boot Sequence update.  Make sure you update the Boot Sequence again. 
+  f8d64 Security Error!!
+  f8d78 Constant tamper evident was detected!! Computer is stopping!!
+  f8db8 Computer was been tampered with!! 
+  f8ddc EEPROM CRC is bad, but IPL sequence is okay! Be sure you update the Boot Sequence and Privileged-Access password again. 
+  f8e58 System Board
+  f8e68 The NVRAM CRC is invalid. Information in the NVRAM will be lost. 
+  f8ed3 PIBM Enhanced Keyboard Driver
+  f8ef4 F6=Change
+  f8f00 Error in malloc() in prompt_pop_path()
+  f8f28 Error in malloc() in prompt_pop_path()
+  f8f50 Create file table error
+  f8f6c PW.PPC
+  f8f74 Set files error
+  f8f88 poweronl.pic
+  f8f98 Power On
+  f8fa4 text3.pic
+  f8fb0 34218976
+  f8fbc 90674512
+  f8fc8 Supervisory Password Entered
+  f8fe8 Priviledged Access Password Entered
+  f900c Create file table error
+  f9028 PW.PPC
+  f9030 Set files error
+  f9044 poweronl.pic
+  f9054 New Power On
+  f9064 papercut.pic
+  f9074 Verify
+  f907c papercut.pic
+  f908c diags.6xe
+  f9098 english.6xe
+  f90a4 Error in malloc() in prompt_pop_path()
+  f90cc Error in malloc() in prompt_pop_path()
+  f90f4 Create file table error
+  f9110 PW.PPC
+  f9118 Set files error
+  f912c superl.pic
+  f9138 Supervisory
+  f9144 Priviledged Access Password
+  f9160 90674512
+  f916c Supervisory Password Entered
+  f918c Priviledged Access Password Entered
+  f91b0 diags.6xe
+  f91bc english.6xe
+  f91c8 ~:!@#$%^&*()
+  f91d8 `;1234567890
+  f91e8 PW.PPC
+  f91f8 Can not find PW.PPC
+  f9210 SETDIAG.PPC
+  f9224 Can not find SETDIAG.PPC
+  f9240 ffind_first error
+  f9254 malloc error 
+  f9264 current.pic
+  f9270 current.pic
+  f927c key.pic
+  f9284 ;:!@#$%^&*()`
+  f9294 poweronl.pic
+  f92a4 password.pic
+  f92b4 password.pic
+  f92c4 poweronl.pic
+  f92d4 superl.pic
+  f92e0 password.pic
+  f92f0 keyerror.pic
+  f9360 abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789;
+  f93a0 System programs cannot be entered from warm boot!!  Please turn computer off and try again.
+  f93fc Privileged-Access Password Checksum error!! Please replace your EEPROM.
+  f9444 Error was detected in CMOS!! CMOS data is gone! Please replace  battery if you haven't done so.
+  f94a4 Error was detected in CMOS!! Either the computer was tampered with or computer battery was drained.  CMOS data is gone! Please replace battery if you haven't done so.
+  f954c Please enter Power On Password!
+  f956c Information!! Privileged-Access Password was entered.
+  f95a4 Invalid Password!
+  f95b8 Invalid Password!
+  f95cc Maximum number of tries was reached!! Computer is stopping.
+  f9608 Maximum number of tries was reached!! Time and Date are logged! Computer is stopping.
+  f9660 Power On Password wasn't changed!!!
+  f9684 Different Password!
+  f9698 Privileged-Access Password
+  f96b4 Please Enter Privileged-Access Password
+  f96dc Privileged-Access Password must be entered to run the system programs!!
+  f9724 Type your Power-On Password
+  f9740 Power-On Password
+  f9754 Your password must have at least one character. If you want to remove the Power-On password, you must go to the system programs.
+  f97d8 Change Power On-Password
+  f97f4 Verify Power On-Password
+  f9810 Type your new password and then press Enter.                    
+  f9854 Type your new password again, and then press Enter.                    
+  f989c Your Power-On Password has been changed!
+  f98c8 Type your password, and then press Enter.  To change your current password, press <F6> after entering valid Power-On Password. 
+  f9d08 External commands are loaded automatically, similar to DOS command.  The file
+  f9d58 extension must be 6XE, 6XS, 601, or .IMG.  For .IMG files, an eprom image is
+  f9da8 assumed. The file is loaded at location 400000, and control is transferred to
+  f9df8 location 400100. For .601 files, an application is assumed. The file is loaded
+  f9e48 at location 400000, and control is transferred to location 400000.  6XE and 6XS
+  f9e98 are used by the Firmware.  Batch commands end in .6MD.
+  f9ed4 There are a number of internal commands supported.  To obtain help for an
+  f9f20 internal command, type the command name followed by a ?.  The internal commands
+  f9f70 supported are:
+  f9f84   help, date, time, mode, font, fdisk, vdisk
+  f9fb4   dir, copy, erase, cd, mkdir, rmdir,
+  f9fdc   in, out, fill, dump, search, call,
+  fa004   load, read, write, boot, reboot, 
+  fa028   debug, break, monitor, regs, sregs, go, step, pstep, disasm,
+  fa068   rem, echo, goto, sleep
+  fa088 To change the current drive, enter <drive-letter>:
+  fa0c0 The resident monitor attempts to load internal commands first, using the
+  fa10c minimum number of unique characters.  To override this action and force the
+  fa158 loading of an external command, enter path and/or drive information.
+  fa204 Only internal commands are allowed when at a debug stop.  To obtain help for an
+  fa254 internal command, type the command name followed by a ?.  The internal commands
+  fa2a4 supported at the debug prompt are:
+  fa2cc   help,
+  fa2d4   date, time,
+  fa2e4   reboot,
+  fa2f0   in, out, fill, dump, search, call
+  fa314   break, monitor, regs, sregs, go, step, pstep, disasm
+  fa377 Lcall hex-address
+  fa390 Control is transferred to the location specified.
+  fa3d8 font decimal-value
+  fa3f0 Select from various font tables (font 1 or font 2).
+  fa437 $fdisk  [decimal-drive-id]
+  fa458 Create a DOS partition on disk.
+  fa48b xvdisk decimal-size-in-bytes
+  fa4ac Create a VDISK, VDISK 0 eliminates an existing VDISK.
+  fa4f8 regs  [regname new-value]
+  fa518 When no operands are present, the user context registers are displayed.
+  fa564 The regname's supported are the same as the ones displayed.  To modify
+  fa5ac one of the 32 GPR's, just use the reg number (ie. regs 13 5a5a5a5a).
+  fa614 disasm [hex-address [number-of-instructions]]
+  fa648 Disassemble 601 instructions.
+  fa66c When stopped in the debugger, $ is valid for hex-address.  $ is the current
+  fa6b8 instruction pointer. The number-of-instructions field is remembered.  If
+  fa704 no operands, disasm continues from where is left off last time.
+  fa767 Ddate [mm-dd-yyyy]
+  fa780 This command updates the date in the CMOS RTC RAM area.
+  fa7cc dir [drive-letter:][{filename | *} [.{ext | *}] ]
+  fa804 Displays the list of files on the drive specified.
+  fa84b 8dump [hex-address [hex-length] ]
+  fa874 Displays memory.  Press any key to terminate the display.
+  fa8b4 The last address and length are saved for subsequent command use.
+  fa914 load filespec [ {400000 | append | free}]
+  fa944 Loads the specified file into memory.  If 400000 is specified, the
+  fa988 file is loaded into the system reserved buffer at 400000.
+  fa9c8 If append is specified, a new memory block is allocated, the previous
+  faa10 buffer copied over, and then the new file is appended to the previous
+  faa58 file.
+  faa64 If free is specified, the filespec is ignored, and a previously allocated
+  faab0 buffer is freed.
+  faaf8 reboot
+  fab04 Transfers control to the reset vector in high memory 0xfff00100.
+  fab5b Hapart value
+  fab6c  Alters default active partition selection.
+  fab98  Range 1 to 4
+  fabc0 in hex-address
+  fabd4 Performs an I/O read to Dakota I/O Space (0x80000000 is added to the address).
+  fac28 The default is to run an 8 bit cycle.  To run a 16 bit cycle, use:
+  fac70       in16 hex-address 
+  fac8c To run a 32 bit cycle, use:
+  facac       in32 hex-address 
+  facf8 out hex-address hex-data
+  fad18 Performs an I/O write to Dakota I/O Space (0x80000000 is added to the address).
+  fad6c The default is to run an 8 bit cycle.  To run a 16 bit cycle, use:
+  fadb4       out16 hex-address hex-data
+  faddc To run a 32 bit cycle, use:
+  fadfc       out32 hex-address hex-data
+  fae53  exit
+  fae60 Returns to the caller of debug_init
+  fae98 read address drive rba [count]
+  faebc Read data from a diskette or hard file. All parameters are specified in hex.
+  faf0c The count defaults to 1 if not specified.  Drive is specified the same as a
+  faf58 PC (ie. 0=A, 1=B, 0x80=C, 0x81=D..).  Cyl and head are 0 based, and record
+  fafa4 is 1 based.
+  fafd0 read address drive RBA [count]
+  faff4 Read data from a diskette or hard file. All parameters are specified in hex.
+  fb044 The count defaults to 1 if not specified.  Drive is specified the same as a
+  fb090 PC (ie. 0=A, 1=B, 0x80=C, 0x81=D..).  RBA is zero-based.
+  fb0e8 write address drive rba [count]
+  fb10c Write data to a diskette or hard file. All parameters are specified in hex.
+  fb158 The count defaults to 1 if not specified.  Drive is specified the same as a
+  fb1a4 PC (ie. 0=A, 1=B, 0x80=C, 0x81=D..).  Cyl and head are 0 based, and record
+  fb1f0 is 1 based.
+  fb21c fill address length hexdata
+  fb23c Fill memory with the specified hex data byte.
+  fb27f lboot [drive:]
+  fb294 This command invokes the boot procedure passing the drive letter.
+  fb2ec monitor {hex-address | list | off} [{read | write | access}]
+  fb32c                                    [{dt | nodt}]
+  fb364 This command sets a data access breakpoint.  The default is access,
+  fb3a8 which is reading or writing to an address.  The processor stops 
+  fb3ec prior to executing the instruction that references this memory 
+  fb42c location.
+  fb43c dt/nodt is valid for 604 processor only.  604 compares MSR(DT) to
+  fb480 the dt/nodt state in addition to the address.
+  fb4e0 go [nostep]
+  fb4f0 This command resumes execution after a breakpoint.
+  fb528 The normal action of go is to step one instruction, and then resume normal 
+  fb574 instruction execution.  Nostep disables the step out function.
+  fb5e0 This command allows one instruction to execute. All other breakpoints are
+  fb62c disabled during the step.
+  fb65f Hpstep [nostep]
+  fb674 This command sets a breakpoint at the next sequential instruction and
+  fb6bc resumes execution.  The existing breakpoint is NOT saved.  The current
+  fb704 instruction is single stepped over to inhibit any other breakpoint action
+  fb750 on the current instruction.  This command is the equivalent of a break
+  fb798 command, and then a go command.
+  fb7bc The nostep option disables the step out function.
+  fb81c break {hex-address | list | off} [{it | noit}]
+  fb850 This command sets an instruction fetch breakpoint.  The processor stops
+  fb898 before the instruction is executed.  List lists the current breakpoint.
+  fb8e0 Clear removes a breakpoint.
+  fb900 it/noit is valid for 604 processor only.  604 compares MSR(IT) to
+  fb944 the it/noit state in addition to the address.
+  fb99b tsearch address length {xx [xx ... ] | "charstring}
+  fb9d4 Searches memory for the specified pattern.  The patter may be either hex data
+  fba24 bytes or a character string.  Hex data bytes are a series of 1 or 2 hex digits.
+  fba74 Character string data is noted by a " preceding the string.  The " is not 
+  fbac0 part of the search string.  The pattern is limited to 80 bytes in either case.
+  fbb30 mode mode_number [monitor_type]
+  fbb54 This command sets the mode of the display. All modes are Graphics modes,
+  fbba0 except for A, the async port.  The following modes are supported:
+  fbbe8   0 -  640x 480x8        4 -  640x 480x16
+  fbc14   1 - 1024x 768x8        5 - 1024x 768x16
+  fbc40   2 - 1280x1024x8        6 - 1280x1024x16
+  fbc6c   3 - 1600x1200x8        7 - 1600x1200x16
+  fbc98   A - ASYNC Port         8 -  800x 600x 8
+  fbcc8 The monitor type is ignored by Weitek video.  The S3 video attempts to support
+  fbd18 other monitors by reading the monitor ID bits.  However, since all of the new
+  fbd68 monitors indicate that they are 8514's, you can override the monitor ID by
+  fbdb4 specifying a one of these monitor types:
+  fbde4  -1 - Return to using the monitor ID bits
+  fbe10   0 - Monitors capable of 43Hz Interlace
+  fbe3c   1 - Monitors capable of 50Hz Non Interlace
+  fbe6c   2 - Monitors capable of 60Hz Non Interlace
+  fbe9c   3 - Monitors capable of 72Hz Non Interlace
+  fbed0 Values not assigned also switch the active console to the ASYNC port.
+  fbf7c This is a test routine.  Is function will vary, so there is no real help.
+  fbfd4 No help was found for this command.
+  fc004 Clears the display, and resets the current line to the top of the window.
+  fc05b Ptime [hh:mm[:ss]]
+  fc074 This command updates the time in the CMOS RTC RAM area.
+  fc0c0 blocks
+  fc0cc This command draws random blocks, in random colors, on the display.
+  fc12c dc toggles the active debug console.
+  fc167 Ttype filename
+  fc17c type displays a file on the console.  Any key stops typing.
+  fc1cc erase filespec
+  fc1e0 Erases the file.
+  fc208 copy source-filespec target-filespec [/s]
+  fc238 copies the source file(s) to the target directory.  This command operates
+  fc284 similar to the DOS copy command, except that wildcard renaming is not
+  fc2cc supported.
+  fc2dc If /s is specified, all subdirectories are copied.
+  fc334 mkdir new-directory-name
+  fc354 Makes an empty subdirectory.
+  fc387 trmdir directory-name
+  fc3a4 Removes an empty subdirectory
+  fc3d8 cd directory-name
+  fc3f0 Changes the default path to this subdirectory
+  fc433  rename old_filespec new-filespec
+  fc45c Rename a single file
+  fc487 techo {off | on | demo | test-string}
+  fc4b4 Turn cmd file echo off and on, or print a string
+  fc4ec Echo demo turns off the command prompt and the clock display
+  fc52c until the next echo on command.
+  fc56b Lgoto label
+  fc57c Branches to a label in a cmd file
+  fc5b4 sleep seconds[:tenths][hundredths]
+  fc5dc Delays for time specified.  This is useful in batch files.
+  fc618 For example, both sleep 1:5 and sleep 1:50 will delay for
+  fc654 one and a half seconds.
+  fc687 lcmos [...]
+  fc698     [dump filespec]      - dump data area of cmos to file.
+  fc6d4     [load filespec]      - load data area of cmos from file.
+  fc714     [load filespec init] - load data area of cmos from file and generate CRC.
+  fc764     [init]               - set cmos crc to good value.
+  fc79c     []                   - display cmos contents to screen
+  fc7dc      if filespec is not specified, data is read/written to cmos.map.
+  fc84f $nvram [...]
+  fc860     [dump filespec]      - dump data area of nvram to file.
+  fc89c     [load filespec]      - load data area of nvram from file.
+  fc8dc     [load filespec init] - load data area of nvram from file and generate CRC.
+  fc92c     [init]               - set nvram crc to good value.
+  fc968      if filespec is not specified, data is read/written to nvram.map.
+  fc9d8 diags
+  fc9e4 Brings up menus to run diagnostics.
+  fca1c mfgdiags
+  fca2c Runs diagnostics in manufacturing (box test) mode.
+  fca73 `debug <normal command line>
+  fca94 Prefixing a normal command line with "debug" causes a breakpoint to be set
+  fcae0 at the entry of the command being debugged. This only works for external
+  fcb2c commands.
+  fcb3c For example, to set a breakpoint at the beginning of BMP.6XE, enter:
+  fcb88         debug bmp sample.bmp
+  fcbd4 sregs  [regname new-value]
+  fcbf4 When no operands are present, the system level registers are displayed.
+  fcc40 The regname's supported are the same as the ones displayed.
+  fcc97 |hex  hex-string1 hex-string2
+  fccbc Computes the sum and difference between two hex numbers.
+  fcd0c beep  [tone value [time value]]
+  fcd30 Cause a tone to be emitted.  The frequency is determined by the tone_value.
+  fcd7c The length of the tone is determined by the time_value.
+  fcdd4 apart
+  fcde4 blocks
+  fcdec break
+  fce0c chdir
+  fce1c debug
+  fce30 disasm
+  fce4c erase
+  fce5c fdisk
+  fceac mfgdiags
+  fceb8 mkdir
+  fcec8 monitor
+  fced0 nvram
+  fcedc pstep
+  fcef8 reboot
+  fcf00 rename
+  fcf0c rmdir
+  fcf1c search
+  fcf24 sleep
+  fcf2c sregs
+  fcf4c vdisk
+  fcf54 write
+  fcf5c iat_dskt
+  fcf68 iat_mem
+  fcf70 bad_cmd
+  fcf78 Invalid Drive %c, using a:
+  fcfd8 %255s %255s %255s %255s %255s %255s %255s %255s %255s %255s %255s
+  fd028 %8.8x
+  fd034 debug
+  fd03c Command %s not found.
+  fd054 I/O Error loading %s.
+  fd06c File %s not appropriate for loading.
+  fd094 File %s extention not supported.  Only IMG, 6XE, 6XS, and 601 are supported.
+  fd0e4 No memory to load %s.
+  fd0fc Command %s not found.
+  fd114 Error releasing old13 - rc=%d
+  fd134 Error assigning new13 - rc=%d
+  fd154 v:autoexec
+  fd161 [Resident Monitor] %c:%s>
+  fd17c The current value of malloc high water mark is %8.8x
+  fd1b4 The amount of free space below the hwm is .... %8.8x
+  fd1ec dir v:
+  fd1f4 echo This is a test line that is longer than most
+  fd228 %255s
+  fd25c [More]
+  fd274 Unable to step over this instruction
+  fd29c nostep
+  fd2a4 Unable to pstep over this instruction
+  fd2cc nostep
+  fd2e0 Breakpoint enabled at %8.8x
+  fd2fc , when MSR(IT) is on
+  fd314 , when MSR(IT) is off
+  fd330 No Breakpoint enabled
+  fd34c Breakpoint cleared
+  fd364 Bad address %x
+  fd37c Breakpoint set at %8.8x
+  fd394 , when MSR(IT) is on
+  fd3ac , when MSR(IT) is off
+  fd3c8 This great facility is not available on this processor.  Try a 601 or a 604.
+  fd420 No Monitor enabled
+  fd434 Read Monitor enabled at %8.8x
+  fd454 Write Monitor enabled at %8.8x
+  fd474 Access (R/W) Monitor enabled at %8.8x
+  fd49c , when MSR(DT) is on
+  fd4b4 , when MSR(DT) is off
+  fd4d4 Monitor is now off
+  fd4ec Bad address %x
+  fd504 write
+  fd50c access
+  fd514 Invalid monitor type %s
+  fd534 Monitor set at %8.8x
+  fd54c , when MSR(IT) is on
+  fd564 , when MSR(IT) is off
+  fd580 %s %x
+  fd5a4 %d %x
+  fd5ac Invalid register name
+  fd5c4 Invalid register name
+  fd5dc isr = %8.8x, msr = %8.8x,  cr = %8.8x,  xr = %8.8x
+  fd610  mr = %8.8x, ctr = %8.8x,  lr = %8.8x, sprg2=%8.8x
+  fd645 %2.2d-%2d 
+  fd650  %8.8x
+  fd65c %s %x
+  fd6cc Invalid register name
+  fd6e4 sr0 = %8.8x, sr1 = %8.8x, sr2 = %8.8x, sr3 = %8.8x
+  fd718 sr4 = %8.8x, sr5 = %8.8x, sr6 = %8.8x, sr7 = %8.8x
+  fd74c sr8 = %8.8x, sr9 = %8.8x, sr10= %8.8x, sr11= %8.8x
+  fd780 sr12= %8.8x, sr13= %8.8x, sr14= %8.8x, sr15= %8.8x
+  fd7b4 srr0= %8.8x, ssr1= %8.8x, sisr= %8.8x, pid = %8.8x
+  fd7e8 pvr = %8.8x, msr = %8.8x, hid0= %8.8x
+  fd810  hid1= %8.8x
+  fd825 Debugger entered for 
+  fd83c Machine Check
+  fd84c Data Access(dar=%8.8x dsisr=%8.8x)
+  fd870 Instruction Access
+  fd884 Alignment Error(dsisr=%8.8x)
+  fd8a4 Program Interrupt
+  fd8b8 Hot Key
+  fd8c0 Single Step
+  fd8cc Breakpoint
+  fd8d8 Breakpoint
+  fd8e4 Single Step
+  fd8f0 Unknown Reason
+  fd900  at %8.8x, SSR1 = %8.8x
+  fd91c Error 0001000A - ABEND (firmware) 
+  fd945 Trap while in debugger.  This is not good....
+  fd974 Debug >
+  fd97c Unable to continue as trap occurred in debugger
+  fd9b4 $ not valid in this context
+  fd9dc %x %x
+  fd9e8 %s %x
+  fd9f8 %255s
+  fda00 The volume label in drive %c is %s
+  fda24 Volume in drive %c has no label
+  fda54 Directory of %c:
+  fda68 %2d-%02d-%02d %2d:%02d%c 
+  fda84   <DIR>  
+  fdabc       No files found
+  fdad4   %8d file(s)    %8d bytes used
+  fdaf8                     %10d bytes free
+  fdb28 %2.2x
+  fdb3c %8.8x
+  fdb48 %2.2x
+  fdb70 Match at %8.8x
+  fdb84 In command needs address
+  fdba0 %2.2x
+  fdba8 %4.4x
+  fdbb0 %8.8x
+  fdbb8 Bad width %d. Must be 8, 16 or 32
+  fdbdc %x %x
+  fdbe4 Out command needs address and data
+  fdc08 Bad width %d. Must be 8, 16 or 32
+  fdc34 %255s %10s
+  fdc40 append
+  fdc50 %255s %x
+  fdc5c %255s %x
+  fdc68 You must supply a filename to load
+  fdc8c If address specified, it must be the system buffer address %8.8x
+  fdcd0 File %s not found
+  fdce4 File %s is empty
+  fdcf8 There must be a previous buffer to append to. Sorry.
+  fdd30 Cannot append to the system buffer. Sorry.
+  fdd5c File too large for system buffer
+  fdd80 Unable to malloc %d bytes for %s
+  fdda8 Unable to open %s
+  fddbc Read of %s failed. Partial data may be at 0x%8.8x
+  fddf0 File %s appended. New buffer at 0x%8.8x for %d bytes
+  fde28 File %s loaded at 0x%8.8x for %d bytes
+  fde50 Call requires an address.
+  fde70 Bad address %s
+  fde80 Font: parameter required
+  fdea0 Font: Bad parameter <%s>
+  fdebc Current active partition value is %d
+  fdee8 Bad value %s
+  fdef8 Bad value %d
+  fdf1c Fill requires all operands
+  fdf44 Bad width %d. Must be 8, 16 or 32
+  fdf68 %x %x "%[^"]
+  fdf78 %x %x %[^~]
+  fdf84 Search requires all operands
+  fdfa4 %x %[^~]
+  fdfb0 At least addr, drive, and RBA are required.
+  fdff0 Data loaded at %8.8x
+  fe008 Error from diskette (0x%x)
+  fe024 All operands required
+  fe04c Data loaded at %8.8x
+  fe064 Error from diskette (0x%x)
+  fe080 At least addr, drive, and RBA are required.
+  fe0c0 Data written from %8.8x
+  fe0dc Error from device (0x%x)
+  fe123 \Thursday
+  fe130 Friday
+  fe138 Saturday
+  fe144 Sunday
+  fe14c Monday
+  fe154 Tuesday
+  fe15c Wednesday
+  fe168 Current date is: %s %2d-%2.2d-%4.4d
+  fe190 Enter the new date (mm-dd-yyyy) 
+  fe1b4 Bad date format
+  fe1d4 Bad date information 
+  fe1ec Current time is: %2d:%2.2d:%2.2d
+  fe210 Enter the new time (hh:mm[:ss]) 
+  fe240 Bad time format
+  fe254 Invalid drive %c. Using a:
+  fe270 boot %d
+  fe278 The following consoles are available:
+  fe2a0 %c %5d. %s
+  fe2ad Select which console (0 - %d) to be the debug console:
+  fe2e8 %x %d %x
+  fe2f4 %x %d
+  fe304 %255s
+  fe30c You must supply a filename to type
+  fe334 Unable to open %s
+  fe34c %255s
+  fe354 You must supply a filename to erase
+  fe388 Error %d from parse_filename()
+  fe3ac Are you sure you want to erase %c:%s%s.%s ? (y or n)
+  fe3e8 File %s not found
+  fe3fc Error erasing file %s
+  fe418 Source file (%s) not found
+  fe438 Unable to create dest file (%s)
+  fe45c Internal error copying file %s
+  fe47c No storage to copy file into
+  fe49c Error reading last %d(%d) bytes
+  fe4c0 Error writing last %d(%d) bytes
+  fe4e4 Error copying %s
+  fe4f8 Error %d from parse_filename()
+  fe518 Mkdir of %sfailed
+  fe534 Copying %s to %s
+  fe548 Cannot copy a file to itself
+  fe568 %255s %255s %9s
+  fe578 You must supply at least a source filename to copy, rc=%d
+  fe5bc Wild cards are not allowed in the target filespec
+  fe5fc Invalid source file name
+  fe61c Error %d from parse_filename()
+  fe63c ????????
+  fe650 Wild card copy requires an existing target subdirectory
+  fe68c %d file(s) copied
+  fe6a0 %255s
+  fe6a8 You must supply the name of a directory to create
+  fe6dc Mkdir failed
+  fe6ec %255s
+  fe6f4 You must supply the name of a directory to remove
+  fe728 Rmdir failed
+  fe738 %255s
+  fe740 You must supply a directory name
+  fe76c Error %d from parse_filename()
+  fe794 Directory not found
+  fe7ac %255s %255s
+  fe7b8 You must supply both an oldname and a newname
+  fe7e8 Rename failed
+  fe7f8 diags 2
+  fe800 %s%s%s
+  fe810 cmos.map
+  fe820 Couldn't open file %s
+  fe840 cmos.map
+  fe85c %s%s%s
+  fe86c nvram.map
+  fe87c Couldn't open file %s
+  fe89c nvram.map
+  fe8b8 Usage :
+  fe8c4 To creat  VDisk : vdisk <size in bytes>
+  fe8f0 To remove VDisk : vdisk -d <drive name>
+  fe91c                   drive name = v: to z:
+  fe94c To remove VDisk : vdisk -d <drive name>
+  fe978                   drive name = v: to z:
+  fe9a4 Invalid flag : -%s
+  fe9b8 Use -d to remove VDisk
+  fe9d4 VDisk: disk size parm <%s> invalid.
+  fe9fc Invalid VDisk size
+  fea10 FDisk: Disk drive ID required.
+  fea34 FDisk: Disk drive ID <%s> invalid.
+  fea58 %x %x
+  fea60 %8.8x   %8.8x
+  fea70 Two hex values must be entered
+  fea90 %d %d
+  feaa0 No drive
+  feaac 3.5-inch 2M drive
+  feac0 3.5-inch 4M drive
+  fead4 5.25-inch 1.6M drive
+  feaf8 VDisk: Unable to allocate Virtual Disk
+  feb20 FDISK: Unable to allocate buffer space.
+  feb4c FDisk: Disk drive ID <%d> not found.
+  feb74 FDISK: Unable to allocate buffer space.
+  feba0 FDisk: Partition installed on Disk drive ID <%d>.
+  febd4        < Reboot to activate partition >
+  fec08 File is not a valid cmd file
+  fec28 Unable to alloc storage for cmd block
+  fec50 Unable to alloc storage for cmd list
+  fec7c Unable to open %s
+  fec90 Error reading cmd file
+  fecb0 Label %s not found
+  fecc4 You must supply a label to goto
+  fecfc echo is on
+  fed08 echo is off
+  fed18 %d:%c%c
+  fed20 You must specify a delay falue
+  fed53 "AUAAc]A"
+  fedf5 =fffff<
+  fee02 <fff<
+  fee34 I>"c">I
+  fee44 08<><80
+  fee71 ffffffff
+  fee82 ?yyy9					
+  fef83 >kh`>
+  fefa6 8kfff;
+  ff042 >ccckkccc>
+  ff092 ~``|f
+  ff0a3 0``|ffff<
+  ff0c2 <ff$<ffff<
+  ff0d2 <ffff>
+  ff143 3comkko`3
+  ff162 ~ccc~cccc~
+  ff172 >cc````cc>
+  ff182 |fccccccf|
+  ff193 ```~````
+  ff1a3 ```~`````
+  ff1b2 >cc``gccc>
+  ff1c7 ccccc
+  ff1f2 ccflxxlfcc
+  ff202 000000000?
+  ff216 kkcccc
+  ff222 Ccs{ogcccc
+  ff232 >cccccccc>
+  ff242 ~cccc~````
+  ff252 >cccccccc>
+  ff262 ~cccc~lfcc
+  ff272 >ccp8
+  ff292 ccccccccc>
+  ff2a2 cccccc66
+  ff2b2 ccccckkk66
+  ff2d2 ffff<
+  ff362 ```nscccc~
+  ff375 >c```c>
+  ff385 ;gcccc?
+  ff3b5 ?ccccg;
+  ff3c2 ```nsccccc
+  ff3f2 ```flxxlfc
+  ff417 kkkcc
+  ff425 nsccccc
+  ff435 >ccccc>
+  ff445 nscccc~```
+  ff455 ?ccccg;
+  ff465 6;00000
+  ff495 cccccg;
+  ff4a5 cccc6
+  ff4b5 cckkk>6
+  ff4d5 cccccg;
+  ff536 6cAAA
+  ff542 >cc````cc>
+  ff555 cccccg;
+  ff5b5 >c```c>
+  ff644 ```~```
+  ff667 llllo
+  ff675 >ccccc>
+  ff685 >ccccc>
+  ff695 >ccccc>
+  ff6a5 cccccg;
+  ff6b5 cccccg;
+  ff6c5 cccccg;
+  ff6d3 >ccccccc>
+  ff6e3 cccccccc>
+  ff6f5 >cgksc>
+  ff703 600|000;n
+  ff712 >ccgkkscc>
+  ff765 >ccccc>
+  ff775 cccccg;
+  ff785 nsccccc
+  ff793 Ccs{ogccc
+  ff7b1 <fff<
+  ff7c8 0`cc>
+  ff7d3 "YUYU"
+  ff7f1 ``bfl
+  ff801 ```bf
+  ff8c3 "MQQM"
+  ff914 >c``c>
+  ffa33 c>cccc>c
+  ffa46 >cccc>
+  ffa52 |fcc{cccf|
+  ffa64 ```~```
+  ffa74 ```~```
+  ffa84 ```~```
+  ffb43 >ccccccc>
+  ffb52 <ffflfcccn`
+  ffb63 >ccccccc>
+  ffb73 >ccccccc>
+  ffb85 >ccccc>
+  ffb93 >ccccccc>
+  ffba5 ffffff}```
+  ffbb2 ```nscccc~```
+  ffbc2 ``~cccc~``
+  ffbd3 cccccccc>
+  ffbe3 cccccccc>
+  ffbf3 cccccccc>
+  ffc05 cccccg;
+  ffc13 ffff<
+  ffc82 ?yyy9					
+  ffcc1 <fff<
+  ffd25 >>>>>
+  ffd42 |ff|bfoffc
+  ffea5 ;fffff;
+  ffeb2 ?000000000
+  ffec6 666663
+  ffee5 ?dffff<
+  fff04 >kkkk>
+  fff23 6ccccc6
+  fff36 >cccc>
+  fff45 6kkk6
+  fff55 >kkkkk>
+  fff65 >c`<`c>
+  fff72 >ccccccccc
+ 100001 lvffff
+ 100167 0`@6II6
+ 100173 >c`p>
+ 100192 ?lllollll?
+ 1001b2 y/)))
+ 1001e5 >kkoll?
+ 1001f3 ffff<
+ 100205 ?ccccg;
+ 100213 >c``gccc>
+ 100242 >ccp8
+ 100295 >c```c>
+ 1002a3 >cc```cc>
+ 1002b5 >c```c>
+ 1002c3 >cc```cc>
+ 1002d5 ;gcccc?
+ 1002e3 |fcccccf|
+ 1002f5 ;gcccc?
+ 100314 ```~```
+ 100334 ```~```
+ 100353 00000000?
+ 100373 00000000?
+ 100392 000480p00?
+ 1003a5 nsccccc
+ 1003b3 Ccs{ogccc
+ 1003c5 nsccccc
+ 1003d3 Ccs{ogccc
+ 1003e5 >ccccc>
+ 1003f3 >ccccccc>
+ 100405 6;00000
+ 100413 ~ccc~lfcc
+ 100425 6;00000
+ 100433 ~ccc~lfcc
+ 100453 >c`p>
+ 1004a5 cccccg;
+ 1004b3 cccccccc>
+ 1004c5 cccccg;
+ 1004d4 ccccccc>
+ 100540 %2.2d%c%2.2d%c%2.2d
+ 100554 %2.2d%c%2.2d%c%2.2d
+ 100568 %2.2d%c%2.2d%c%2.2d
+ 10057c %2.2d%c%2.2d%c%2.2d
+ 100591 Couldn't assign real time clock interrupt (rc = %x) ! 
+ 1005d5 %s 0x%x
+ 1005e2 %s   
+ 1005e9   %s  %s
+ 1005f2   %s  0x%x
+ 100601   MSR = 0x%8.8x   SRR0 = 0x%8.8x   SRR1 = 0x%8.8x
+ 100635   DAR = 0x%8.8x   DSISR = 0x%8.8x
+ 100659   DAR = 0x%8.8x
+ 1006c8 External interrupt at IRQ
+ 1006e4 Unexpected Processor Exception!
+ 100704 Exception type:
+ 100714 Exception Vector:
+ 100728 Machine check exception
+ 100740 Data access interrupt exception
+ 100760 Instruction access exception
+ 100780 Unexpected external interrupt
+ 1007a0 Alignment exception
+ 1007b4 Unexpected program exception
+ 1007d4 Floating point unavailable exception
+ 1007fc Unexpected decrementer interrupt
+ 100820 Direct store (I/O) error exception
+ 100844 Reserved exception
+ 100858 System call exception
+ 100870 Trace exception
+ 100880 Floating point assist exception
+ 1008a0 Supervisor call exception
+ 1008bc Run mode exception
+ 1008d0 System halted...
+ 1009ec Internal double dot, code page 850
+ 100a10 Internal double dot, code page 850
+ 100a34 Internal double dot, code page 850
+ 100a58 Internal double dot, code page other
+ 100a80 Invalid selection.  Use 1-4 please.
+ 100aa8 The current font is known as %s
+ 100acc IBM Console Manager ROM V1.00
+ 100aec IBM Console Manager ROM V1.00
+ 100b10 /pci@80000000/pci%x,%x@%x,%x/%s@%x,%x
+ 100b38 /pci@80000000/pci%x,%x@%x,%x/%s@%x/%s@%x
+ 100b68 /pci@80000000/pci%x,%x@%x,%x/%s@%x/%s@%x
+ 100b98 /pci@80000000/pci%x,%x@%x,%x/%s@%x
+ 100bc0 /pci@80000000/pci%x,%x@%x,%x
+ 100be8 harddisk
+ 100bf8 cdrom
+ 100c00 floppy
+ 100c08 fw-boot-path=
+ 100db8 FWSearchPath=
+ 100de0 Press F1 for System Management Programs
+ 100e10 Boot Sequence Selection
+ 100e28  1. Display Current Settings 
+ 100e48  2. Restore Default Settings 
+ 100e68  3. Configure 1st Boot Device 
+ 100e88  4. Configure 2nd Boot Device 
+ 100ea8  5. Configure 3rd Boot Device 
+ 100ec8  6. Configure 4th Boot Device 
+ 100ee8  7. Boot Other Device 
+ 100f00 Boot Device Selection  
+ 100f18                        
+ 100f30 None                   
+ 100f48 Diskette Drive    
+ 100f5c SCSI CDROM  Cntlr 
+ 100f70 SCSI Disk   Cntlr 
+ 100f84 SCSI Tape   Cntlr 
+ 100f98 IDE  CDROM  Cntlr 
+ 100fac IDE  Disk   Cntlr 
+ 100fc0 IDE  Tape   Cntlr 
+ 100fd4 Network Device    
+ 100fe8 1.44MB, 3.5-in. diskette
+ 101004 1.2MB, 5.25-in. diskette
+ 101020 2.88MB, 3.5-in. diskette
+ 10103c Primary 
+ 101048 Secondary 
+ 101054 Default Boot Sequence
+ 10106c Your default boot sequence has been restored. The current settings are: 1.                                  2.                                  3.                                  4.                                  
+ 101148 Current Boot Sequence
+ 101160 Your current boot sequence is:                                          1.                                  2.                                  3.                                  4.                                  
+ 10123c Saving Device
+ 10124c Your current device selection is being saved. 
+ 10127c Booting Device
+ 10128c Please wait...Selected device is booting. 
+ 1012b8 Device Conflict
+ 1012c8 A device conflict has been detected and resolved. 
+ 1012fc Boot Subsystem Failure
+ 101314 Boot Subsystem Failure...The System Programs are being loaded. 
+ 10135c Select this choice to set or view the boot devices. 
+ 10139c Select this choice to display the current boot-device settings. 
+ 1013e8 Select this choice to restore the default boot-device settings. 
+ 101434 Select this choice to set or change a particular boot device. For SCSI and IDE devices Ctlr denotes the controller number, immediately following the controller number the device number is shown. For SCSI devices the device number denotes the SCSI ID number. For ISA network cards the ISA I/O Port is shown. 
+ 101570 Select this choice to start from a boot device not in the current boot sequence. 
+ 1015cc Select a boot device from the list. For SCSI and IDE devices Ctlr denotes the controller number, immediately following the controller number the device number is shown. For SCSI devices the device number denotes the SCSI ID number. For ISA network cards the ISA I/O Port is shown. 
+ 1016e8 In order to select this device to boot from the network, the architecture assignment must be set to Shared Memory mode.  You can change the architecture assignment from IO to Shared Memory mode via the 'Adapter Parameters' menu.  To get there select the Utilities menu entry and from that point select the Remote Initial Program Load menu entry.   
+ 101848 An error occurred while selecting the device.  Please try again or select another device. 
+ 1018ac      
+ 1018b8 PNP0700
+ 1018c4 IBM SCSI
+ 1018d0 IBM IDE
+ 1018dc PNP0600
+ 1018fc IBM0010
+ 101908  Port 0x
+ 101918 PNP80CC
+ 101924  Port 0x
+ 101930 boot %d
+ 101938 Current Boot Sequence
+ 101950 The Current Boot Sequence is shown
+ 10199c The value of boot_text[%d] string is =>%s
+ 1019c8 The address of boot_text[%d] pointer to string is =>%X
+ 101a00 The address of boot_text[%d] string is =>%X
+ 101a30 Press any key...
+ 101a48 IBM PPS Model 6050/6070 (E)
+ 101a68 IBM PPS Model 7248 (E)
+ 101a8c ffffffffffffffff
+ 101aa4 IBM000A
+ 101ab0 IBM000B
+ 101ab8 IBM0017
+ 101ac0 IBM001D
+ 101ac8 IBM0012
+ 101ad0 IBM0013
+ 101ad8 PNP0700
+ 101ae4 PNP0200
+ 101af0 PNP0000
+ 101afc PNP0A00
+ 101b04 PNP0303
+ 101b0c PNP0F03
+ 101b14 PNP0401
+ 101b1c IBM001C
+ 101b24 PNP0400
+ 101b30 PNP0A03
+ 101b3c PNP0B00
+ 101b44 IBM001B
+ 101b4c IBM000F
+ 101b54 PNP0600
+ 101b5c PNP0600
+ 101b64 PNP0501
+ 101b70 PNP0100
+ 101b7c IBM0005
+ 101b88 IBM0007
+ 101b90 IBM0008
+ 101bc1 Disassembler removed from this version to conserve space.
+ 101c0c PANIC: All banks disable
+ 101c30 PANIC: This call is invalid for POLO
+ 101c58 malloc failed
+ 101c68 malloc failed
+ 101c98 Memory Initialization in progress...
+ 101cbd Total =>
+ 101cd8 Memory Initialization
+ 101cf0 Memory
+ 101cf8 Error
+ 101d00 Memory error occurred.
+ 101d17 Run Test the Computer.
+ 101d38 %04X: %02X %02X %02X %02X %02X %02X %02X %02X
+ 101d6c File %s not found
+ 101d80 File %s is empty
+ 101d98 Couldn't open file %s
+ 101db0 %x: %x %x %x %x %x %x %x %x
+ 101dd0 load failed, data not in correct format
+ 101dfc Couldn't read all data from file %s
+ 101e2d %02X:  
+ 101e38 %02X 
+ 101e44 %02X: %02X %02X %02X %02X %02X %02X %02X %02X
+ 101e78 File %s not found
+ 101e8c File %s is empty
+ 101ea4 Couldn't open file %s
+ 101ebc %x: %x %x %x %x %x %x %x %x
+ 101edc load failed, data not in correct format
+ 101f08 Couldn't read all data from file %s
+ 101f30 operation not permitted
+ 101f48 no such file or directory
+ 101f64 no such process
+ 101f74 interrupted system call
+ 101f8c I/O error
+ 101f98 no such device or address
+ 101fb4 arg list too long
+ 101fc8 exec format error
+ 101fdc bad file descriptor
+ 101ff0 no child processes
+ 102004 resource temporarily unavailable
+ 102028 not enough space
+ 10203c permission denied
+ 102050 bad address
+ 10205c block device required
+ 102074 resource busy
+ 102084 file exists
+ 102090 improper link
+ 1020a0 no such device
+ 1020b0 not a directory
+ 1020c0 is a directory
+ 1020d0 invalid argument
+ 1020e4 too many open files in system
+ 102104 too many open files
+ 102118 inappropriate I/O control operation
+ 10213c text file busy
+ 10214c file too large
+ 10215c no space left on device
+ 102174 invalid seek
+ 102184 read only file system
+ 10219c too many links
+ 1021ac broken pipe
+ 1021b8 domain error within math function
+ 1021dc result too large
+ 1021f0 no message of desired type
+ 10220c channel number out of range
+ 102228 resource deadlock avoided
+ 102244 device not ready
+ 102258 write-protected media
+ 102270 unformatted media
+ 102284 no locks available
+ 102298 no connection
+ 1022a8 file name too long
+ 1022bc directory not empty
+ 1022d0 function not implemented POSIX
+ 1022f0 unknown error
+ 10257c No partition found at partition entry %d
+ 1025a8 Undefined signature %4.4x - assuming floppy format
+ 1025dc File system not a FAT type
+ 102600 \ROOT
+ 102610 ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_^$~!#%&-{}()@'`*
+ 10267c Allocating Drive %c: for VDisk
+ 10269c Free Drive not available for VDisk
+ 1026c0 VDisk %c: does not exists
+ 102701 ISO 9660 file system could not allocate buffer space.
+ 102739 ISO 9660 file system is not available.
+ 102778 \ISO 9660
+ 102785 ISO 9660 file system could not allocate space for primary volume descriptor.
+ 1027d4 File system not an ISO 9660 type
+ 1027f9 ISO 9660 filesystem could not allocate space for the Path Table
+ 10284c ????????
+ 10285c Put_in_cache returned error
+ 10287c put in cache returned error (2)
+ 1028a0 put in cache returned error (3)
+ 1028c4 Should never come here !!!!! (in start_srch)
+ 10294e 8ll8v
+ 10296c 00000
+ 102ad7 fff|fff
+ 102af3 lfffffl
+ 102b01 fbhxhbf
+ 102b0f fbhxh``
+ 102b55 fllxllf
+ 102b63 `````bf
+ 102b9b fff|```
+ 102bb7 fff|lff
+ 102c0c l888l
+ 102c18 ffff<
+ 102c34 <0000000<
+ 102c97 ``xlfff|
+ 102ceb ``lvfff
+ 102d15 ``flxlf
+ 102d42 fffff
+ 102d5e fff|``
+ 102db1 ffff<
+ 102e78 IBM Enhanced Keyboard Driver
+ 102e98 Window larger than screen requested.
+ 102ec0 row: %d col: %d width: %d height: %d
+ 102ee8 malloc failed in text_newwindow
+ 102f0c malloc failed in text_newwindow
+ 102f30 Too many rows requested in text_inwind
+ 102f58 col: %d width %d won't fit in window in text_inwind
+ 102f90 malloc failed in new_menu
+ 102fac Can't have more than %d items in a menu
+ 102fd8 Can't have more than %d items in a menu
+ 103004 malloc failed in new_menu
+ 103020 malloc failed in menulist
+ 10303c Over 512 items in menulist.  List started %08X
+ 10306c can't select item %d in list with %d items
+ 103098 Couldn't get newmsg in responsemsg
+ 1030bc Couldn't get newmsg in responsemsg
+ 1030e4 eeeeeeee
+ 1030f4 WARNING.PIC
+ 103100 %02x%c%02x%c%02x    %s %08x 
+ 103124 %02x%c%02x%c%02x    %s %08x 
+ 103150 eeeeeeee
+ 103160 WARNING.PIC
+ 10316c %02x%c%02x%c%02x    %s %08x 
+ 103190 %02x%c%02x%c%02x    %s %08x 
+ 1031b8 Title too wide in newmsg
+ 1031d4 Can't fit a word that's over %d characters wide in newmsg
+ 103210 Can't fit a word that's over %d characters wide in changemsg
+ 103250 malloc failed in textentry
+ 10326c More than 1024 items in entry list
+ 103290 Can't fit list on screen: %d
+ 1032b0 The title at %08X is too big for screen
+ 1032e0 eeeeeeee
+ 1032f0 Create file table error
+ 10330c PW.PPC
+ 103314 Set files error
+ 103328 eeeeeeee
+ 103340  0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-abcdefghijklmnopqrstuvwxyz
+ 103440 Select one:
+ 10344c Enter
+ 103454 Press Y(Yes) or N(No).
+ 10347c Esc=Quit
+ 103488 F3=Exit
+ 103490 F2=Save
+ 103498 Enter
+ 1034a0 F1=Help
+ 1034a8 F5=Previous
+ 1034b4 F6=Next
+ 1034bc F10=Save
+ 1034dc F7=Bkwd
+ 1034e4 F8=Fwd
+ 103500 Use the Spacebar to select one of the following:
+ 103534 Use the Spacebar to select from the following:
+ 103564 Spacebar=Choose
+ 103574 F2=Deselect All
+ 103584 F3=Select All
+ 1035cc 0123456789
+ 1035d8 Error
+ 1035e0 Error Code:
+ 1035ec Location: 
+ 1035f8 Restarting the system...
+ 103614 Insert Media
+ 103624 Insert the Systems Management Services diskette or CD-ROM, and then press Enter.
+ 103678 Version Error
+ 103688 The level of the System Management Services program invoked does not match the level of the system firmware.  The system firmware is 0x%x.  The System Management Services program is 0x%x.  System firmware should be of higher or ofsame level as the service program.  
+ 103794 System firmware corrupted.  Press Enter to update the system firmware.
+ 1037dc The level of System Management Services Program invoked does not match the level of the system firmware.
+ 103848 Power Personal System Firmware
+ 103868 Version
+ 103870 built on %c%c%c%c%c%c%c%c at %s%c%s%c%s
+ 103898 (C)Copyright IBM Corporation, 1994.  All rights reserved.
+ 1038d8 @(#)60  1.4.4.5  rom/net_mgr.c, esw_network, carol100, car.mvt110 9/21/95 16:49:10
+ 103934 IBM Network Manager ROM V1.00
+ 103954 IBM Network Manager ROM V1.00
+ 103980 IBM DISKETTE
+ 103990 NSC PC87312
+ 1039a0 IBM SCSI
+ 1039b0 NCR 53C810
+ 1039c0 IBM IDE
+ 1039c8 CORAL
+ 103a00 medium not present
+ 103a14 LUN not ready-cause not reportable
+ 103a38 LUN not ready-in process of becoming ready
+ 103a64 LUN not ready-initializing command req
+ 103a8c LUN not ready-manual intervention req
+ 103ab4 media maybe upside down
+ 103acc incompatible medium installed
+ 103aec cannot read medium-unknown format
+ 103b10 cannot read medium-incompatible format
+ 103b38 no seek complete
+ 103b4c Medium error-focus servo failure
+ 103b70 L-EC uncorrectable error
+ 103b8c CIRC unrecovered error
+ 103ba4 invalid command operation code
+ 103bc4 LBA out of range
+ 103bd8 invalid field in command packet
+ 103bf8 illegal mode for this track
+ 103c14 not ready to ready transition
+ 103c34 power on,reset or bus device reset
+ 103c63 `medium not present
+ 103cbf aLUN not ready-cause not reportable
+ 103d1b bLUN not ready-in process of becoming ready
+ 103d77 cLUN not ready-initializing command req
+ 103dd3 dLUN not ready-manual intervention req
+ 103e2f emedia maybe upside down
+ 103e8b fincompatible medium installed
+ 103ee7 gcannot read medium-unknown format
+ 103f43 hcannot read medium-incompatible format
+ 103fa0 no seek complete
+ 103ffb jMedium error-focus servo failure
+ 104057 kL-EC uncorrectable error
+ 1040b3 lCIRC unrecovered error
+ 10410f minvalid command operation code
+ 10416b nLBA out of range
+ 1041c7 oinvalid field in command packet
+ 104223 pillegal mode for this track
+ 10427f qnot ready to ready transition
+ 1042db rpower on,reset or bus device reset
+ 104428 IBM IDE
+ 104430 CD-ROM
