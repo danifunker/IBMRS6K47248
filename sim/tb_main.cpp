@@ -13,6 +13,9 @@
 
 #include "VIBMRS6K7248_system.h"
 #include "verilated.h"
+#if VM_TRACE
+#include "verilated_fst_c.h"
+#endif
 
 #include <cstdint>
 #include <cstdio>
@@ -40,6 +43,7 @@ static void usage() {
 	       "  --planar ID  the planar ID at port 0852 (default 0xF5, a 7248-100; F0-F3 a Power Series 830/850)\n"
 	       "  --watch PC   report when PC (hex) first retires (FFF10100 and 8398, main_control, always)\n"
 	       "  --beat N     every N clocks, a line with the instructions retired, the PC and the last progress code (default 20,000,000; 0 none)\n"
+	       "  --fst FILE   write a waveform (needs a make TRACE=1 build) of clocks --from N --to M\n"
 	       "  --cycles N   stop after N clocks (default 50,000,000)\n"
 	       "  --instr N    stop after N instructions retired\n"
 	       "  --io         print every device access as it happens\n"
@@ -62,7 +66,9 @@ int main(int argc, char** argv) {
 	uint64_t max_cycles = 50000000, max_instr = 0, stall_lim = 2000000;
 	bool io_print = false, post_print = true;
 	uint64_t pcs_print = 0;
-	uint64_t beat = 20000000;                      // a heartbeat line every so many clocks (0 none)
+	uint64_t beat = 20000000;
+	const char* fst_path = nullptr;                // a waveform (a TRACE=1 build) ...
+	uint64_t fst_from = 0, fst_to = ~0ull;         // ... of these clocks                      // a heartbeat line every so many clocks (0 none)
 	for (int i = 1; i < argc; i++) {
 		std::string a = argv[i];
 		auto next = [&]() { if (i + 1 >= argc) { usage(); exit(2); } return argv[++i]; };
@@ -74,6 +80,9 @@ int main(int argc, char** argv) {
 		else if (a == "--instr") max_instr = strtoull(next(), nullptr, 0);
 		else if (a == "--io") io_print = true;
 		else if (a == "--quiet-progress") post_print = false;
+		else if (a == "--fst") fst_path = next();
+		else if (a == "--from") fst_from = strtoull(next(), nullptr, 0);
+		else if (a == "--to") fst_to = strtoull(next(), nullptr, 0);
 		else if (a == "--beat") beat = strtoull(next(), nullptr, 0);
 		else if (a == "--pcs") pcs_print = strtoull(next(), nullptr, 0);
 		else if (a == "--stall") stall_lim = strtoull(next(), nullptr, 0);
@@ -134,9 +143,28 @@ int main(int argc, char** argv) {
 	unsigned post_last = 0;
 	uint64_t post_count = 0;
 
+#if VM_TRACE
+	VerilatedFstC* tfp = nullptr;
+	if (fst_path) {
+		Verilated::traceEverOn(true);
+		tfp = new VerilatedFstC;
+		top->trace(tfp, 99);
+		tfp->open(fst_path);
+	}
+#else
+	if (fst_path) { fprintf(stderr, "--fst needs a make TRACE=1 build\n"); return 2; }
+#endif
+	uint64_t tcycle = 0;
 	auto tick = [&]() {
 		top->clk = 0; top->clk_b = 0; top->eval();
+#if VM_TRACE
+		if (tfp && tcycle >= fst_from && tcycle <= fst_to) tfp->dump(2 * tcycle);
+#endif
 		top->clk = 1; top->clk_b = 1; top->eval();
+#if VM_TRACE
+		if (tfp && tcycle >= fst_from && tcycle <= fst_to) tfp->dump(2 * tcycle + 1);
+#endif
+		tcycle++;
 	};
 
 	top->rtc_set = 1;
@@ -247,6 +275,9 @@ int main(int argc, char** argv) {
 	for (auto& [a, s] : stubs)
 		printf("  %08X   %10llu %10llu  %08X  %08X  %08X\n", a, (unsigned long long)s.reads,
 		       (unsigned long long)s.writes, s.last_wdata, s.last_rdata, s.first_pc);
+#if VM_TRACE
+	if (tfp) tfp->close();
+#endif
 	delete top;
 	return 0;
 }

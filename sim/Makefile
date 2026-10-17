@@ -28,11 +28,18 @@ WARN   := -Wall -Wno-DECLFILENAME -Wno-UNUSEDSIGNAL -Wno-UNUSEDPARAM -Wno-PINCON
 # killed alone; `make machine_tb` builds without the cap.
 JOBS   ?= 2
 MEM    ?= 5G
-# the optimisation of the model's C++ (OPT_FAST): -O1 builds faster than -O2
-OPT    ?= -O1
+# the optimisation of the model's C++ (OPT_FAST): -O2 builds in ~14 minutes and runs
+# ~390,000 clocks a second; -O1 builds in ~8 and runs ~150,000 (make OPT=-O1 for
+# a short test)
+OPT    ?= -O2
 # (Verilator is run to generate the C++ and exit: with --build it stays
 # resident, 2.5 GB, through the whole compile.)
 VFLAGS := --cc --exe $(WARN) --output-split 20000 --output-split-cfuncs 2000
+# make TRACE=1: a build that can write waveforms (--fst), in its own directory
+ifeq ($(TRACE),1)
+BUILD  := build_trace
+VFLAGS += --trace-fst --trace-structs
+endif
 
 all:
 	systemd-run --user --scope -q -p MemoryMax=$(MEM) -p MemorySwapMax=0 $(MAKE) --no-print-directory machine_tb

@@ -30,8 +30,9 @@ _start:
 	.org	0x100
 	b	setup
 
-	.org	0x600			# alignment: the handler runs big-endian (ILE is 0)
-	b	align_handler
+	.org	0x600			# alignment: taken in little-endian mode with ILE set, so the
+	.long	0			# vector runs little-endian: the Makefile puts a little-endian
+					# "ba" to the handler in le_le.S here
 
 	.org	0xC00			# system call: back from the little-endian code
 	b	checks
@@ -63,30 +64,36 @@ setup:
 	addic.	r5, r5, -1
 	bne	1b
 
-	# the bridge into little-endian mode (PICR1 bit 5), then the CPU, by rfi
-	li	r4, 0x20
-	cfgw	0xA8
+	# The instruction cache on: once the bridge swaps, a big-endian fetch from the bus
+	# is scrambled, so the switch below runs from the cache (as real code must).
+	mfspr	r3, 1008		# HID0
+	ori	r3, r3, 0x8800		# ICE, ICFI
+	mtspr	1008, r3
+	isync
+	rlwinm	r3, r3, 0, 21, 19	# ICFI off
+	mtspr	1008, r3
+	isync
+
+	# the bridge into little-endian mode (PICR1 bit 5) and the CPU with it, by rfi;
+	# the block runs twice, the first time only to bring it into the cache
 	li32	r3, 0xFFF02000
 	mtsrr0	r3
-	li	r3, 0x1041		# ME, IP, LE
+	li32	r3, 0x00011041		# ILE, ME, IP, LE
 	mtsrr1	r3
+	li32	r20, CF8
+	li32	r21, 0x800000A8
+	stwbrx	r21, 0, r20
+	li32	r20, CFC
+	li	r4, 0x20
+	li	r31, 0
+	b	switch
+	.balign	32
+switch:	cmpwi	r31, 0
+	beq	11f
+	stwbrx	r4, 0, r20
 	rfi
-
-align_handler:
-	# the misaligned load from the little-endian code: keep SRR0, DAR, DSISR, then go on there
-	li	r6, RES
-	mfsrr0	r3
-	stw	r3, 0x20(r6)
-	mfdar	r3
-	stw	r3, 0x24(r6)
-	mfdsisr	r3
-	stw	r3, 0x28(r6)
-	mfsrr0	r3
-	addi	r3, r3, 4		# past the faulting load
-	mtsrr0	r3
-	li	r3, 0x1041		# back to little-endian
-	mtsrr1	r3
-	rfi
+11:	li	r31, 1
+	b	switch
 
 checks:
 	# the bridge back to big-endian
