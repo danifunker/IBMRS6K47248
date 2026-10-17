@@ -36,7 +36,7 @@ OPT    ?= -O2
 # resident, 2.5 GB, through the whole compile.)
 # (the bench's serial ports run at the clock / 16, UART_FAST: the firmware's 9600 baud console
 # would cost 100,000 clocks a character)
-VFLAGS := --cc --exe $(WARN) --output-split 20000 --output-split-cfuncs 2000
+VFLAGS := --cc --exe --savable $(WARN) --output-split 20000 --output-split-cfuncs 2000
 # make TRACE=1: a build that can write waveforms (--fst), in its own directory
 ifeq ($(TRACE),1)
 BUILD  := build_trace

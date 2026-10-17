@@ -13,6 +13,7 @@
 
 #include "VIBMRS6K7248_system.h"
 #include "verilated.h"
+#include "verilated_save.h"
 #if VM_TRACE
 #include "verilated_fst_c.h"
 #endif
@@ -43,6 +44,8 @@ static void usage() {
 	       "  --planar ID  the planar ID at port 0852 (default 0xF5, a 7248-100; F0-F3 a Power Series 830/850)\n"
 	       "  --watch PC   report when PC (hex) first retires (FFF10100 and 8398, main_control, always)\n"
 	       "  --beat N     every N clocks, a line with the instructions retired, the PC and the last progress code (default 20,000,000; 0 none)\n"
+	       "  --save FILE  snapshot the machine when --save-pc PC (hex; default 8398, main_control) first retires\n"
+	       "  --restore FILE  start from a snapshot (the same build and ROM; the options given apply from there)\n"
 	       "  --com1 FILE  COM1's bytes as sent, raw (tools/vt.py FILE draws the terminal's screen)\n"
 	       "  --fst FILE   write a waveform (needs a make TRACE=1 build) of clocks --from N --to M\n"
 	       "  --lat N      the bench memory answers N clocks after a request (default 6, about the SDRAM's)\n"
@@ -70,6 +73,9 @@ int main(int argc, char** argv) {
 	uint64_t pcs_print = 0;
 	uint64_t beat = 20000000;
 	int lat = 6;                                   // the bench memory's answer, in clocks after the request
+	const char* save_path = nullptr;               // a snapshot of the machine (model and memory) ...
+	uint32_t save_pc = 0x00008398;                 // ... when this PC first retires (default main_control)
+	const char* restore_path = nullptr;            // start from a snapshot instead of from reset
 	const char* com1_path = nullptr;               // COM1's bytes as sent (tools/vt.py draws the screen)
 	const char* fst_path = nullptr;                // a waveform (a TRACE=1 build) ...
 	uint64_t fst_from = 0, fst_to = ~0ull;         // ... of these clocks                      // a heartbeat line every so many clocks (0 none)
@@ -85,6 +91,9 @@ int main(int argc, char** argv) {
 		else if (a == "--io") io_print = true;
 		else if (a == "--quiet-progress") post_print = false;
 		else if (a == "--com1") com1_path = next();
+		else if (a == "--save") save_path = next();
+		else if (a == "--save-pc") save_pc = strtoul(next(), nullptr, 16);
+		else if (a == "--restore") restore_path = next();
 		else if (a == "--fst") fst_path = next();
 		else if (a == "--from") fst_from = strtoull(next(), nullptr, 0);
 		else if (a == "--to") fst_to = strtoull(next(), nullptr, 0);
@@ -174,14 +183,37 @@ int main(int argc, char** argv) {
 		tcycle++;
 	};
 
-	top->rtc_set = 1;
-	for (int i = 0; i < 20; i++) tick();
-	top->rtc_set = 0;
-	top->reset = 0;
-	top->reset_b = 0;
+	// the bench's own state that a snapshot carries beside the model's
+	auto snap = [&](auto& f) {
+		f(&cycle, sizeof cycle); f(&instr, sizeof instr); f(&last_pc, sizeof last_pc); f(&lcr, sizeof lcr);
+		f(&post_last, sizeof post_last); f(&post_count, sizeof post_count); f(&io_count, sizeof io_count);
+		f(&mem_wait, sizeof mem_wait); f(&ack_now, sizeof ack_now); f(&tcycle, sizeof tcycle);
+		f(mem.data(), mem.size());
+	};
+	uint64_t cycle0 = 0;
+	if (restore_path) {
+		VerilatedRestore is;
+		is.open(restore_path);
+		if (!is.isOpen()) { perror(restore_path); return 1; }
+		is >> *top;
+		auto rd = [&](void* p, size_t n) { is.read(p, n); };
+		snap(rd);
+		is.close();
+		cycle0 = cycle + 1;
+		printf("restored %s: clock %llu, %llu instructions, pc %08X\n", restore_path,
+		       (unsigned long long)cycle, (unsigned long long)instr, last_pc);
+	}
+	else {
+		top->rtc_set = 1;
+		for (int i = 0; i < 20; i++) tick();
+		top->rtc_set = 0;
+		top->reset = 0;
+		top->reset_b = 0;
+	}
+	bool saved = false;
 
 	const char* why = "cycle limit";
-	for (cycle = 0; cycle < max_cycles; cycle++) {
+	for (cycle = cycle0; cycle < max_cycles; cycle++) {
 		// the memory side, before the edge: set ack/rdata for this edge
 		if (ack_now) { top->b_ack = 0; ack_now = false; }
 		else if (top->b_req) {
@@ -218,6 +250,19 @@ int main(int argc, char** argv) {
 
 		if (top->trace_valid && top->trace_last) {
 			uint32_t pc = top->trace_pc;
+			if (save_path && !saved && pc == save_pc) {
+				last_pc = pc;
+				instr++;
+				VerilatedSave os;
+				os.open(save_path);
+				os << *top;
+				auto wr = [&](void* p, size_t n) { os.write(p, n); };
+				snap(wr);
+				os.close();
+				instr--;
+				saved = true;
+				printf("  saved %s at pc %08X, clock %llu\n", save_path, pc, (unsigned long long)cycle);
+			}
 			for (auto& w : watch)
 				if (!w.hit && pc == w.pc) {
 					w.hit = true;
