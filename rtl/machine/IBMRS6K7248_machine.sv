@@ -53,6 +53,7 @@
 //    0398-0399  the PC87312's configuration (IBMRS6K7248_sio); where it puts them:
 //    COM1       a 16550A (IBMRS6K7248_uart) on the MiSTer's UART (3F8 at reset)
 //    COM2       a 16550A with nothing on its line (2F8 at reset)
+//    FDC        the floppy disk controller, its drive empty (3F0; IBMRS6K7248_fdc), IRQ 6
 //    LPT        the parallel port's registers (378 at reset; the firmware's
 //               progress codes go to its data latch at 3BC)
 //    0020-0021, 00A0-00A1, 04D0-04D1   the 8259s and their ELCR (IBMRS6K7248_pic);
@@ -352,6 +353,16 @@ IBMRS6K7248_sio sio (
 	.lpt_on, .lpt_base, .uart1_on, .uart1_base, .uart2_on, .uart2_base, .fdc_on, .fdc_alt, .ide_on, .ide_alt
 );
 
+// the floppy disk controller where the PC87312 puts it (3F0 or 370; not 3F6, the IDE's)
+logic [7:0] fdc_q;
+logic       irq6;
+wire        fdc_hit = s_isa && fdc_on && bport[15:3] == (fdc_alt ? 13'h006E : 13'h007E) && bport[2:0] != 3'd6;
+IBMRS6K7248_fdc fdc (
+	.clk, .reset,
+	.sel(d_sel & fdc_hit), .we(d_we), .off(bport[2:0]), .wdata(bwd), .rdata(fdc_q),
+	.irq6
+);
+
 // COM1
 wire        com1_hit = s_isa && uart1_on && bport[15:3] == uart1_base;
 wire  [7:0] com1_q;
@@ -454,7 +465,7 @@ end
 
 // the request lines: COM1's INTR as a PC board gates it, with OUT2
 // IRQ 15: every PCI device's interrupt (Carolina's routing); the S3's so far
-assign irq = {s3_irq, 2'b00, irq12, 3'b000, irq8, 3'b000, com1_irq & com1_out2, com2_irq & com2_out2, 1'b0, irq1, irq0};
+assign irq = {s3_irq, 2'b00, irq12, 3'b000, irq8, 3'b000, com1_irq & com1_out2, com2_irq & com2_out2, 1'b0, irq1, irq0} | (16'(irq6) << 6);
 
 // the planar ID, the SIMMs' presence detect
 wire        planar_hit = s_isa && bport == 16'h0852;
@@ -509,13 +520,14 @@ IBMRS6K7248_firecoral firecoral (
 );
 
 // the answer, the cycle after the access
-logic       q_sio, q_com2, q_dev14;
+logic       q_sio, q_com2, q_dev14, q_fdc;
 logic       q_pic, q_pit, q_kbc, q_rtc, q_p92, q_err, q_aud, q_audc;
 logic       q_com1, q_planar, q_pd, q_cf8, q_cfc, q_dev0, q_dev11, q_fcio, q_pcicf, q_iack;
 logic [1:0] q_lane;
 always_ff @(posedge clk) if (d_sel) begin
 	q_com1  <= com1_hit;
 	q_com2  <= com2_hit;
+	q_fdc   <= fdc_hit;
 	q_sio   <= sio_hit | lpt_hit;
 	q_pic   <= pic_hit | elcr_hit;
 	q_pit   <= pit_hit;
@@ -542,6 +554,7 @@ end
 always_comb begin
 	if      (q_com1)  dev_rdata = {4{com1_q}};               // every lane: the byte reaches whichever one was asked
 	else if (q_com2)  dev_rdata = {4{com2_q}};
+	else if (q_fdc)   dev_rdata = {4{fdc_q}};
 	else if (q_sio)   dev_rdata = {4{sio_q}};
 	else if (q_pic)   dev_rdata = {4{pic_q}};
 	else if (q_pit)   dev_rdata = {4{pit_q}};
@@ -567,7 +580,7 @@ always_ff @(posedge clk) begin
 	io_ev <= w_done;
 	if (w_done) begin
 		io_we    <= d_we;
-		io_stub  <= ~(q_s3 | q_com1 | q_com2 | q_sio | q_planar | q_pd | q_fcio | q_cf8 | q_dev0 | q_dev11 | q_dev14 |
+		io_stub  <= ~(q_s3 | q_fdc | q_com1 | q_com2 | q_sio | q_planar | q_pd | q_fcio | q_cf8 | q_dev0 | q_dev11 | q_dev14 |
 		              q_pic | q_pit | q_kbc | q_rtc | q_p92 | q_err | q_aud | q_audc | q_iack);
 		io_addr  <= p_a;
 		io_be    <= p_be;
