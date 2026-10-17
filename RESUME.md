@@ -125,10 +125,10 @@ above, ~25 min) before the SCSI runs. **Disk**: m900's root filled up
 (233 GB, 0 free) during these runs, which broke a relink; a run writes
 little, but a build needs ~1 GB free.
 
-The repository has no remote yet (everything is committed locally). Take it
-with `git bundle create ibmrs6k7248.bundle --all` and `git clone
-ibmrs6k7248.bundle IBMRS6K42p` on the other side, or push it to a new
-GitHub repository of the user's (ask before creating or pushing). Not in
+The repository is on GitHub: `git clone
+https://github.com/danifunker/IBMRS6K47248.git IBMRS6K42p` (branch
+`master`; its history was rewritten once to drop a committed build
+directory, so discard any clone made before that). Not in
 git (`.gitignore`): `scratch/` (the manuals and firmware archives in
 `scratch/IBMPowerPC/`, the downloaded AIX 4.3.3 volume 1 and 5.1 disc 1
 ISOs and the diagnostics CD in `scratch/downloads/` with their sources and
