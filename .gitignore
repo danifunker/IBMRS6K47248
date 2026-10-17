@@ -38,8 +38,35 @@ c5_pin_model_dump.txt
 *_netlist
 *.cdf
 **/.DS_Store
-# Verilator bench
+# Verilator bench: build directories (make, make TRACE=1, any variant)
 sim/build/
+sim/build_*/
+sim/obj_dir*/
+**/obj_dir/
+*.gch
+*.d
+*.o
+*.a
+__pycache__/
+*.pyc
+
+# bench outputs, wherever a run is started (keep them in scratch/work/)
+sim/*.txt
+sim/*.log
+sim/**/*.fst
+sim/**/*.vcd
+sim/**/*.ppm
+sim/**/*.png
+sim/**/*.raw
+sim/**/*.snap
+sim/snap*.bin
+sim/vram*.bin
+sim/core*
+sim/machine_tb
+*.fst
+*.vcd
+*.ppm
+*.bundle
 
 # reference material: manuals, firmware archives, OS media, extractions (not source)
 scratch/
@@ -47,3 +74,6 @@ sim/tests/*.o
 sim/tests/*.elf
 sim/tests/*.bin
 sim/tools/fst2vcd
+sim/tools/*.bin
+sim/tests/*.lst
+sim/tests/*.map
