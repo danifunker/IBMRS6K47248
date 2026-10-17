@@ -83,6 +83,8 @@ localparam CONF_STR = {
 	"-;",
 	"O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
 	"-;",
+	"O[4],UART,POST codes,COM1;",
+	"-;",
 	"T[0],Reset;",
 	"R[0],Reset and close OSD;",
 	"v,0;",
@@ -311,6 +313,10 @@ wire [31:2]  b_addr;
 wire  [3:0]  b_be;
 wire [255:0] b_wdata, b_rdata;
 wire         trace_valid, trace_last;
+wire        com1_txd;
+wire        io_ev, io_we;
+wire [31:0] io_addr, io_wdata;
+wire [3:0]  io_be;
 wire         vid_ce, vid_hs, vid_vs, vid_hblank, vid_vblank;
 wire   [7:0] vid_r, vid_g, vid_b;
 assign DDRAM_CLK = clk_mem;
@@ -339,7 +345,7 @@ IBMRS6K7248_system #(.CPU_HZ(CPU_MHZ * 1_000_000), .TB_HZ(TB_HZ)) system
 	.ddr_dout_ready(DDRAM_DOUT_READY), .ddr_rd(DDRAM_RD), .ddr_din(DDRAM_DIN), .ddr_be(DDRAM_BE), .ddr_we(DDRAM_WE),
 	.vid_ce, .vid_r, .vid_g, .vid_b, .vid_hs, .vid_vs, .vid_hblank, .vid_vblank,
 
-	.com1_txd(UART_TXD),
+	.com1_txd(com1_txd),
 	.com1_rxd(UART_RXD),
 	.com1_cts_n(~UART_CTS),
 	.com1_rts_n(),
@@ -348,7 +354,7 @@ IBMRS6K7248_system #(.CPU_HZ(CPU_MHZ * 1_000_000), .TB_HZ(TB_HZ)) system
 	.sd_buff_addr, .sd_buff_dout, .sd_buff_din, .sd_buff_wr,
 	.cd_change(|cd_change_s), .scsi_activity(scsi_act),
 
-	.io_ev(), .io_we(), .io_stub(), .io_addr(), .io_be(), .io_wdata(), .io_rdata(),
+	.io_ev, .io_we, .io_stub(), .io_addr, .io_be, .io_wdata, .io_rdata(),
 	.trace_valid, .trace_last, .trace_pc(), .trace_insn(), .trace_msr(),
 	.trace_dreq(), .trace_dwe(), .trace_daddr()
 );
@@ -406,6 +412,63 @@ sdramclk_ddr
 	.sclr(1'b0),
 	.sset(1'b0)
 );
+
+///////////////////////   THE DEBUG UART   ///////////////////////////////
+
+// The MiSTer's UART carries either COM1 (the firmware's serial console) or, for
+// bring-up (OSD "UART", the default), the firmware's progress codes: every write
+// of a word to port 680 (the code in its first byte, as the bench prints them)
+// goes out as two hex digits and a space at 115200 baud; "R" when the CPU leaves
+// reset, "." every 2^24 instructions retired (the CPU is alive).
+wire        post_ev = io_ev & io_we & (io_addr == 32'h8000_0680) & (io_be == 4'hF);
+
+localparam logic [15:0] UART_DIV1 = CPU_MHZ * 1_000_000 / 115_200 - 1;   // clocks per bit, less one
+reg  [7:0]  dq [64];                      // the byte queue
+reg  [5:0]  dq_w = 0, dq_r = 0;
+reg  [2:0]  push_n;                       // bytes to queue this clock (0-3)
+reg  [23:0] push_v;
+reg         cpu_reset_q = 1;
+reg  [24:0] alive = 0;
+reg         alive_q = 0;
+function automatic [7:0] hex(input [3:0] n);
+	hex = n < 4'd10 ? 8'h30 + {4'd0, n} : 8'h37 + {4'd0, n};
+endfunction
+always @(posedge clk_cpu) begin
+	cpu_reset_q <= cpu_reset;
+	if (trace_valid & trace_last) alive <= alive + 1'd1;
+	alive_q <= alive[24];
+	push_n = 3'd0;
+	if (post_ev) begin push_n = 3'd3; push_v = {hex(io_wdata[31:28]), hex(io_wdata[27:24]), 8'h20}; end
+	else if (cpu_reset_q & ~cpu_reset) begin push_n = 3'd3; push_v = {8'h0D, 8'h0A, 8'h52}; end
+	else if (alive_q ^ alive[24]) begin push_n = 3'd1; push_v = {8'h2E, 16'h0}; end
+	if (push_n != 3'd0) begin
+		dq[dq_w] <= push_v[23:16];
+		if (push_n > 3'd1) dq[dq_w + 6'd1] <= push_v[15:8];
+		if (push_n > 3'd2) dq[dq_w + 6'd2] <= push_v[7:0];
+		dq_w <= dq_w + {3'd0, push_n};
+	end
+end
+reg  [9:0]  tx_sh = 10'h3FF;              // start, 8 data, stop
+reg  [3:0]  tx_n = 0;                     // bits left
+reg  [15:0] tx_div = 0;
+reg         post_txd = 1;
+always @(posedge clk_cpu) begin
+	if (tx_n == 4'd0) begin
+		post_txd <= 1'b1;
+		if (dq_r != dq_w) begin
+			tx_sh  <= {1'b1, dq[dq_r], 1'b0};
+			tx_n   <= 4'd10;
+			tx_div <= 16'd0;
+			dq_r   <= dq_r + 6'd1;
+		end
+	end else if (tx_div == UART_DIV1) begin
+		tx_div   <= 16'd0;
+		post_txd <= tx_sh[0];
+		tx_sh    <= {1'b1, tx_sh[9:1]};
+		tx_n     <= tx_n - 4'd1;
+	end else tx_div <= tx_div + 16'd1;
+end
+assign UART_TXD = status[4] ? com1_txd : post_txd;
 
 ///////////////////////   THE LED   ///////////////////////////////
 
