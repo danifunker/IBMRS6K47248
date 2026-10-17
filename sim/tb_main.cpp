@@ -278,6 +278,14 @@ int main(int argc, char** argv) {
 		snap(rd);
 		is.close();
 		cycle0 = cycle + 1;
+		// the restore brought the snapshot's inputs back: this run's images, not those (a
+		// snapshot made without a CD gave every ID a selection timeout, 2026-10-17)
+		top->img_present = (images[0].f ? 1 : 0) | (images[1].f ? 2 : 0) | (images[2].f ? 4 : 0);
+		for (int n = 0; n < 3; n++) top->img_blocks[n] = uint32_t(images[n].blocks);
+		top->rom_at = ROM_AT;
+		top->rom_512k = rom_len == 512u * 1024;
+		printf("  images present %d
+", top->img_present);
 		printf("restored %s: clock %llu, %llu instructions, pc %08X\n", restore_path,
 		       (unsigned long long)cycle, (unsigned long long)instr, last_pc);
 	}
