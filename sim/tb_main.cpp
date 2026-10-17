@@ -21,6 +21,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <csignal>
 #include <cstring>
 #include <map>
 #include <string>
@@ -60,6 +61,10 @@ static void usage() {
 	       "  --pcs N      print the first N retired PCs\n"
 	       "  --stall N    stop when no new PC was retired in the last N instructions (default 2,000,000; 0 never)\n");
 }
+
+// SIGINT/SIGTERM end the run at the next clock, with the end's outputs (the VRAM, the stubs)
+static volatile sig_atomic_t stop_req = 0;
+static void on_stop(int) { stop_req = 1; }
 
 int main(int argc, char** argv) {
 	setvbuf(stdout, nullptr, _IOLBF, 0);          // a run cut short still shows how far it got
@@ -226,7 +231,10 @@ int main(int argc, char** argv) {
 	bool saved = false;
 
 	const char* why = "cycle limit";
+	signal(SIGINT, on_stop);
+	signal(SIGTERM, on_stop);
 	for (cycle = cycle0; cycle < max_cycles; cycle++) {
+		if (stop_req) { why = "a signal"; break; }
 		// the memory side, before the edge: set ack/rdata for this edge
 		if (ack_now) { top->b_ack = 0; ack_now = false; }
 		else if (top->b_req) {
