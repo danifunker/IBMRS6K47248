@@ -268,13 +268,13 @@ logic       e_req, e_we, e_ack;
 logic [20:2] e_addr;
 logic [3:0] e_be;
 logic [31:0] e_wdata;
-wire  [11:0] ge_pitch = {cr[7'h51][5:4], cr[7'h13], 3'b000};   // (Quartus 17 cannot slice a concatenation)
+wire  [12:0] ge_pitch = {cr[7'h51][5:4], cr[7'h13], 3'b000};   // the engine takes its low 12 bits (Quartus 17 cannot slice a concatenation)
 IBMRS6K7248_s3ge engine (
 	.clk, .reset,
 	.r_we(ast == A_IO && we && ge_reg_b && !ge_busy), .r_idx(bp[15:10]), .r_hi(bp[0]), .r_data(bw),
 	.r_abort(ast == A_IO && we && bp == 16'h42E9 && bw[7:6] == 2'b10),
 	.pt_valid(ast == A_PT), .pt_data({wdata[23:16], wdata[31:24]}), .pt_ready,
-	.busy(ge_busy), .pitch(ge_pitch),
+	.busy(ge_busy), .pitch(ge_pitch[11:0]),
 	.v_req(e_req), .v_we(e_we), .v_addr(e_addr), .v_be(e_be), .v_wdata(e_wdata), .v_ack(e_ack), .v_rdata
 );
 // the arbiter: whoever asks first keeps VRAM until answered; the CPU first if both

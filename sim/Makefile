@@ -19,7 +19,9 @@ CPU_SRCS  := $(addprefix $(CPU)/,$(shell grep -o '[A-Za-z0-9_]*\.sv' $(CPU)/DSPP
 # the SDRAM controller is the board's; the bench answers the crossing's far side itself
 MACH_SRCS := $(addprefix $(MACH)/,$(filter-out IBMRS6K7248_sdram.sv,$(shell grep -o '[A-Za-z0-9_]*\.sv' $(MACH)/IBMRS6K7248_machine.qip)))
 
-WARN   := -Wall -Wno-DECLFILENAME -Wno-UNUSEDSIGNAL -Wno-UNUSEDPARAM -Wno-PINCONNECTEMPTY -Wno-SYMRSVDWORD
+# (PROCASSINIT and MULTIDRIVEN: Verilator 5.04x's lint of registers given an initial value, the
+#  UART's and the RTC's, which the FPGA honours; 5.028 did not flag them)
+WARN   := -Wall -Wno-DECLFILENAME -Wno-UNUSEDSIGNAL -Wno-UNUSEDPARAM -Wno-PINCONNECTEMPTY -Wno-SYMRSVDWORD -Wno-PROCASSINIT -Wno-MULTIDRIVEN
 # The model is split into many small files (one 50 MB file took 10 minutes
 # and 2.5 GB to compile), the start-up code (the __Slow files) unoptimised,
 # and ccache keeps what an RTL change leaves the same. Two jobs: this 14 GB

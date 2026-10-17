@@ -83,8 +83,8 @@ end
 // ---- the banks ----------------------------------------------------------------------
 always_comb begin
 	for (int n = 0; n < 8; n++) begin
-		bank_start[n] = {regs[6'(34 + n / 4)][n % 4][1:0], regs[6'(32 + n / 4)][n % 4]};
-		bank_end[n]   = {regs[6'(38 + n / 4)][n % 4][1:0], regs[6'(36 + n / 4)][n % 4]};
+		bank_start[n] = {regs[34 + n / 4][n % 4][1:0], regs[32 + n / 4][n % 4]};
+		bank_end[n]   = {regs[38 + n / 4][n % 4][1:0], regs[36 + n / 4][n % 4]};
 	end
 	bank_en = regs[6'h28][0];
 	picr1   = regs[6'h2A];
