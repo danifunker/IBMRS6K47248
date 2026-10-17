@@ -145,7 +145,10 @@ end
 // PIX_TRANS E2E8-E2EB
 wire [15:0] pw = port;
 always_comb begin
-	io_hit = io_on && ((pw >= 16'h03B0 && pw <= 16'h03DC) ||
+	// (VGA: 3C0-3CF, and the CRTC's set misc bit 0 selects, 3D4/3D5/3DA or 3B4/3B5/3BA: not
+	// 3BC-3BF, the parallel port the firmware's progress codes go to)
+	io_hit = io_on && ((pw >= 16'h03C0 && pw <= 16'h03CC) ||
+	                   pw == {crt_base[15:4], 4'h4} || pw == {crt_base[15:4], 4'h8} ||
 	                   pw == 16'h42E8 || pw == 16'h46E8 || pw == 16'h4AE8 || pw == 16'h0100 ||
 	                   (pw[9:0] == 10'h2E8 && pw[15] && pw[15:10] <= 6'h2F) ||
 	                   pw == 16'hE2E8);
