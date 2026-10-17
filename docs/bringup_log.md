@@ -243,3 +243,35 @@ CRTC's sync widths now count a zero difference as a whole count (CR11 -
 CR10 = 0 is 16 lines, CR05 - CR04 = 0 is 32 characters), as a VGA's do.
 The bench now also ends cleanly on SIGINT/SIGTERM (the VRAM dump, the
 stub list).
+
+## 2026-10-17: the 53C810's first run; the SCSI scan
+
+Run from `snap_mc3.bin` (the current build's `main_control` snapshot, clock
+520 M) with `--cd` = the AIX 4.3.3.3 standalone diagnostics ISO at ID 3
+(`scratch/work/run_scsi.txt`, picture `docs/images/scsi_scan_00017006.png`).
+
+- The driver finds and opens the adapter. Seen with `--io-range
+  A0000000:A00000FF` (`scratch/work/run_scsi_io.txt`, which died at clock
+  1,050 M with the session): the reset (ISTAT 40/00), SCNTL0-3, SCID 0x47,
+  DMODE/DIEN/SIEN, then the SCRIPTS self-test: DSP writes, DSTAT 84 (SIR),
+  DSPS 0100DDDD and 0700DDDD (the script's own interrupt codes), then a
+  selection: SIST1 04 (STO, the selection timeout) with DSPS B0F13F80. So
+  the SCRIPTS engine, its interrupts and the timeout work.
+- POST draws the drives icon; progress 94, 7B, then 96 (the scan, word
+  0208xx96). The bus-reset recovery waits about 3 s of firmware time
+  (clock 800 M to 1,050 M, ~25 min on the bench), then the scan steps
+  through the IDs (~14,000 instructions each). One step gives progress
+  98 (new: probably the CD at ID 3 answering INQUIRY), then 9F (the scan
+  done; without the chip the firmware went 94 to 9F directly).
+- After it: 4C/4D/4E, A4, B0, 91, 71, 72, C0, 26, 27, D0, F0, F6, CD, CD,
+  **CB** (new), then 7B idle at clock ~1,250 M. The screen has all five
+  icons (the speaker added) and the same error triangle, 00017006.
+- **The image server read no blocks** from the CD: either the firmware does
+  not try to boot it (the blank NVRAM's boot list; 00017006 is the console
+  not found), or something after INQUIRY fails.
+
+Next: rerun from `snap_mc3.bin` with `--io-range A0000000:A00000FF` to
+clock ~1,300 M (~75 min) and read the CDBs sent to ID 3 (the DSA tables in
+RAM, `--watch` on 9C27C ncr_execute); find what 98 and CB mean
+(`docs/firmware_analysis.md`); then try the boot with a boot list in
+NVRAM or from the firmware's menus (`docs/scsi_design.md` 1.5-1.10).

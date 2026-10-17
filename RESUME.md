@@ -61,18 +61,21 @@ machine):
   and idles at progress 7B around clock 950 M. Picture:
   `docs/images/first_screen_powerpc_logo.png`; details in
   `docs/bringup_log.md` (the last section).
-- **M5 phase 1 (the 53C810) is written and building/running for the first
-  time**: `rtl/machine/IBMRS6K7248_ncr810.sv` (the HP 9000/715 core's
-  53C710 SCRIPTS engine carried to the 810), `IBMRS6K7248_scsitgt.sv` (the
-  715's byte-level targets with a dual-clock hps buffer), the machine's
-  PCI I/O decode, DMA through the CPU's snoop port, IRQ 15; the bench's
-  `--disk0/--disk1/--cd` image server; the top's three hps_io slots.
-  **Next check**: a run from reset with `--cd` (the diagnostics ISO in
-  `scratch/downloads/fsck.technology/diag/`) and `--watch` on the driver
-  (9BA18 find_scsi_card, 9BC50 ncr_adapter_open, 9DD6C
-  get_script_and_patch, 9C27C ncr_execute, 9D5E4 the interrupt handler,
-  9E120 mem_test): does the adapter open (script self-test, own-ID
-  selection timeout), the scan find the CD, the firmware try to boot it?
+- **M5 phase 1 (the 53C810) runs on the bench**: `rtl/machine/IBMRS6K7248_ncr810.sv`
+  (the HP 9000/715 core's 53C710 SCRIPTS engine carried to the 810),
+  `IBMRS6K7248_scsitgt.sv` (the 715's targets with a dual-clock hps
+  buffer), PCI I/O decode, DMA through the CPU's snoop port, IRQ 15; the
+  bench's `--disk0/--disk1/--cd` image server and `--io-range LO:HI`; the
+  top's three hps_io slots. First run (`docs/bringup_log.md`, last
+  section): the driver opens the adapter (SCRIPTS self-test, selection
+  timeouts all work), the scan runs to its end (a new progress 98 at ID 3,
+  probably the CD's INQUIRY), then a new progress CB, and the firmware idles
+  at 7B with 00017006 as before. **The CD image was never read.**
+  **Next check**: rerun from the `main_control` snapshot with
+  `--cd scratch/downloads/fsck.technology/diag/AIX_4.3.3.3_RS6000_standalone_diagnostics.iso
+  --io-range A0000000:A00000FF` (and `--watch 9C27C` ncr_execute) to clock
+  ~1,300 M and see which commands go to ID 3; find what 98 and CB mean;
+  then make the firmware boot it (a boot list in NVRAM, or its menus).
   `docs/scsi_design.md` sections 1.5-1.10 are the checklist.
 - Then: the Main_MiSTer branch (ask first), M6 (AIX), M7 (PCnet, CS4232
   sound, the L2, the model option). Not yet done: a Quartus fit (the top
@@ -115,6 +118,12 @@ Windows with WSL (as MacPPC7300's), `systemd-run --user` may not exist
 there: build with `make machine_tb` (no cap) and keep `JOBS` modest.
 
 ## Moving to another computer
+
+**Snapshots are tied to the build that made them**: on a new machine, build,
+then make a fresh `main_control` snapshot from reset (the `--save` command
+above, ~25 min) before the SCSI runs. **Disk**: m900's root filled up
+(233 GB, 0 free) during these runs, which broke a relink; a run writes
+little, but a build needs ~1 GB free.
 
 The repository has no remote yet (everything is committed locally). Take it
 with `git bundle create ibmrs6k7248.bundle --all` and `git clone
