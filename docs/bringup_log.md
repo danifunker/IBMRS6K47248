@@ -201,3 +201,45 @@ VRAM port, the vertical interrupt) and 1b (`IBMRS6K7248_s3ge.sv`: the
 engine) are written, from `docs/s3_design.md`; the bench answers the VRAM
 port from a 2 MB array (`--vram FILE`, `tools/vram.py`). Not yet seen
 running: the S3 driver loads after B1.
+
+## 2026-10-17: the first picture; POST to the end of its icons
+
+With the S3 (phases 1a-1c: registers, engine, scan-out with VRAM in DDR3)
+and the floppy controller, the firmware runs from reset to its idle state
+on the bench (`run_s3c`, 8 MB, from reset):
+
+| clock | instructions | progress | the screen |
+|---|---|---|---|
+| 520 M | 81.4 M | `main_control` | (snapshot `snap_mc2.bin`) |
+| ~560 M | 96 M | A0-AC, DE | the S3 driver sets 640x480x8, clears to white, a text cursor |
+| ~700 M | 128-137 M | 4C-4E, 61 | the PowerPC logo (`oem.bmp`), the keyboard and memory icons; the memory test (`test_next_meg`, `rwc_pattern`) |
+| ~790 M | 174-176 M | **B1, B2, B3** | `diskette_init` now passes in 1.3 M instructions (the FDC, drive empty) |
+| ~800 M | 181 M | 94, 9F, 4C-4E | the network and drives icons |
+| ~850 M | 189 M | A4, B0 | |
+| ~900 M | 223 M | 91, 71, 72, C0, 26 | |
+| ~945 M | 242-247 M | 27, D0, F0, F6, CD, **7B** | the speaker icon; the error triangle with **00017006**; then idle (7B) |
+
+![the start-up screen](images/first_screen_powerpc_logo.png)
+
+The order is the `autoexec.6md` sequence of `hardware_inventory.md` 4.1.
+COM1 stays silent in this run: with the S3 found, the console is the
+screen.
+
+**00017006** comes from `check_tamper_or_init_path` (RAM BDA4): it walks
+the consoles (`console_query`) for the one named in the configuration
+(NVRAM, blank here) and, finding none, reports 00017006 through
+`text_errormsg_tr` (the triangle, the code, then on to the boot). Expected
+with a blank NVRAM; to check against a configured one.
+
+The error code's box is drawn by `put_erroricon` (RAM 38964):
+`rect_fill(x, y, x + 14 * strlen, y + 15, 255)` then `put_text(code, x, y,
+1, 0, 0)`. It shows black with the digits dark blue (0,0,85): to check
+whether VRAM holds 255 there (the palette) or the fill went wrong.
+
+Two bench faults on the way: the frame capture (`--frame`) ran past its
+buffer when no vertical sync came (1.8 M lines, the CRTC still at its
+reset values: the bench crashed in `fwrite`), now clipped; and the
+CRTC's sync widths now count a zero difference as a whole count (CR11 -
+CR10 = 0 is 16 lines, CR05 - CR04 = 0 is 32 characters), as a VGA's do.
+The bench now also ends cleanly on SIGINT/SIGTERM (the VRAM dump, the
+stub list).
