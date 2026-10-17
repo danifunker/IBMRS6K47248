@@ -176,3 +176,28 @@ character at a time. At the firmware's 9600 baud a character costs the
 bench 100,000 clocks, so the bench now runs its serial ports at the
 clock / 16 (`UART_FAST`, the bench only); `--com1 FILE` keeps the bytes and
 `tools/vt.py FILE` draws the terminal's screen.
+
+## 2026-10-17: snapshots; the console drivers; the floppy
+
+The bench now saves the machine at `main_control` (`--save`, 520 million
+clocks) and starts from there (`--restore`): checked, the restored run
+retires the same progress codes at the same instruction counts.
+
+After A0-AC, the start-up script (`autoexec.6md`, built into the RAM
+disk) loads the console drivers in turn: `as` (the serial terminal),
+`s3`, `p9`, `bbl`, `ruby`, `mint` ("Command mint not found.": not a
+command in this build). On the serial console the firmware writes a
+character, then a new line and the cursor home, as if the terminal were
+one column wide (its geometry is probably the NVRAM's, blank here).
+
+Progress B1 is `diskette_init` (RAM 14FB8): DMA reset, the FDC's TDR
+(3F3), IRQ 6 registered, then the drive with timeouts. With nothing at
+3F0-3F7 it waited out every timeout (still in B1 after 300 million
+clocks). Hence `IBMRS6K7248_fdc.sv`: an 82077AA's command and result
+phases as QEMU's fdc.c, the drive present and empty.
+
+M4 phases 1a (`IBMRS6K7248_s3.sv`: the registers, the frame buffer to a
+VRAM port, the vertical interrupt) and 1b (`IBMRS6K7248_s3ge.sv`: the
+engine) are written, from `docs/s3_design.md`; the bench answers the VRAM
+port from a 2 MB array (`--vram FILE`, `tools/vram.py`). Not yet seen
+running: the S3 driver loads after B1.
