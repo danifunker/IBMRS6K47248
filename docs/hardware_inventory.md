@@ -550,3 +550,41 @@ The 7043-140/240 firmware uses an operator-panel display [SG7043 p.38–39, p.92
 | FFD | Alternates with the failing Fxx |
 
 The 7043-150 uses E1xx checkpoints [SG7043 ch.4, p.113+]. The 7043 location codes follow the same RSPC AB-CD-EF-GH scheme as §3.5 [SG7043 p.111–112].
+
+## Appendix B. From Linux 2.6.26's PReP code (Carolina)
+
+`arch/ppc/platforms/prep_pci.c` and `prep_setup.c` (saved in
+`scratch/downloads/linux-2.6.26-prep/`), written partly from IBM's
+"Carolina Technical Specification":
+
+PCI devices on bus 0 (the IDSEL by device number) and their interrupt pins
+(`ibm8xx_pci_IRQ_map`); every PCI interrupt line is routed to **IRQ 15**
+(`ibm8xx_pci_IRQ_routes`), level-triggered (the edge mask: IRQs 10, 13
+and 15 level):
+
+| device | what | pin |
+|---|---|---|
+| 11 | Fire Coral (the PCI-ISA bridge) | - |
+| 12 | Ethernet (Am79C970) | INTD# |
+| 13 | PCI slot | (2) |
+| 14 | S3 video | INTD# |
+| 15 | on-board SCSI ("INDI"), unused | - |
+| 16 | NCR 53C810, the 7248 only | INTC# |
+| 18 | PCI slot 2 | INTx# |
+
+The planar IDs (port 0852): F0-F3 Carolina with IDE (Power Series
+830/850), F4-F7 Carolina with SCSI (the 7248; F7 "missing from the
+Carolina Tech Spec").
+
+IBM system registers:
+
+| port | | bits |
+|---|---|---|
+| 0803 | SIMM ID | SIMM size, 32 or 8 MB |
+| 0804 | SIMM presence | |
+| 080C | equipment present | 01 L2 absent (0: present), 02 upgrade CPU absent, 04 L2 256 KB, 08 L2 copy-back, 40 SCSI fuse good, 80 reserved |
+| 080D | L2 information | 60: size (00 256 KB, 20 512 KB), 03: type (0 async, 1 sync) |
+| 081C | system control | C0: L2 enable (`prep_carolina_enable_l2` sets both) |
+| 082A | power management 1 | |
+| 0852 | planar ID | |
+| 08C0 | the 4-digit LED display | (the firmware's early progress codes; the 7248 has no display) |
