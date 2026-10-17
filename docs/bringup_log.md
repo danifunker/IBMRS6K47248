@@ -91,3 +91,16 @@ interrupt acknowledge (`_pic`), the 8254 and port 61 (`_pit`), the
 MC146818 and the 4 KB NVRAM (`_rtc`), the 8042 with a PS/2 keyboard and
 mouse from hps_io (`_kbc`; set 2 to set 1 translation from QEMU's table),
 port 92, the error status registers 0840-0844 reading 0.
+
+## 2026-10-17: through the recovery block into the main block
+
+With the CS4232 following its Crystal-key configuration (its Sound Blaster
+appearing at 220 when activated and gone when deactivated, as `init_4232`
+checks), `--ram 32`: progress 09, 0A, 0B, 0C, 0D (`chk_image_CRC` of the
+main block from ROM, uncached: about 100 million clocks), 0E-11, and at
+clock 125.6 million the jump to the main block's reset vector, FFF10100.
+The main block repeats the early set-up (progress 33, 04, 19, the memory
+sizing, 23) and then tests the RAM from a copy of its code at RAM 200,
+caches still off: 22 clocks an instruction, about two hours of the bench
+for 32 MB on the -O1 binary. Stopped there; the next run with `--ram 8`,
+`--lat 1` and the -O2 binary.

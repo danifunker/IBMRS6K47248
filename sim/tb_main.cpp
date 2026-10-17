@@ -44,6 +44,7 @@ static void usage() {
 	       "  --watch PC   report when PC (hex) first retires (FFF10100 and 8398, main_control, always)\n"
 	       "  --beat N     every N clocks, a line with the instructions retired, the PC and the last progress code (default 20,000,000; 0 none)\n"
 	       "  --fst FILE   write a waveform (needs a make TRACE=1 build) of clocks --from N --to M\n"
+	       "  --lat N      the bench memory answers N clocks after a request (default 6, about the SDRAM's)\n"
 	       "  --cycles N   stop after N clocks (default 50,000,000)\n"
 	       "  --instr N    stop after N instructions retired\n"
 	       "  --io         print every device access as it happens\n"
@@ -67,6 +68,7 @@ int main(int argc, char** argv) {
 	bool io_print = false, post_print = true;
 	uint64_t pcs_print = 0;
 	uint64_t beat = 20000000;
+	int lat = 6;                                   // the bench memory's answer, in clocks after the request
 	const char* fst_path = nullptr;                // a waveform (a TRACE=1 build) ...
 	uint64_t fst_from = 0, fst_to = ~0ull;         // ... of these clocks                      // a heartbeat line every so many clocks (0 none)
 	for (int i = 1; i < argc; i++) {
@@ -83,6 +85,7 @@ int main(int argc, char** argv) {
 		else if (a == "--fst") fst_path = next();
 		else if (a == "--from") fst_from = strtoull(next(), nullptr, 0);
 		else if (a == "--to") fst_to = strtoull(next(), nullptr, 0);
+		else if (a == "--lat") lat = atoi(next());
 		else if (a == "--beat") beat = strtoull(next(), nullptr, 0);
 		else if (a == "--pcs") pcs_print = strtoull(next(), nullptr, 0);
 		else if (a == "--stall") stall_lim = strtoull(next(), nullptr, 0);
@@ -123,7 +126,7 @@ int main(int argc, char** argv) {
 	top->reset_b = 1;
 
 	// the memory: a request is answered LAT clocks after it is seen
-	const int LAT = 6;
+	// (--lat: its latency changes how long the machine waits, not what it does)
 	int  mem_wait = -1;
 	bool ack_now = false;
 
@@ -178,7 +181,7 @@ int main(int argc, char** argv) {
 		// the memory side, before the edge: set ack/rdata for this edge
 		if (ack_now) { top->b_ack = 0; ack_now = false; }
 		else if (top->b_req) {
-			if (mem_wait < 0) mem_wait = LAT;
+			if (mem_wait < 0) mem_wait = lat;
 			else if (mem_wait == 0) {
 				uint32_t a = uint32_t(top->b_addr) << 2;
 				if (a >= MEM_BYTES) a &= MEM_BYTES - 1;
