@@ -79,8 +79,8 @@ module  pll_0002 #(
 		.c_cnt_in_src0("ph_mux_clk"),
 		.c_cnt_bypass_en0("false"),
 		.c_cnt_odd_div_duty_en0("true"),
-		.c_cnt_hi_div1(FAST ? 4 : 5),
-		.c_cnt_lo_div1(FAST ? 3 : 5),
+		.c_cnt_hi_div1(FAST ? 4 : CPU_MHZ == 50 ? 7 : 5),   // C: 7 (100 MHz), 10 (70), 14 (50) of the 700 MHz VCO
+		.c_cnt_lo_div1(FAST ? 3 : CPU_MHZ == 50 ? 7 : 5),
 		.c_cnt_prst1(1),
 		.c_cnt_ph_mux_prst1(0),
 		.c_cnt_in_src1("ph_mux_clk"),
