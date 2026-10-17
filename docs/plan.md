@@ -62,6 +62,13 @@ start-up, the `eatabug` monitor).
 
 ### M4 Video
 
+**Status (2026-10-17):** written, not yet seen working: phase 1a
+(`IBMRS6K7248_s3.sv`: registers, frame buffer, vertical interrupt), 1b
+(`IBMRS6K7248_s3ge.sv`: the engine) and 1c (`IBMRS6K7248_s3video.sv`:
+VRAM in DDR3, CRTC, dot clock, palette, cursor), from
+`docs/s3_design.md`. The bench models the DDR3 port and keeps the
+picture's latest frame (`--frame`).
+
 S3 Vision864 + SDAC (PCI, 5333:88C0): VGA text and graphics modes, the
 linear frame buffer, the hardware cursor; 2 MB VRAM in the HPS's DDR3
 (as MacPPC7300's video). The firmware's icons and SMS screens.
