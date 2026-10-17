@@ -34,7 +34,7 @@ module emu
 	`include "sys/emu_ports.vh"
 );
 
-localparam int CPU_MHZ = 50;                // (an experiment: 50 to rule the CPU's -2.6 ns at 70 out of the board's memory-sizing halt)                // the PLL's 70 or 100: the first fit at 100 missed by 6.2 ns (the CPU's paths, as MacPPC7300's, which runs at 70)
+localparam int CPU_MHZ = 70;                // the PLL's 70 or 100: the first fit at 100 missed by 6.2 ns (the CPU's paths, as MacPPC7300's, which runs at 70)
 localparam int TB_HZ   = 16_666_667;        // the 604's time base: a quarter of a 66 MHz bus
 
 ///////// Default values for ports not used in this core /////////
