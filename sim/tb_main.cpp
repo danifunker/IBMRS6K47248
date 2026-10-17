@@ -95,7 +95,7 @@ static void usage() {
 	       "  --io         print every device access as it happens\n"
 	       "  --io-range LO:HI  print the device accesses with addresses LO-HI (hex) only\n"
 	       "  --quiet-progress  do not print the firmware's progress codes (port 680) as they come\n"
-	       "  --pcs N      print the first N retired PCs\n"
+	       "  --pcs N      print the retired PCs up to instruction N (--pcs-from M: from M; absolute, as --beat counts)\n"
 	       "  --stall N    stop when no new PC was retired in the last N instructions (default 2,000,000; 0 never)\n");
 }
 
@@ -117,7 +117,7 @@ int main(int argc, char** argv) {
 	uint64_t max_cycles = 50000000, max_instr = 0, stall_lim = 2000000;
 	bool io_print = false, post_print = true;
 	uint32_t io_lo = 0, io_hi = 0xFFFFFFFF;            // --io's range
-	uint64_t pcs_print = 0;
+	uint64_t pcs_print = 0, pcs_from = 0;
 	uint64_t beat = 20000000;
 	int lat = 6;                                   // the bench memory's answer, in clocks after the request
 	const char* save_path = nullptr;               // a snapshot of the machine (model and memory) ...
@@ -165,6 +165,7 @@ int main(int argc, char** argv) {
 		else if (a == "--lat") lat = atoi(next());
 		else if (a == "--beat") beat = strtoull(next(), nullptr, 0);
 		else if (a == "--pcs") pcs_print = strtoull(next(), nullptr, 0);
+		else if (a == "--pcs-from") pcs_from = strtoull(next(), nullptr, 0);
 		else if (a == "--stall") stall_lim = strtoull(next(), nullptr, 0);
 		else { usage(); return 2; }
 	}
@@ -487,7 +488,7 @@ int main(int argc, char** argv) {
 					printf("  reached %08X (%s) at instr %llu, clock %llu\n", pc, w.name.c_str(),
 					       (unsigned long long)instr, (unsigned long long)cycle);
 				}
-			if (instr < pcs_print) printf("  pc %08X  %08X  msr %08X\n", pc, top->trace_insn, top->trace_msr);
+			if (instr < pcs_print && instr >= pcs_from) printf("  pc %08X  %08X  msr %08X\n", pc, top->trace_insn, top->trace_msr);
 			instr++;
 			last_pc = pc;
 			if (seen_pc.emplace(pc, instr).second) since_new = 0;
