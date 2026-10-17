@@ -302,3 +302,40 @@ So the CD-ROM was found and entered in the boot table; what did not happen
 is the boot itself: the firmware idles at 7B after 00017006. To find out
 why, the next run watches `build_boot_table` (1DBB8), `get_boot_seq` (1FBD4),
 `boot_cmd` (133A0), `ParallelBoot` (232EC) and `cold_boot_path` (BC58).
+
+## 2026-10-17: the first fit; the first load on a MiSTer
+
+The first Quartus 17.0 compile of the whole top (commit 2260e82, after the
+syntax fixes above): 34,272 ALMs (82 %), 249 M10Ks (45 %), 45 DSPs, 16
+minutes. At 100 MHz the CPU clock misses by 6.2 ns (every failing path in
+the CPU: the writeback result into CR and the completion queue, the FPU's
+result mux, the BTB's write), as MacPPC7300's does; its PLL already offers 70
+MHz on counter 1, so the top now runs the CPU and the machine at 70 MHz
+(`CPU_MHZ`), memory and video at 100. That fit: 33,655 ALMs (80 %), slack
+-2.34 ns (MacPPC7300 runs on the board at 70 with -1.1; its CPU has since
+had a dozen timing cuts this copy lacks: `docs/cpu_patches/` is the way to
+bring them over).
+
+| block | ALMs |
+|---|---|
+| CPU (FPU 3,884; caches 2,411; MMU 1,003) | 15,892 |
+| the framework (scaler, OSD, audio, hps_io) | ~6,900 |
+| 53C810 + targets | 3,075 |
+| S3 (registers 1,602; engine 244; scan-out 440) | 2,286 |
+| Fire Coral + MPC105 (their configuration spaces as flops) | 1,759 |
+| 8042 (its queues as flops) | 772 |
+| the rest | ~1,600 |
+
+Loaded on the MiSTer at 192.168.99.143 (`/media/fat/_Computer/IBMRS6K7248.rbf`,
+`games/IBMRS6K7248/boot.rom` = the v1.12 512 KB image, the diagnostics ISO
+beside it; the screen captured through the MiSTerKVMS capture server's
+preview, `scratch/work/grab.py`; keys through mrext at port 8182). The OSD
+comes up with the core's menu. The picture is a white band (DE active) on
+black, 540 of 1,920 columns, full height, from the first second after the
+load and unchanged after minutes: `docs/images/board_first_load.jpg`.
+Nothing on the UART (ttyS1 on the board) at 9600: but the bench's COM1 is
+also empty throughout (the S3 found, the console is the screen), so COM1
+says nothing either way. So no sign yet whether the CPU runs on the board.
+Hence the POST-code sender in the top (commit c261917): the port 680 codes
+on the MiSTer UART at 115200 (the OSD's "UART" option, default), "R" at the
+end of reset, "." every 2^24 instructions.
