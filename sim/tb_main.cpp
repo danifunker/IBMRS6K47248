@@ -97,6 +97,7 @@ static void usage() {
 	       "  --quiet-progress  do not print the firmware's progress codes (port 680) as they come\n"
 	       "  --pcs N      print the retired PCs up to instruction N (--pcs-from M: from M; absolute, as --beat counts)\n"
 	       "  --key-at CLOCK:CODE[:e]  press a PS/2 key (set 2 code, hex; e: extended) at that clock, release it 300,000 later; repeatable\n"
+	       "  --cpu-mhz A --mem-mhz B  the two clocks at their own rates, as on the board (70 and 100); default both one clock\n"
 	       "  --com1-at CLOCK:BYTE     a byte (hex) into COM1 at that clock, at the bench's line rate (16 clocks a bit); repeatable\n"
 	       "  --stall N    stop when no new PC was retired in the last N instructions (default 2,000,000; 0 never)\n");
 }
@@ -120,6 +121,7 @@ int main(int argc, char** argv) {
 	bool io_print = false, post_print = true;
 	uint32_t io_lo = 0, io_hi = 0xFFFFFFFF;            // --io's range
 	uint64_t pcs_print = 0, pcs_from = 0;
+	unsigned cpu_mhz = 0, mem_mhz = 0;               // 0: the two clocks as one
 	struct KeyAt { uint64_t clock; unsigned code; bool ext; };
 	std::vector<KeyAt> keys;                      // --key-at
 	struct ByteAt { uint64_t clock; unsigned byte; };
@@ -172,6 +174,8 @@ int main(int argc, char** argv) {
 		else if (a == "--beat") beat = strtoull(next(), nullptr, 0);
 		else if (a == "--pcs") pcs_print = strtoull(next(), nullptr, 0);
 		else if (a == "--pcs-from") pcs_from = strtoull(next(), nullptr, 0);
+		else if (a == "--cpu-mhz") cpu_mhz = unsigned(strtoul(next(), nullptr, 0));
+		else if (a == "--mem-mhz") mem_mhz = unsigned(strtoul(next(), nullptr, 0));
 		else if (a == "--key-at") {
 			std::string v = next();
 			size_t c = v.find(':');
@@ -287,7 +291,34 @@ int main(int argc, char** argv) {
 	if (fst_path) { fprintf(stderr, "--fst needs a make TRACE=1 build\n"); return 2; }
 #endif
 	uint64_t tcycle = 0;
+	// --cpu-mhz/--mem-mhz: the memory clock's edges happen at their own times between the CPU
+	// clock's (half periods in picoseconds); a cycle is still one CPU clock
+	const bool two_clocks = cpu_mhz && mem_mhz && cpu_mhz != mem_mhz;
+	const uint64_t ha = two_clocks ? 500000ull / cpu_mhz : 0, hb = two_clocks ? 500000ull / mem_mhz : 0;
+	uint64_t ta = 0, tb = 0;                                // the time of the next edge of each
+	auto mem_edges_until = [&](uint64_t t) {                // the memory clock's edges up to time t
+		while (tb <= t) {
+			top->clk_b = !top->clk_b;
+			top->eval();
+#ifdef SDRAM_CHIP
+			if (!top->clk_b) {                                // the SDRAM's rising edge
+				bool drv; uint16_t dq;
+				chip.edge(sd_clocks++, top->SDRAM_nCS, top->SDRAM_nRAS, top->SDRAM_nCAS, top->SDRAM_nWE, top->SDRAM_BA,
+				          top->SDRAM_A, (top->SDRAM_DQMH << 1) | top->SDRAM_DQML, top->dq_oe, top->dq_out, drv, dq);
+				top->dq_in = dq;
+				top->eval();
+			}
+#endif
+			tb += hb;
+		}
+	};
 	auto tick = [&]() {
+		if (two_clocks) {
+			ta += ha; mem_edges_until(ta); top->clk = 0; top->eval();
+			ta += ha; mem_edges_until(ta); top->clk = 1; top->eval();
+			tcycle++;
+			return;
+		}
 		top->clk = 0; top->clk_b = 0; top->eval();
 #ifdef SDRAM_CHIP
 		{	// the SDRAM's rising edge (its clock is the controller's inverted)
