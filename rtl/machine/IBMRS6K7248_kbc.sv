@@ -298,8 +298,8 @@ always_ff @(posedge clk) begin
 
 	// queues in
 	for (int i = 0; i < 3; i++) begin
-		if (3'(i) < kpush_n) kq[4'(kq_w + 4'(i))] <= kpush[i];
-		if (3'(i) < mpush_n) mq[4'(mq_w + 4'(i))] <= mpush[i];
+		if (i[2:0] < kpush_n) kq[kq_w + i[3:0]] <= kpush[i];
+		if (i[2:0] < mpush_n) mq[mq_w + i[3:0]] <= mpush[i];
 	end
 	kq_w <= kq_w + 4'(kpush_n);
 	mq_w <= mq_w + 4'(mpush_n);

@@ -51,7 +51,7 @@ function automatic logic [3:0] prio(input logic [7:0] v, input logic [2:0] lowes
 	logic [2:0] n;
 	r = 4'h8;
 	for (int i = 7; i >= 0; i--) begin
-		n = 3'(lowest + 3'(i) + 3'd1);
+		n = lowest + i[2:0] + 3'd1;
 		if (v[n]) r = {1'b0, n};
 	end
 	return r;

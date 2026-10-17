@@ -333,12 +333,12 @@ always_ff @(posedge clk) begin
 	else if (srst) begin
 		// ISTAT.SRST holds the chip in reset until the host clears it
 		if (sel && we && off == 6'h05 && be[3] && !wdata[30]) srst <= 1'b0;
-		if (sel && !we) rdata <= {reg_rd(7'({off, 2'd0})), reg_rd(7'({off, 2'd1})), reg_rd(7'({off, 2'd2})), reg_rd(7'({off, 2'd3}))};
+		if (sel && !we) rdata <= {reg_rd({off[6:2], 2'd0}), reg_rd({off[6:2], 2'd1}), reg_rd({off[6:2], 2'd2}), reg_rd({off[6:2], 2'd3})};
 	end else begin
 		// ------------------------------------------------ the host's register access
 		if (sel) begin
 			if (!we) begin
-				rdata <= {reg_rd(7'({off, 2'd0})), reg_rd(7'({off, 2'd1})), reg_rd(7'({off, 2'd2})), reg_rd(7'({off, 2'd3}))};
+				rdata <= {reg_rd({off[6:2], 2'd0}), reg_rd({off[6:2], 2'd1}), reg_rd({off[6:2], 2'd2}), reg_rd({off[6:2], 2'd3})};
 				// reads that clear (and unstack)
 				if (off == 6'h03 && be[3]) begin dstat_st <= dstat_pend; dstat_pend <= 7'd0; end      // DSTAT (0C)
 				if (off == 6'h10 && be[1]) begin sist0_st <= sist0_pend; sist0_pend <= 8'd0; end      // SIST0 (42)
@@ -348,7 +348,7 @@ always_ff @(posedge clk) begin
 				for (int i = 0; i < 4; i++) if (be[3 - i]) begin
 					logic [6:0] a;
 					logic [7:0] v;
-					a = 7'({off, 2'(i)}); v = wdata[31 - 8 * i -: 8];     // (80-FF alias 00-7F)
+					a = {off[6:2], i[1:0]}; v = wdata[31 - 8 * i -: 8];   // (80-FF alias 00-7F; no size casts of ints: Quartus 17 reads them signed)
 					case (a)
 						7'h01: begin
 							scntl1 <= v;
