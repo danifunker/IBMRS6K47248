@@ -29,7 +29,8 @@
 static const uint32_t MEM_BYTES = 128u << 20;
 static const uint32_t ROM_AT    = 31;                 // 4 MB units: the top 4 MB of 128
 static std::vector<uint8_t> mem(MEM_BYTES, 0);
-static std::vector<uint8_t> vram(2u << 20, 0);          // the S3's 2 MB
+static std::vector<uint64_t> ddr(4u << 17, 0);         // DDR3 from 3000_0000: the S3's VRAM (4 MB reserved)
+static const uint32_t DDR_BASE = 0x06000000;            // in 64-bit words (IBMRS6K7248_s3video)
 
 static uint32_t rd32(uint32_t a) {
 	return (uint32_t(mem[a]) << 24) | (uint32_t(mem[a + 1]) << 16) | (uint32_t(mem[a + 2]) << 8) | mem[a + 3];
@@ -48,6 +49,7 @@ static void usage() {
 	       "  --save FILE  snapshot the machine when --save-pc PC (hex; default 8398, main_control) first retires\n"
 	       "  --restore FILE  start from a snapshot (the same build and ROM; the options given apply from there)\n"
 	       "  --vram FILE  the S3's 2 MB VRAM at the end, raw (tools/vram.py draws it)\n"
+	       "  --frame FILE the picture's latest whole frame, as a PPM, rewritten at each vertical sync\n"
 	       "  --com1 FILE  COM1's bytes as sent, raw (tools/vt.py FILE draws the terminal's screen)\n"
 	       "  --fst FILE   write a waveform (needs a make TRACE=1 build) of clocks --from N --to M\n"
 	       "  --lat N      the bench memory answers N clocks after a request (default 6, about the SDRAM's)\n"
@@ -79,6 +81,7 @@ int main(int argc, char** argv) {
 	uint32_t save_pc = 0x00008398;                 // ... when this PC first retires (default main_control)
 	const char* restore_path = nullptr;            // start from a snapshot instead of from reset
 	const char* vram_path = nullptr;               // the S3's VRAM at the end, raw
+	const char* frame_path = nullptr;              // the latest whole frame of the picture (PPM)
 	const char* com1_path = nullptr;               // COM1's bytes as sent (tools/vt.py draws the screen)
 	const char* fst_path = nullptr;                // a waveform (a TRACE=1 build) ...
 	uint64_t fst_from = 0, fst_to = ~0ull;         // ... of these clocks                      // a heartbeat line every so many clocks (0 none)
@@ -95,6 +98,7 @@ int main(int argc, char** argv) {
 		else if (a == "--quiet-progress") post_print = false;
 		else if (a == "--com1") com1_path = next();
 		else if (a == "--vram") vram_path = next();
+		else if (a == "--frame") frame_path = next();
 		else if (a == "--save") save_path = next();
 		else if (a == "--save-pc") save_pc = strtoul(next(), nullptr, 16);
 		else if (a == "--restore") restore_path = next();
@@ -145,7 +149,10 @@ int main(int argc, char** argv) {
 	// the memory: a request is answered LAT clocks after it is seen
 	// (--lat: its latency changes how long the machine waits, not what it does)
 	int  mem_wait = -1;
-	int  v_wait = 0;
+	uint32_t rd_addr = 0, rd_left = 0; int rd_wait = 0;     // DDR3: the read burst being answered
+	std::vector<uint8_t> frame(1600 * 1200 * 3, 0);        // the picture
+	uint32_t fx = 0, fy = 0, fw = 0, fh = 0; uint64_t frames = 0;
+	bool was_de = false, was_vs = false;
 	bool ack_now = false;
 
 	std::map<uint32_t, StubInfo> stubs;
@@ -194,7 +201,7 @@ int main(int argc, char** argv) {
 		f(&post_last, sizeof post_last); f(&post_count, sizeof post_count); f(&io_count, sizeof io_count);
 		f(&mem_wait, sizeof mem_wait); f(&ack_now, sizeof ack_now); f(&tcycle, sizeof tcycle);
 		f(mem.data(), mem.size());
-		f(vram.data(), vram.size());
+		f(ddr.data(), ddr.size() * 8);
 	};
 	uint64_t cycle0 = 0;
 	if (restore_path) {
@@ -249,22 +256,51 @@ int main(int argc, char** argv) {
 				mem_wait = -1;
 			} else mem_wait--;
 		}
-		// the S3's VRAM: a word answered two clocks after its request
-		top->v_ack = 0;
-		if (top->v_req) {
-			if (++v_wait == 2) {
-				uint32_t a = (uint32_t(top->v_addr) << 2) & ((2u << 20) - 1);
-				if (top->v_we) {
-					uint32_t v = top->v_wdata;
-					for (int b = 0; b < 4; b++) if (top->v_be & (8 >> b)) vram[a + b] = v >> (24 - 8 * b);
-				} else
-					top->v_rdata = (uint32_t(vram[a]) << 24) | (uint32_t(vram[a + 1]) << 16) | (uint32_t(vram[a + 2]) << 8) | vram[a + 3];
-				top->v_ack = 1;
-				v_wait = -1;
-			}
+		// DDR3 (the S3's VRAM): a read burst answered a beat a clock after 4 clocks; writes at once
+		top->ddr_busy = 0;
+		top->ddr_dout_ready = 0;
+		if (rd_left && rd_wait == 0) {
+			uint32_t w = rd_addr - DDR_BASE;
+			top->ddr_dout = (w < ddr.size()) ? ddr[w] : ~0ull;
+			top->ddr_dout_ready = 1;
+			rd_addr++; rd_left--;
 		}
-		else v_wait = 0;
+		else if (rd_left) rd_wait--;
 		tick();
+		if (top->ddr_rd && !rd_left) { rd_addr = top->ddr_addr; rd_left = top->ddr_burstcnt; rd_wait = 4; }
+		if (top->ddr_we) {
+			uint32_t w = uint32_t(top->ddr_addr) - DDR_BASE;
+			if (w < ddr.size())
+				for (int b = 0; b < 8; b++)
+					if (top->ddr_be & (1 << b)) ddr[w] = (ddr[w] & ~(0xFFull << (8 * b))) | (uint64_t(top->ddr_din) & (0xFFull << (8 * b)));
+		}
+		// the picture: the visible pixels into a frame, saved at each vertical sync
+		if (top->vid_ce) {
+			bool de = !top->vid_hblank && !top->vid_vblank;
+			if (de) {
+				if (fy < 1200 && fx < 1600) {
+					uint8_t* px = &frame[(fy * 1600 + fx) * 3];
+					px[0] = top->vid_r; px[1] = top->vid_g; px[2] = top->vid_b;
+				}
+				fx++;
+				if (fx > fw) fw = fx;
+			}
+			else if (was_de) { fx = 0; fy++; if (fy > fh) fh = fy; }
+			was_de = de;
+			if (top->vid_vs && !was_vs) {
+				if (frame_path && fw && fh) {
+					FILE* ff = fopen(frame_path, "wb");
+					if (ff) {
+						fprintf(ff, "P6\n%u %u\n255\n", fw, fh);
+						for (uint32_t y = 0; y < fh; y++) fwrite(&frame[y * 1600 * 3], 1, fw * 3, ff);
+						fclose(ff);
+					}
+				}
+				frames++;
+				fx = fy = fw = fh = 0;
+			}
+			was_vs = top->vid_vs;
+		}
 		if (beat && cycle && cycle % beat == 0)
 			printf("  [clock %llu: %llu instructions, pc %08X, progress %02X]\n", (unsigned long long)cycle,
 			       (unsigned long long)instr, last_pc, post_last);
@@ -351,8 +387,13 @@ int main(int argc, char** argv) {
 		       (unsigned long long)s.writes, s.last_wdata, s.last_rdata, s.first_pc);
 	if (vram_path) {
 		FILE* vf = fopen(vram_path, "wb");
-		if (vf) { fwrite(vram.data(), 1, vram.size(), vf); fclose(vf); }
+		if (vf) {
+			// in VRAM's byte order: byte a in DDR3 word a >> 3, lane a & 7
+			for (uint32_t a = 0; a < (2u << 20); a++) fputc(int(ddr[a >> 3] >> (8 * (a & 7))) & 0xFF, vf);
+			fclose(vf);
+		}
 	}
+	printf("%llu frames of the picture\n", (unsigned long long)frames);
 #if VM_TRACE
 	if (tfp) tfp->close();
 #endif

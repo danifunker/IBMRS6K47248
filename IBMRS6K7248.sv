@@ -10,9 +10,8 @@
 //  (the two are one PLL counter at 100 MHz; the clock crossing between them
 //  stays, as in MacPPC7300's 100 MHz build.) outclk_0 (20 MHz) is unused.
 //
-//  First form: there is no video device yet. The picture is a black
-//  640 x 480 at 60 Hz so the scaler has a mode; the console is COM1, the
-//  MiSTer's UART (the firmware's serial console at 9600 baud).
+//  The picture is the S3 Vision864's (IBMRS6K7248_s3video: its VRAM in the
+//  HPS's DDR3); the firmware's serial console is COM1, the MiSTer's UART.
 //
 //  This program is free software; you can redistribute it and/or modify it
 //  under the terms of the GNU General Public License as published by the Free
@@ -43,7 +42,6 @@ localparam int TB_HZ   = 16_666_667;        // the 604's time base: a quarter of
 assign ADC_BUS  = 'Z;
 assign USER_OUT = '1;
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
-assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = '0;
 
 assign VGA_SL = 0;
 assign VGA_F1 = 0;
@@ -267,9 +265,9 @@ wire [31:2]  b_addr;
 wire  [3:0]  b_be;
 wire [255:0] b_wdata, b_rdata;
 wire         trace_valid, trace_last;
-wire         s3_v_req;
-reg          s3_v_ack = 0;
-always @(posedge clk_cpu) s3_v_ack <= s3_v_req & ~s3_v_ack;
+wire         vid_ce, vid_hs, vid_vs, vid_hblank, vid_vblank;
+wire   [7:0] vid_r, vid_g, vid_b;
+assign DDRAM_CLK = clk_mem;
 
 IBMRS6K7248_system #(.CPU_HZ(CPU_MHZ * 1_000_000), .TB_HZ(TB_HZ)) system
 (
@@ -290,8 +288,10 @@ IBMRS6K7248_system #(.CPU_HZ(CPU_MHZ * 1_000_000), .TB_HZ(TB_HZ)) system
 	.rtc_time(rtc[55:0]),
 	.speaker, .kbc_reset,
 
-	// the S3's VRAM: not yet in DDR3 (plan M4, step 4); answered at once, reads 0
-	.v_req(s3_v_req), .v_we(), .v_addr(), .v_be(), .v_wdata(), .v_ack(s3_v_ack), .v_rdata(32'h0),
+	// the S3's VRAM in DDR3 and its picture, in the memory clock
+	.ddr_busy(DDRAM_BUSY), .ddr_burstcnt(DDRAM_BURSTCNT), .ddr_addr(DDRAM_ADDR), .ddr_dout(DDRAM_DOUT),
+	.ddr_dout_ready(DDRAM_DOUT_READY), .ddr_rd(DDRAM_RD), .ddr_din(DDRAM_DIN), .ddr_be(DDRAM_BE), .ddr_we(DDRAM_WE),
+	.vid_ce, .vid_r, .vid_g, .vid_b, .vid_hs, .vid_vs, .vid_hblank, .vid_vblank,
 
 	.com1_txd(UART_TXD),
 	.com1_rxd(UART_RXD),
@@ -369,26 +369,14 @@ assign LED_USER = retired[20];
 
 ///////////////////////   THE PICTURE   ///////////////////////////////
 
-// a black 640 x 480 at 59.5 Hz (25 MHz pixels: 800 x 525) until there is a video device
-reg [1:0] pix_div = 0;
-reg [9:0] hc = 0, vc = 0;
-reg       ce_pix = 0;
-always @(posedge clk_mem) begin
-	pix_div <= pix_div + 1'd1;
-	ce_pix  <= pix_div == 2'd3;
-	if (ce_pix) begin
-		hc <= (hc == 10'd799) ? 10'd0 : hc + 1'd1;
-		if (hc == 10'd799) vc <= (vc == 10'd524) ? 10'd0 : vc + 1'd1;
-	end
-end
-
+// the S3's scan-out (IBMRS6K7248_s3video), in the memory clock; the framework's scaler takes it
 assign CLK_VIDEO = clk_mem;
-assign CE_PIXEL  = ce_pix;
-assign VGA_DE    = hc < 10'd640 && vc < 10'd480;
-assign VGA_HS    = hc >= 10'd656 && hc < 10'd752;     // the framework takes sync active high
-assign VGA_VS    = vc >= 10'd490 && vc < 10'd492;
-assign VGA_R     = 8'd0;
-assign VGA_G     = 8'd0;
-assign VGA_B     = 8'd0;
+assign CE_PIXEL  = vid_ce;
+assign VGA_DE    = ~(vid_hblank | vid_vblank);
+assign VGA_HS    = vid_hs;
+assign VGA_VS    = vid_vs;
+assign VGA_R     = vid_r;
+assign VGA_G     = vid_g;
+assign VGA_B     = vid_b;
 
 endmodule

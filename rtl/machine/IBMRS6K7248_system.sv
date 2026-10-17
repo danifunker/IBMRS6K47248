@@ -62,14 +62,24 @@ module IBMRS6K7248_system
 	input  logic         com1_cts_n,
 	output logic         com1_rts_n,
 
-	// the S3's VRAM port (see IBMRS6K7248_s3), in the CPU's clock
-	output logic         v_req,
-	output logic         v_we,
-	output logic [20:2]  v_addr,
-	output logic [3:0]   v_be,
-	output logic [31:0]  v_wdata,
-	input  logic         v_ack,
-	input  logic [31:0]  v_rdata,
+	// the S3's VRAM in DDR3 (the framework's DDRAM port) and its picture, in the memory's clock
+	input  logic         ddr_busy,
+	output logic [7:0]   ddr_burstcnt,
+	output logic [28:0]  ddr_addr,
+	input  logic [63:0]  ddr_dout,
+	input  logic         ddr_dout_ready,
+	output logic         ddr_rd,
+	output logic [63:0]  ddr_din,
+	output logic [7:0]   ddr_be,
+	output logic         ddr_we,
+	output logic         vid_ce,
+	output logic [7:0]   vid_r,
+	output logic [7:0]   vid_g,
+	output logic [7:0]   vid_b,
+	output logic         vid_hs,
+	output logic         vid_vs,
+	output logic         vid_hblank,
+	output logic         vid_vblank,
 
 	// the machine's device accesses (see IBMRS6K7248_machine)
 	output logic         io_ev,
@@ -118,6 +128,25 @@ DSPPC604 #(.PERF(PERF), .LE_MODE(LE_MODE)) cpu (
 	.perf_cnt(), .dbg_ev(), .dbg_rec()
 );
 
+// the S3's VRAM port and its picture side's values (below)
+logic         v_req, v_we, v_ack;
+logic [20:2]  v_addr;
+logic [3:0]   v_be;
+logic [31:0]  v_wdata, v_rdata;
+logic [10:0]  h_total, h_disp, h_ss, h_sl, v_total, v_disp, v_ss, v_cur_x, v_cur_y, v_cur_base;
+logic [3:0]   v_sl;
+logic [20:0]  v_start;
+logic [11:0]  v_pitch;
+logic         v_screen_on, v_cur_on, vretrace_v, disp_en_v;
+logic [7:0]   v_pix_mask, pal_vaddr;
+logic [6:0]   v_pll_m, v_pll_n;
+logic [17:0]  pal_vq;
+logic         vb_req, vb_we, vb_line, vb_ack;
+logic [31:2]  vb_addr;
+logic [3:0]   vb_be;
+logic [255:0] vb_wdata, vb_rdata;
+logic [255:0] v_rdata_w;
+
 IBMRS6K7248_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .LE_MODE(LE_MODE), .UART_FAST(UART_FAST)) machine (
 	.clk, .reset, .simm_cfg, .rom_at, .rom_512k, .planar_id,
 	.c_req, .c_we, .c_line, .c_addr, .c_be, .c_wdata, .c_ack, .c_rdata,
@@ -125,8 +154,37 @@ IBMRS6K7248_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .LE_MODE(LE_MODE), .UART_F
 	.ext_irq, .tb_tick, .kbc_reset, .speaker,
 	.ps2_key, .ps2_mouse, .rtc_set, .rtc_time,
 	.v_req, .v_we, .v_addr, .v_be, .v_wdata, .v_ack, .v_rdata,
+	.clk_v(clk_b), .h_total, .h_disp, .h_ss, .h_sl, .v_total, .v_disp, .v_ss, .v_sl, .v_start, .v_pitch,
+	.v_screen_on, .v_pix_mask, .v_pll_m, .v_pll_n, .v_cur_on, .v_cur_x, .v_cur_y, .v_cur_base,
+	.pal_vaddr, .pal_vq, .vretrace_v, .disp_en_v,
 	.com1_txd, .com1_rxd, .com1_cts_n, .com1_rts_n,
 	.io_ev, .io_we, .io_stub, .io_addr, .io_be, .io_wdata, .io_rdata
+);
+
+// ---- the S3's VRAM: its port across to the memory's clock, then DDR3 and the scan-out ----
+assign v_rdata = v_rdata_w[31:0];
+
+DSPPC604_memcdc vcdc (
+	.clk_a(clk), .reset_a(reset),
+	.a_req(v_req), .a_we(v_we), .a_line(1'b0), .a_addr({11'd0, v_addr}), .a_be(v_be), .a_wdata({224'd0, v_wdata}),
+	.a_ack(v_ack), .a_rdata(v_rdata_w),
+	.clk_b, .reset_b,
+	.b_req(vb_req), .b_we(vb_we), .b_line(vb_line), .b_addr(vb_addr), .b_be(vb_be), .b_wdata(vb_wdata),
+	.b_ack(vb_ack), .b_rdata(vb_rdata)
+);
+
+logic [31:0]  vb_rdata32;
+assign vb_rdata = {224'd0, vb_rdata32};
+IBMRS6K7248_s3video s3video (
+	.clk(clk_b), .reset(reset_b),
+	.c_req(vb_req), .c_we(vb_we), .c_addr(vb_addr[20:2]), .c_be(vb_be), .c_wdata(vb_wdata[31:0]),
+	.c_ack(vb_ack), .c_rdata(vb_rdata32),
+	.ddr_busy, .ddr_burstcnt, .ddr_addr, .ddr_dout, .ddr_dout_ready, .ddr_rd, .ddr_din, .ddr_be, .ddr_we,
+	.h_total, .h_disp, .h_ss, .h_sl, .v_total, .v_disp, .v_ss, .v_sl,
+	.start(v_start), .pitch(v_pitch), .screen_on(v_screen_on), .pix_mask(v_pix_mask),
+	.pll_m(v_pll_m), .pll_n(v_pll_n), .cur_on(v_cur_on), .cur_x(v_cur_x), .cur_y(v_cur_y), .cur_base(v_cur_base),
+	.pal_addr(pal_vaddr), .pal_q(pal_vq), .vretrace(vretrace_v), .disp_en(disp_en_v),
+	.ce_pix(vid_ce), .r(vid_r), .g(vid_g), .b(vid_b), .hs(vid_hs), .vs(vid_vs), .hblank(vid_hblank), .vblank(vid_vblank)
 );
 
 DSPPC604_memcdc cdc (

@@ -6,11 +6,12 @@
 //  (5333:88C0), as the firmware's S3 driver uses it (docs/s3_design.md,
 //  section 1; the design, section 4). Here: the PCI header, the VGA, S3
 //  and SDAC registers, the palette, the monitor ID, the linear frame
-//  buffer's decode and its path to VRAM, the vertical interrupt. The
-//  graphics engine's registers are stored and report it idle and its FIFO
-//  empty (the engine itself is phase 1b), and the retrace comes from a
-//  free-running timer at the mode's rate (the CRTC's own timing comes with
-//  the scan-out, phase 1c).
+//  buffer's decode and its path to VRAM, the vertical interrupt, and the
+//  graphics engine (IBMRS6K7248_s3ge, phase 1b) sharing VRAM with the
+//  frame buffer. The picture side (IBMRS6K7248_s3video, phase 1c, in the
+//  video clock) takes the CRTC, pitch, start, cursor and clock values
+//  from here, reads the palette through a second port, and sends the
+//  retrace and display enable back (3DA, the vertical interrupt).
 //
 //  The bus (from IBMRS6K7248_machine): a word with byte enables, be[3] the
 //  lowest address and bits 31-24 its byte (the PowerPC's lanes: the MPC105
@@ -30,8 +31,7 @@
 
 module IBMRS6K7248_s3
 #(
-	parameter int unsigned CLK_HZ  = 100_000_000,
-	parameter int unsigned FRAME_HZ = 72                 // the retrace timer (phase 1a): 640 x 480 at 72 Hz
+	parameter int unsigned CLK_HZ  = 100_000_000
 )
 (
 	input  logic        clk,
@@ -68,6 +68,23 @@ module IBMRS6K7248_s3
 	output logic [31:0] v_wdata,
 	input  logic        v_ack,
 	input  logic [31:0] v_rdata,
+
+	// to and from the picture side (IBMRS6K7248_s3video), which runs in clk_v
+	input  logic        clk_v,
+	output logic [10:0] h_total, h_disp, h_ss, h_sl, v_total, v_disp, v_ss,
+	output logic [3:0]  v_sl,
+	output logic [20:0] v_start,
+	output logic [11:0] v_pitch,
+	output logic        v_screen_on,
+	output logic [7:0]  v_pix_mask,
+	output logic [6:0]  v_pll_m, v_pll_n,
+	output logic        v_cur_on,
+	output logic [10:0] v_cur_x, v_cur_y,
+	output logic [10:0] v_cur_base,
+	input  logic [7:0]  pal_vaddr,
+	output logic [17:0] pal_vq,
+	input  logic        vretrace_v,
+	input  logic        disp_en_v,
 
 	output logic        irq,           // the vertical interrupt (to IRQ 15)
 	input  logic [3:0]  monitor_id     // the monitor's ID lines (F: class 3, 72 Hz; 6: class 0, 60 Hz)
@@ -127,18 +144,41 @@ logic       vint;                   // the vertical interrupt pending
 // the CRTC's port base follows misc bit 0 (3Dx colour, 3Bx mono)
 wire  [15:0] crt_base = misc[0] ? 16'h03D0 : 16'h03B0;
 
-// the retrace timer (phase 1a)
-localparam int unsigned FRAME_CLK = CLK_HZ / FRAME_HZ;
-localparam int unsigned VS_CLK    = FRAME_CLK / 175;   // vertical sync: 3 lines of 525
-localparam int unsigned VB_CLK    = FRAME_CLK / 12;    // vertical blanking: about 45 lines
-logic [31:0] fcnt;
-wire  vsync  = fcnt < VS_CLK;
-wire  vblank = fcnt < VB_CLK;
-logic vsync_q;
+// the CRTC's retrace and display enable, from the picture side (IBMRS6K7248_s3video), into this clock
+logic [2:0] vr_s, de_s;
 always_ff @(posedge clk) begin
-	fcnt    <= (fcnt == FRAME_CLK - 1) ? 32'd0 : fcnt + 32'd1;
-	vsync_q <= vsync;
+	vr_s <= {vr_s[1:0], vretrace_v};
+	de_s <= {de_s[1:0], disp_en_v};
 end
+wire  vsync   = vr_s[1];
+wire  vsync_q = vr_s[2];
+wire  vblank  = ~de_s[1];                       // 3DA bit 0: display disabled
+
+// ---- what the picture side needs (quasi-static) -------------------------------------------
+// the CRTC in characters of 8 dots, with the S3's overflow bits (CR5D, CR5E)
+assign h_total = {(11'(cr[7'h00]) + 11'd5 + {2'd0, cr[7'h5D][0], 8'd0})} << 3;
+assign h_disp  = {(11'(cr[7'h01]) + 11'd1 + {2'd0, cr[7'h5D][1], 8'd0})} << 3;
+assign h_ss    = {(11'(cr[7'h04]) + {2'd0, cr[7'h5D][4], 8'd0})} << 3;
+assign h_sl    = 11'(5'(cr[7'h05][4:0] - cr[7'h04][4:0])) << 3;
+assign v_total = {cr[7'h5E][0], cr[7'h07][5], cr[7'h07][0], cr[7'h06]} + 11'd2;
+assign v_disp  = {cr[7'h5E][1], cr[7'h07][6], cr[7'h07][1], cr[7'h12]} + 11'd1;
+assign v_ss    = {cr[7'h5E][4], cr[7'h07][7], cr[7'h07][2], cr[7'h10]};
+assign v_sl    = 4'(cr[7'h11][3:0] - cr[7'h10][3:0]);
+assign v_start = 21'({cr[7'h51][1:0], cr[7'h31][5:4], cr[7'h0C], cr[7'h0D]}) << 2;
+assign v_pitch = 12'({cr[7'h51][5:4], cr[7'h13], 3'b000});
+assign v_screen_on = ~sr[1][5] & ar_idx[5];
+assign v_pix_mask  = dac_mask;
+// the dot clock: misc[3:2] 0 and 1 select f0 and f1, 3 the SDAC's f[CR42[2:0]]
+wire  [3:0] clk_sel = misc[3:2] == 2'd3 ? {1'b0, cr[7'h42][2:0]} : {3'd0, misc[2]};
+assign v_pll_m  = pll[clk_sel][14:8];
+assign v_pll_n  = pll[clk_sel][6:0];
+assign v_cur_on = cr[7'h45][0];
+assign v_cur_x  = {cr[7'h46][2:0], cr[7'h47]};
+assign v_cur_y  = {cr[7'h48][2:0], cr[7'h49]};
+assign v_cur_base = {cr[7'h4C][2:0], cr[7'h4D]};
+
+// the palette's second read port, in the picture's clock
+always_ff @(posedge clk_v) pal_vq <= palette[pal_vaddr];
 
 // ---- decode -----------------------------------------------------------------------------
 // the ports: VGA 3B0-3DF, 42E8, 46E8, 4AE8, 0102, the 8514 registers 82E8-BEE8 (every 400),
@@ -380,6 +420,8 @@ always_ff @(posedge clk) begin
 		r46e8 <= 8'h00; r4ae8 <= 8'h00; r0102 <= 8'h00; vint <= 1'b0;
 		for (int i = 0; i < 128; i++) cr[i] <= 8'h00;
 		cr[7'h36] <= 8'h8E;                      // the straps: 2 MB (an open question: docs/s3_design.md 5)
+		pll[0] <= 16'h684D;                      // f0 about 25.175 MHz, f1 about 28.322 (the SDAC's power-on clocks)
+		pll[1] <= 16'h5D4A;
 		cr[7'h37] <= 8'h0F;
 	end
 end

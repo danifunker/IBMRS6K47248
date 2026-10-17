@@ -155,6 +155,22 @@ module IBMRS6K7248_machine
 	output logic [31:0]  v_wdata,
 	input  logic         v_ack,
 	input  logic [31:0]  v_rdata,
+	// and to and from its picture side (IBMRS6K7248_s3video, in clk_v)
+	input  logic         clk_v,
+	output logic [10:0]  h_total, h_disp, h_ss, h_sl, v_total, v_disp, v_ss,
+	output logic [3:0]   v_sl,
+	output logic [20:0]  v_start,
+	output logic [11:0]  v_pitch,
+	output logic         v_screen_on,
+	output logic [7:0]   v_pix_mask,
+	output logic [6:0]   v_pll_m, v_pll_n,
+	output logic         v_cur_on,
+	output logic [10:0]  v_cur_x, v_cur_y,
+	output logic [10:0]  v_cur_base,
+	input  logic [7:0]   pal_vaddr,
+	output logic [17:0]  pal_vq,
+	input  logic         vretrace_v,
+	input  logic         disp_en_v,
 
 	// every device access as it is answered (for the test bench)
 	output logic         io_ev,
@@ -400,6 +416,9 @@ IBMRS6K7248_s3 #(.CLK_HZ(CPU_HZ)) s3 (
 	.port({p_a[15:2], 2'b00}), .pci_addr({2'b00, p_a[29:0]}), .io_hit(s3_io_hit), .mem_hit(s3_mem_hit),
 	.sel(s3_sel & ~s3_ack), .we(d_we), .is_mem(s_pcimem), .be(p_be), .wdata(p_wd), .rdata(s3_rdata), .ack(s3_ack),
 	.v_req, .v_we, .v_addr, .v_be, .v_wdata, .v_ack, .v_rdata,
+	.clk_v, .h_total, .h_disp, .h_ss, .h_sl, .v_total, .v_disp, .v_ss, .v_sl, .v_start, .v_pitch,
+	.v_screen_on, .v_pix_mask, .v_pll_m, .v_pll_n, .v_cur_on, .v_cur_x, .v_cur_y, .v_cur_base,
+	.pal_vaddr, .pal_vq, .vretrace_v, .disp_en_v,
 	.irq(s3_irq), .monitor_id(4'hF)
 );
 
