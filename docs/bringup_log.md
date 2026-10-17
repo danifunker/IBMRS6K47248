@@ -402,3 +402,22 @@ never reaches the S3 driver.
   "protocol errors" are the pins read as a command at clock 0 before init.
   To 130 M clocks with 16 and 112 MB the sizing goes as on the plain bench
   (no 24, no 22); the long run through the memory phase is in progress.
+
+## 2026-10-17 night: not timing; the two clocks
+
+- **The 16 MB SDRAM-in-the-loop run went through the whole memory phase**
+  to `main_control` and the console drivers (1A-1F, 20, 30, 3A, 7B, ... A2):
+  the controller, the crossing and the ROM path are clean with the chip
+  model, one clock.
+- **A 50 MHz build** (the PLL's counter 14 of the 700 MHz VCO; slack +3.6 ns)
+  **halts on the board exactly as the 70 MHz one**: `19 23 23 24 23 24 23 24
+  23 24 23 22 22 ...` (`/tmp/post50.raw` on the board). So the CPU's -2.6 ns
+  at 70 is not the cause. The top is back at 70.
+- What the bench had never done: run the CPU and memory clocks at their own
+  rates (every run ticks `clk` and `clk_b` together). `--cpu-mhz 70
+  --mem-mhz 100` now schedules the memory clock's edges between the CPU
+  clock's (the SDRAM model on the memory clock's falling edges); the
+  two-clock SDRAM-bench run of the sizing is the next check.
+- The boot screen's wait (`rxchar`) polls COM1's LSR (3FD, 13,588 reads
+  in 25 M clocks; nothing at 60/64): a byte on COM1 should answer it; a
+  PS/2 key may too (through IRQ 1).
