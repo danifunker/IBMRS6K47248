@@ -72,7 +72,7 @@ module IBMRS6K7248_s3video
 	input  logic [10:0]  v_total,         // lines
 	input  logic [10:0]  v_disp,
 	input  logic [10:0]  v_ss,
-	input  logic [3:0]   v_sl,
+	input  logic [4:0]   v_sl,
 	input  logic [20:0]  start,           // the first line's first byte
 	input  logic [11:0]  pitch,           // bytes a line
 	input  logic         screen_on,       // SR1 bit 5 clear and the attribute controller's PAS set

@@ -158,7 +158,7 @@ module IBMRS6K7248_machine
 	// and to and from its picture side (IBMRS6K7248_s3video, in clk_v)
 	input  logic         clk_v,
 	output logic [10:0]  h_total, h_disp, h_ss, h_sl, v_total, v_disp, v_ss,
-	output logic [3:0]   v_sl,
+	output logic [4:0]   v_sl,
 	output logic [20:0]  v_start,
 	output logic [11:0]  v_pitch,
 	output logic         v_screen_on,

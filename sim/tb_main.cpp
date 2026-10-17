@@ -291,6 +291,9 @@ int main(int argc, char** argv) {
 				if (frame_path && fw && fh) {
 					FILE* ff = fopen(frame_path, "wb");
 					if (ff) {
+						// (a mode being set can give a line or a frame larger than the buffer: clipped)
+						if (fw > 1600) fw = 1600;
+						if (fh > 1200) fh = 1200;
 						fprintf(ff, "P6\n%u %u\n255\n", fw, fh);
 						for (uint32_t y = 0; y < fh; y++) fwrite(&frame[y * 1600 * 3], 1, fw * 3, ff);
 						fclose(ff);

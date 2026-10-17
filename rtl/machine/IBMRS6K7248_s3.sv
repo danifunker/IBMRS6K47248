@@ -72,7 +72,7 @@ module IBMRS6K7248_s3
 	// to and from the picture side (IBMRS6K7248_s3video), which runs in clk_v
 	input  logic        clk_v,
 	output logic [10:0] h_total, h_disp, h_ss, h_sl, v_total, v_disp, v_ss,
-	output logic [3:0]  v_sl,
+	output logic [4:0]  v_sl,
 	output logic [20:0] v_start,
 	output logic [11:0] v_pitch,
 	output logic        v_screen_on,
@@ -159,11 +159,14 @@ wire  vblank  = ~de_s[1];                       // 3DA bit 0: display disabled
 assign h_total = {(11'(cr[7'h00]) + 11'd5 + {2'd0, cr[7'h5D][0], 8'd0})} << 3;
 assign h_disp  = {(11'(cr[7'h01]) + 11'd1 + {2'd0, cr[7'h5D][1], 8'd0})} << 3;
 assign h_ss    = {(11'(cr[7'h04]) + {2'd0, cr[7'h5D][4], 8'd0})} << 3;
-assign h_sl    = 11'(5'(cr[7'h05][4:0] - cr[7'h04][4:0])) << 3;
+// (a sync end equal to its start is a whole count: 32 characters, 16 lines)
+wire [4:0] hsl5 = 5'(cr[7'h05][4:0] - cr[7'h04][4:0]);
+wire [3:0] vsl4 = 4'(cr[7'h11][3:0] - cr[7'h10][3:0]);
+assign h_sl    = (hsl5 == 5'd0 ? 11'd32 : 11'(hsl5)) << 3;
 assign v_total = {cr[7'h5E][0], cr[7'h07][5], cr[7'h07][0], cr[7'h06]} + 11'd2;
 assign v_disp  = {cr[7'h5E][1], cr[7'h07][6], cr[7'h07][1], cr[7'h12]} + 11'd1;
 assign v_ss    = {cr[7'h5E][4], cr[7'h07][7], cr[7'h07][2], cr[7'h10]};
-assign v_sl    = 4'(cr[7'h11][3:0] - cr[7'h10][3:0]);
+assign v_sl    = vsl4 == 4'd0 ? 5'd16 : {1'b0, vsl4};
 assign v_start = 21'({cr[7'h51][1:0], cr[7'h31][5:4], cr[7'h0C], cr[7'h0D]}) << 2;
 assign v_pitch = 12'({cr[7'h51][5:4], cr[7'h13], 3'b000});
 assign v_screen_on = ~sr[1][5] & ar_idx[5];
