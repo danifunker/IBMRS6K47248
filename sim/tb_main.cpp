@@ -43,6 +43,7 @@ static void usage() {
 	       "  --planar ID  the planar ID at port 0852 (default 0xF5, a 7248-100; F0-F3 a Power Series 830/850)\n"
 	       "  --watch PC   report when PC (hex) first retires (FFF10100 and 8398, main_control, always)\n"
 	       "  --beat N     every N clocks, a line with the instructions retired, the PC and the last progress code (default 20,000,000; 0 none)\n"
+	       "  --com1 FILE  COM1's bytes as sent, raw (tools/vt.py FILE draws the terminal's screen)\n"
 	       "  --fst FILE   write a waveform (needs a make TRACE=1 build) of clocks --from N --to M\n"
 	       "  --lat N      the bench memory answers N clocks after a request (default 6, about the SDRAM's)\n"
 	       "  --cycles N   stop after N clocks (default 50,000,000)\n"
@@ -69,6 +70,7 @@ int main(int argc, char** argv) {
 	uint64_t pcs_print = 0;
 	uint64_t beat = 20000000;
 	int lat = 6;                                   // the bench memory's answer, in clocks after the request
+	const char* com1_path = nullptr;               // COM1's bytes as sent (tools/vt.py draws the screen)
 	const char* fst_path = nullptr;                // a waveform (a TRACE=1 build) ...
 	uint64_t fst_from = 0, fst_to = ~0ull;         // ... of these clocks                      // a heartbeat line every so many clocks (0 none)
 	for (int i = 1; i < argc; i++) {
@@ -82,6 +84,7 @@ int main(int argc, char** argv) {
 		else if (a == "--instr") max_instr = strtoull(next(), nullptr, 0);
 		else if (a == "--io") io_print = true;
 		else if (a == "--quiet-progress") post_print = false;
+		else if (a == "--com1") com1_path = next();
 		else if (a == "--fst") fst_path = next();
 		else if (a == "--from") fst_from = strtoull(next(), nullptr, 0);
 		else if (a == "--to") fst_to = strtoull(next(), nullptr, 0);
@@ -105,6 +108,7 @@ int main(int argc, char** argv) {
 	printf("ROM %s, %zu KB; RAM %u MB; reset vector word %08X\n", rom_path, rom_len >> 10, ram_mb,
 	       rd32((ROM_AT << 22) + 0x100));
 
+	FILE* com1_raw = com1_path ? fopen(com1_path, "wb") : nullptr;
 	auto* top = new VIBMRS6K7248_system;
 	top->reset_pc = 0xFFF00100;
 	unsigned simm_cfg = ~0u;
@@ -239,6 +243,7 @@ int main(int argc, char** argv) {
 			// COM1: the byte written to THR, LCR followed for DLAB
 			if (we && (a & ~3u) == 0x800003F8 && (be & 8) && !(lcr & 0x80)) {
 				char c = char(top->io_wdata >> 24);
+				if (com1_raw) { fputc(c, com1_raw); fflush(com1_raw); }
 				if (c == '\n' || line.size() > 200) { printf("COM1| %s\n", line.c_str()); line.clear(); }
 				else if (c != '\r') line += (c >= 32 && c < 127) ? c : '.';
 			}
