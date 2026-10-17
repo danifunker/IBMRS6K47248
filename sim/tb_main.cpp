@@ -284,8 +284,7 @@ int main(int argc, char** argv) {
 		for (int n = 0; n < 3; n++) top->img_blocks[n] = uint32_t(images[n].blocks);
 		top->rom_at = ROM_AT;
 		top->rom_512k = rom_len == 512u * 1024;
-		printf("  images present %d
-", top->img_present);
+		printf("  images present %d\n", top->img_present);
 		printf("restored %s: clock %llu, %llu instructions, pc %08X\n", restore_path,
 		       (unsigned long long)cycle, (unsigned long long)instr, last_pc);
 	}

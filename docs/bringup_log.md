@@ -339,3 +339,34 @@ says nothing either way. So no sign yet whether the CPU runs on the board.
 Hence the POST-code sender in the top (commit c261917): the port 680 codes
 on the MiSTer UART at 115200 (the OSD's "UART" option, default), "R" at the
 end of reset, "." every 2^24 instructions.
+
+## 2026-10-17: the board speaks: POST codes on the UART
+
+The user's board for this core is now the MiSTer at 192.168.99.92 (capture
+stream `MiSTer-SS1`; the .143 one belongs to the PPC_Mac sessions). With the
+POST-code build loaded there and `/dev/ttyS1` read at 115200 on the board
+(`scratch/work/post1.raw`), the CPU runs:
+
+```
+R 04 04 08 23 23 09 0A 0B 0C 0D . 0E 0F 10 11 33 04 19 23 23 24 23 24 23 24 23 24 23 22 22 22 22 ...
+```
+
+(the bench from reset with 8 MB: `04 04 08 23 23 23 23 09 0A 0B 0C 0D 0D 0D
+0E 0F 10 11 33 04 19 23 x10 1A 1B 1C 1D 1D 1D 1E 1F 20 30 3A 7B 40 50 60`).
+So the recovery block runs to its end (the main block's CRC over the whole
+ROM in SDRAM: the SDRAM reads right), the main block starts (33 04 19), and
+its memory sizing ends in the firmware's halt loop at FFF15AD0, which
+writes 22 to port 680 forever (hence the flood, which also overruns the
+sender's 64-byte queue: the lone "2"s). The loop is entered from FFF159C4
+(no SIMM pair recognised: the presence-detect bytes at 880-882 looked up in
+the table at FFF15F40, whose keys are 88/8C/C8/CC, BB/BF/FB/FF, AA/AE/EA/EE,
+99/9D/D9/DD) or from FFF15A48 (the MPC105's register A0 read back through
+CF8/CFC without its high bits). The OSD's RAM at 16 MB instead of Most
+(112 MB on this 128 MB board: `/dev/mem` 1FFFFF00 holds 12 57 00 03) halts
+the same way. The bench had only ever run with 8 MB: runs with 16 and 112
+from reset are the check (below).
+
+The screen on this board is a 4:3 area of coloured stripes from the first
+second: the S3's scan-out at its reset state showing what the DDR3 held;
+on the .143 board it was a white band. Neither changes, as the firmware
+never reaches the S3 driver.
