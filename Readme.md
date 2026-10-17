@@ -63,6 +63,19 @@ and the PC that touched it first. `machine_tb --help` lists the rest.
 `make` builds inside a memory-capped systemd scope (about 14 minutes);
 `make TRACE=1` builds a waveform-capable bench in `build_trace/`.
 
+Reaching the firmware's `main_control` takes about 520 million clocks (half
+an hour); save a snapshot there once and start later runs from it:
+
+```
+./build/machine_tb --rom ../firmware/images/7248_v1.12_P93H7075_fff00000_512k.bin --ram 8 --lat 1 --save ../scratch/work/snap_main_control.bin --cycles 530000000
+./build/machine_tb --rom ../firmware/images/7248_v1.12_P93H7075_fff00000_512k.bin --ram 8 --lat 1 --restore ../scratch/work/snap_main_control.bin --cycles 1500000000 --com1 com1.raw
+python3 tools/vt.py com1.raw
+```
+
+(A snapshot belongs to the build that wrote it: rebuild, re-save. The
+bench's serial ports run at the clock / 16, `UART_FAST`, so the firmware's
+9600 baud console does not cost 100,000 clocks a character.)
+
 The little-endian tests: `make -C tests`, then
 `./build/machine_tb --rom tests/le_test.rom --ram 8` (and
 `le_test_dc.rom`); each prints `LE PASS` on COM1.
