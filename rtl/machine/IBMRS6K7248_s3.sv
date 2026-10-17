@@ -167,7 +167,7 @@ assign mem_hit = mem_on && cr[7'h58][4] && ((pci_addr[31:16] & lfb_mask) == (lfb
 wire [21:0] lfb_off = pci_addr[21:0] & {~lfb_mask[21:16], 16'hFFFF};
 
 // ---- the access: I/O a byte at a time; memory to VRAM ------------------------------------
-typedef enum logic [1:0] {A_IDLE, A_IO, A_MEM, A_DONE} ast_t;
+typedef enum logic [2:0] {A_IDLE, A_IO, A_MEM, A_PT, A_DONE} ast_t;
 ast_t        ast;
 logic [3:0]  left;                  // I/O: the lanes still to do (bit 3 the lowest address)
 logic [31:0] rq;                    // the answer being gathered
@@ -205,18 +205,55 @@ always_comb begin
 	else if (bp == 16'h46E8)            rb = r46e8;
 	else if (bp == 16'h4AE8)            rb = r4ae8;
 	else if (bp == 16'h0102)            rb = r0102;
-	else if (bp == 16'h9AE8)            rb = 8'h00;                             // GP_STAT: the FIFO empty
-	else if (bp == 16'h9AE9)            rb = 8'h00;                             // ... and the engine idle (phase 1a)
+	else if (bp == 16'h9AE8)            rb = 8'h00;                             // GP_STAT: the FIFO empty (no FIFO: the bus waits)
+	else if (bp == 16'h9AE9)            rb = {6'd0, ge_busy, 1'b0};             // ... bit 9 the engine busy
 	else if (bp[9:0] == 10'h2E8)        rb = ge[bp[15:10]][7:0];
 	else if (bp[9:0] == 10'h2E9)        rb = ge[bp[15:10]][15:8];
 end
+
+// ---- the graphics engine, and VRAM shared by it and the CPU's frame buffer accesses ----------
+wire        ge_reg_b = bp[15] && bp[15:10] <= 6'h2F && (bp[9:0] == 10'h2E8 || bp[9:0] == 10'h2E9);
+logic       ge_busy, pt_ready;
+logic       l_req, l_we, l_ack;
+logic [20:2] l_addr;
+logic [3:0] l_be;
+logic [31:0] l_wdata;
+logic       e_req, e_we, e_ack;
+logic [20:2] e_addr;
+logic [3:0] e_be;
+logic [31:0] e_wdata;
+IBMRS6K7248_s3ge engine (
+	.clk, .reset,
+	.r_we(ast == A_IO && we && ge_reg_b && !ge_busy), .r_idx(bp[15:10]), .r_hi(bp[0]), .r_data(bw),
+	.r_abort(ast == A_IO && we && bp == 16'h42E9 && bw[7:6] == 2'b10),
+	.pt_valid(ast == A_PT), .pt_data({wdata[23:16], wdata[31:24]}), .pt_ready,
+	.busy(ge_busy), .pitch({cr[7'h51][5:4], cr[7'h13], 3'b000}[11:0]),
+	.v_req(e_req), .v_we(e_we), .v_addr(e_addr), .v_be(e_be), .v_wdata(e_wdata), .v_ack(e_ack), .v_rdata
+);
+// the arbiter: whoever asks first keeps VRAM until answered; the CPU first if both
+logic own_e, own_l;
+wire  grant_l = ~own_e & ~own_l & l_req;
+wire  grant_e = ~own_e & ~own_l & ~l_req & e_req;
+always_ff @(posedge clk) begin
+	if (grant_l) own_l <= 1'b1;
+	if (grant_e) own_e <= 1'b1;
+	if (v_ack) begin own_l <= 1'b0; own_e <= 1'b0; end
+	if (reset) begin own_l <= 1'b0; own_e <= 1'b0; end
+end
+wire  sel_e  = own_e | grant_e;
+assign v_req   = (own_l | grant_l) ? l_req : sel_e ? e_req : 1'b0;
+assign v_we    = sel_e ? e_we : l_we;
+assign v_addr  = sel_e ? e_addr : l_addr;
+assign v_be    = sel_e ? e_be : l_be;
+assign v_wdata = sel_e ? e_wdata : l_wdata;
+assign l_ack   = v_ack & own_l;
+assign e_ack   = v_ack & own_e;
 
 // palette reads: the colour at the read index
 always_ff @(posedge clk) pal_q <= palette[dac_ridx];
 
 always_ff @(posedge clk) begin
 	ack   <= 1'b0;
-	v_req <= v_req & ~v_ack;
 
 	// the vertical interrupt: set at the start of vertical sync while CR11 bit 4 is 1,
 	// held clear while it is 0, cleared by a 42E8 write with bit 0
@@ -231,13 +268,16 @@ always_ff @(posedge clk) begin
 					ast <= A_DONE;
 				end
 				else begin
-					v_req   <= 1'b1;
-					v_we    <= we;
-					v_addr  <= lfb_off[20:2];
-					v_be    <= be;
-					v_wdata <= wdata;
+					l_req   <= 1'b1;
+					l_we    <= we;
+					l_addr  <= lfb_off[20:2];
+					l_be    <= be;
+					l_wdata <= wdata;
 					ast     <= A_MEM;
 				end
+			end
+			else if (port == 16'hE2E8 && we) begin   // PIX_TRANS: the transfer whole, to the engine
+				ast <= A_PT;
 			end
 			else begin
 				left <= be;
@@ -245,11 +285,13 @@ always_ff @(posedge clk) begin
 				ast  <= (be == 4'd0) ? A_DONE : A_IO;
 			end
 		end
-		A_MEM: if (v_ack) begin
-			rq  <= v_rdata;
-			ast <= A_DONE;
+		A_MEM: if (l_ack) begin
+			l_req <= 1'b0;
+			rq    <= v_rdata;
+			ast   <= A_DONE;
 		end
-		A_IO: begin
+		A_PT: if (pt_ready | ~ge_busy) ast <= A_DONE;    // taken by the engine, or dropped with none running
+		A_IO: if (!(we && ge_reg_b && ge_busy)) begin     // an engine register waits for the engine
 			left[3 - k] <= 1'b0;
 			if (left == (4'b1000 >> k)) ast <= A_DONE;
 			if (!we) rq[31 - 8 * k -: 8] <= rb;
@@ -328,7 +370,7 @@ always_ff @(posedge clk) begin
 	endcase
 
 	if (reset) begin
-		ast <= A_IDLE; ack <= 1'b0; v_req <= 1'b0;
+		ast <= A_IDLE; ack <= 1'b0; l_req <= 1'b0;
 		misc <= 8'h00; sr_idx <= '0; cr_idx <= '0; gr_idx <= '0; ar_idx <= '0; ar_ff <= 1'b0;
 		dac_mask <= 8'hFF; dac_widx <= '0; dac_ridx <= '0; dac_wc <= '0; dac_rc <= '0; dac_rstate <= 1'b0;
 		sdac_cmd <= 8'h00; pll_widx <= '0; pll_ridx <= '0; pll_half <= 1'b0;
