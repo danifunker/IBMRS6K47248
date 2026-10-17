@@ -28,6 +28,11 @@ WARN   := -Wall -Wno-DECLFILENAME -Wno-UNUSEDSIGNAL -Wno-UNUSEDPARAM -Wno-PINCON
 # killed alone (5G was not enough once the S3 came: 2026-10-17); `make machine_tb` builds
 # without the cap.
 JOBS   ?= 2
+# g++ collects its garbage more often (default: when the heap grows by 30-100 % over
+# a base of up to 128 MB): a lower peak on the model's two 45-50 MB files, which
+# needed about 2.5 GB each, for some compile time (2026-10-17, measured in
+# scratch/work/build_*.txt)
+GCC_MEM ?= --param ggc-min-expand=10 --param ggc-min-heapsize=32768
 MEM    ?= 7G
 # the optimisation of the model's C++ (OPT_FAST): -O2 builds in ~14 minutes and runs
 # ~390,000 clocks a second; -O1 builds in ~8 and runs ~150,000 (make OPT=-O1 for
@@ -52,7 +57,7 @@ machine_tb: $(BUILD)/machine_tb
 $(BUILD)/VIBMRS6K7248_system.mk: $(CPU_SRCS) $(MACH_SRCS) $(HERE)tb_main.cpp $(CPU)/DSPPC604.qip $(MACH)/IBMRS6K7248_machine.qip $(HERE)Makefile
 	@mkdir -p $(BUILD)
 	@$(VERILATOR) $(VFLAGS) --top-module IBMRS6K7248_system -GUART_FAST=1 -Mdir $(BUILD) -o machine_tb \
-		-CFLAGS "-std=c++17" \
+		-CFLAGS "-std=c++17 $(GCC_MEM)" \
 		$(CPU_SRCS) $(MACH_SRCS) $(HERE)tb_main.cpp \
 		> $(BUILD)/build.log 2>&1 || (cat $(BUILD)/build.log; false)
 	@grep -E '^%Warning' $(BUILD)/build.log || true
