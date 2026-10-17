@@ -104,6 +104,21 @@ interface bits), CS4232 audio, the
 L2 cache (the MPC105's, 256/512 KB), the model option (planar IDs F0-F7:
 7248-100/120/132, Power Series 830/850), interrupts on IRQ15 shared.
 
+## Speed (the techniques of the other cores)
+
+- The L2 cache: MacPPC7300's `MacPPC7300_l2` (128 KB, between the
+  machine's memory port and the clock crossing: 2-3 % CPU, 11 % disk,
+  6-10 % graphics there) stands in for the 7248's own L2 (the MPC105's,
+  256/512 KB); the firmware's L2 probing (ports 080C/0814/081C, PICR1/2)
+  then reports what the core has.
+- The device path from a register (MacPPC7300 build 29) is already this
+  machine's shape (`IBMRS6K7248_machine`: devices answer from a registered
+  copy of the request).
+- On the Main side, the family branch's disk write buffer and fast SCSI
+  service loop (M5).
+- The CPU's own speed work stays in MacPPC7300 and comes over with the
+  CPU.
+
 ## Little-endian mode (separate track)
 
 AIX does not need it. Windows NT 3.51/4.0, OS/2 Warp PPC and Solaris 2.5.1
