@@ -111,6 +111,7 @@ wire       me    = slave;          // the chip addressed
 wire       acc_w = sel & ~iack & ~elcr_sel & we;
 wire       acc_r = sel & ~iack & ~elcr_sel & ~we;
 
+generate
 for (genvar c = 0; c < 2; c++) begin : g_chip
 	wire        this_w = acc_w & (me == c[0]);
 	wire        this_r = acc_r & (me == c[0]);
@@ -198,6 +199,7 @@ for (genvar c = 0; c < 2; c++) begin : g_chip
 		end
 	end
 end
+endgenerate
 
 // ---- reads --------------------------------------------------------------------------
 always_ff @(posedge clk) begin

@@ -62,6 +62,7 @@ logic [1:0]  rsrc;                     // ... and which one the last read was
 
 wire  [2:0]  gate = {p61_r[0], 1'b1, 1'b1};
 
+generate
 for (genvar c = 0; c < 3; c++) begin : g_ctr
 	wire [2:0] mode   = ctl[c][3:1] == 3'd6 ? 3'd2 : ctl[c][3:1] == 3'd7 ? 3'd3 : ctl[c][3:1];
 	wire       ctl_w  = sel & we & ~p61 & a == 2'd3 & wdata[7:6] == 2'(c);
@@ -193,6 +194,7 @@ for (genvar c = 0; c < 3; c++) begin : g_ctr
 		end
 	end
 end
+endgenerate
 
 // port 61
 always_ff @(posedge clk) begin
