@@ -370,3 +370,35 @@ The screen on this board is a 4:3 area of coloured stripes from the first
 second: the S3's scan-out at its reset state showing what the DDR3 held;
 on the .143 board it was a white band. Neither changes, as the firmware
 never reaches the S3 driver.
+
+## 2026-10-17 evening: the CD answers; the "idle" is a 3 s sleep; the CPU is MacPPC7300's
+
+- **The CD is found.** A restored run had lost its images (the snapshot's
+  inputs came back over this run's: fixed in `tb_main.cpp`); with the CD
+  present at ID 3, the scan's INQUIRY goes through selection, the SDTR
+  negotiation (script steps 07, 08, 09, 11, 12), command, data in (INTFLY,
+  step 04), status and message to a good status (DSPS 50): progress 98,
+  then LUN 1. 53C810 and target are sound through the scan.
+- **The idle at 7B is `sleep(3, 1)`.** `check_tamper_or_init_path` finds no
+  console named in the (blank) configuration, reports 00017006 through
+  `text_errormsg_tr`, which calls `put_erroricon` and then **sleeps 3
+  seconds** (RAM 3409C), polling the CMOS clock (`get_CMOS_time`): the "no
+  new PC" idle. Every run so far stopped inside it (118 M clocks after
+  `cold_boot_path`; the sleep is 300 M). A run through it is in progress;
+  the bench now has `RTC_FAST` (the RTC's seconds 64 x faster, on by
+  default) so such waits cost 5 M clocks.
+- A snapshot at `cold_boot_path` (`--save-pc BC58`) and `--pcs` with an
+  absolute instruction count (it compares the run's total) give the call
+  path in minutes: `scratch/work/pcs_path.py` maps a trace to the
+  firmware's symbols.
+- **The CPU is MacPPC7300's master as it stands** (f946a6b, 2026-10-16):
+  ignoring line endings, only DSPPC604.sv differs, by the little-endian
+  patch. So the -2.6 ns at 70 MHz is this core's fit (82 % full, the
+  machine's paths), not an older CPU; MacPPC7300's own notes say its
+  committed state runs at 70 (10 of 10) and not at 100 (0 of 5).
+- **The SDRAM-in-the-loop bench** (`make machine_sd`: `sim/sdsys_top.sv`,
+  the controller, MacPPC7300's chip model in `sim/sdram_chip.h`, the ROM
+  through the upload port) runs the firmware from reset; the model's six
+  "protocol errors" are the pins read as a command at clock 0 before init.
+  To 130 M clocks with 16 and 112 MB the sizing goes as on the plain bench
+  (no 24, no 22); the long run through the memory phase is in progress.
