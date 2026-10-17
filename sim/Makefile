@@ -75,6 +75,22 @@ $(BUILD)/machine_tb: $(BUILD)/VIBMRS6K7248_system.mk $(BUILD)/opt.stamp FORCE
 	@$(MAKE) -s -C $(BUILD) -f VIBMRS6K7248_system.mk -j $(JOBS) OPT_FAST=$(OPT) OPT_SLOW=-O0 OBJCACHE=$(shell command -v ccache) \
 		> $(BUILD)/compile.log 2>&1 || (tail -40 $(BUILD)/compile.log; false)
 
+# make machine_sd: the bench with the board's SDRAM controller in the loop (sim/sdsys_top.sv,
+# the chip modelled in sim/sdram_chip.h, the ROM through the upload port; no snapshots). Its
+# own directory and prefix; the same options otherwise.
+SD_BUILD := $(BUILD)_sd
+SD_SRCS  := $(CPU_SRCS) $(MACH_SRCS) $(MACH)/IBMRS6K7248_sdram.sv $(HERE)sdsys_top.sv
+
+machine_sd: $(SD_BUILD)/machine_sd
+
+$(SD_BUILD)/VIBMRS6K7248_sdsys.mk: $(SD_SRCS) $(HERE)tb_main.cpp $(HERE)sdram_chip.h $(HERE)Makefile
+	@mkdir -p $(SD_BUILD)
+	@$(VERILATOR) $(VFLAGS) --top-module IBMRS6K7248_sdsys -GUART_FAST=1 -GSTO_UNIT=2 -Mdir $(SD_BUILD) -o machine_sd 		-CFLAGS "-std=c++17 -DSDRAM_CHIP -I$(HERE) $(GCC_MEM)" 		$(SD_SRCS) $(HERE)tb_main.cpp 		> $(SD_BUILD)/build.log 2>&1 || (cat $(SD_BUILD)/build.log; false)
+	@grep -E '^%Warning' $(SD_BUILD)/build.log || true
+
+$(SD_BUILD)/machine_sd: $(SD_BUILD)/VIBMRS6K7248_sdsys.mk FORCE
+	@$(MAKE) -s -C $(SD_BUILD) -f VIBMRS6K7248_sdsys.mk -j $(JOBS) OPT_FAST=$(OPT) OPT_SLOW=-O0 OBJCACHE=$(shell command -v ccache) 		> $(SD_BUILD)/compile.log 2>&1 || (tail -40 $(SD_BUILD)/compile.log; false)
+
 # fst2vcd, to read a --fst waveform without a viewer
 FSTAPI := $(dir $(shell command -v verilator))../share/verilator/include/gtkwave
 tools/fst2vcd: tools/fst2vcd.c
