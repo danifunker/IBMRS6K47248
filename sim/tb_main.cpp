@@ -83,6 +83,7 @@ static void usage() {
 	       "  --cycles N   stop after N clocks (default 50,000,000)\n"
 	       "  --instr N    stop after N instructions retired\n"
 	       "  --io         print every device access as it happens\n"
+	       "  --io-range LO:HI  print the device accesses with addresses LO-HI (hex) only\n"
 	       "  --quiet-progress  do not print the firmware's progress codes (port 680) as they come\n"
 	       "  --pcs N      print the first N retired PCs\n"
 	       "  --stall N    stop when no new PC was retired in the last N instructions (default 2,000,000; 0 never)\n");
@@ -105,6 +106,7 @@ int main(int argc, char** argv) {
 		{64, 4}, {96, 4 | 3 << 3}, {112, 4 | 3 << 3 | 2 << 6}};
 	uint64_t max_cycles = 50000000, max_instr = 0, stall_lim = 2000000;
 	bool io_print = false, post_print = true;
+	uint32_t io_lo = 0, io_hi = 0xFFFFFFFF;            // --io's range
 	uint64_t pcs_print = 0;
 	uint64_t beat = 20000000;
 	int lat = 6;                                   // the bench memory's answer, in clocks after the request
@@ -128,6 +130,13 @@ int main(int argc, char** argv) {
 		else if (a == "--cycles") max_cycles = strtoull(next(), nullptr, 0);
 		else if (a == "--instr") max_instr = strtoull(next(), nullptr, 0);
 		else if (a == "--io") io_print = true;
+		else if (a == "--io-range") {
+			std::string r = next();
+			size_t c = r.find(':');
+			io_lo = strtoul(r.substr(0, c).c_str(), nullptr, 16);
+			io_hi = c == std::string::npos ? io_lo : strtoul(r.substr(c + 1).c_str(), nullptr, 16);
+			io_print = true;
+		}
 		else if (a == "--quiet-progress") post_print = false;
 		else if (a == "--com1") com1_path = next();
 		else if (a == "--vram") vram_path = next();
@@ -435,7 +444,7 @@ int main(int argc, char** argv) {
 			uint32_t a = top->io_addr;
 			uint8_t be = top->io_be;
 			bool we = top->io_we;
-			if (io_print)
+			if (io_print && a >= io_lo && a <= io_hi)
 				printf("  io %s %08X be %X %08X%s  (pc %08X)\n", we ? "W" : "R", a, be,
 				       we ? uint32_t(top->io_wdata) : uint32_t(top->io_rdata), top->io_stub ? "  stub" : "", last_pc);
 			// COM1: the byte written to THR, LCR followed for DLAB
