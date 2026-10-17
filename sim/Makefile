@@ -54,7 +54,12 @@ $(BUILD)/VIBMRS6K7248_system.mk: $(CPU_SRCS) $(MACH_SRCS) $(HERE)tb_main.cpp $(C
 		> $(BUILD)/build.log 2>&1 || (cat $(BUILD)/build.log; false)
 	@grep -E '^%Warning' $(BUILD)/build.log || true
 
-$(BUILD)/machine_tb: $(BUILD)/VIBMRS6K7248_system.mk
+# the C++ optimisation the objects were built with: a change of OPT rebuilds them
+$(BUILD)/opt.stamp: FORCE
+	@mkdir -p $(BUILD)
+	@if [ "$$(cat $@ 2>/dev/null)" != "$(OPT)" ]; then echo "$(OPT)" > $@; rm -f $(BUILD)/*.o $(BUILD)/*.gch; fi
+
+$(BUILD)/machine_tb: $(BUILD)/VIBMRS6K7248_system.mk $(BUILD)/opt.stamp
 	@$(MAKE) -s -C $(BUILD) -f VIBMRS6K7248_system.mk -j $(JOBS) OPT_FAST=$(OPT) OPT_SLOW=-O0 OBJCACHE=$(shell command -v ccache) \
 		> $(BUILD)/compile.log 2>&1 || (tail -40 $(BUILD)/compile.log; false)
 
@@ -69,4 +74,4 @@ lint:
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all machine_tb lint clean
+.PHONY: all machine_tb lint clean FORCE
