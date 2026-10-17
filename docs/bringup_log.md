@@ -104,3 +104,35 @@ sizing, 23) and then tests the RAM from a copy of its code at RAM 200,
 caches still off: 22 clocks an instruction, about two hours of the bench
 for 32 MB on the -O1 binary. Stopped there; the next run with `--ram 8`,
 `--lat 1` and the -O2 binary.
+
+## 2026-10-17: little-endian mode
+
+`DSPPC604` with `LE_MODE = 1` (fetch addresses munged by XOR 4; data
+addresses by XOR 7/6/4/0 by size; an alignment exception for an access
+that cannot be munged) and the machine's byte-lane swap while the MPC105's
+PICR1 bit 5 is set. `sim/tests` (`make`, then
+`machine_tb --rom tests/le_test.rom --ram 8`):
+
+- `le_test.rom`, caches: instruction only. Big-endian set-up (a RAM bank,
+  patterns), the switch into little-endian mode (PICR1 and MSR[LE] by rfi,
+  from a cache-resident block run twice: once the bridge swaps, a
+  big-endian fetch from the bus is scrambled, so the switch must not fetch
+  from the bus, as on the real board), little-endian code fetched from ROM
+  doing byte/halfword/word loads, stores, lwbrx, a call and return, an FP
+  doubleword (lfd/stfd), and a misaligned lwz taking the alignment
+  exception through a little-endian vector (ILE set by mtmsr: rfi does not
+  restore it) with DAR the unmunged 00001001; the switch back; the
+  big-endian checks: **LE PASS**, 13 checks.
+- `le_test_dc.rom`: the same with the data cache on (and so data
+  translation: in real mode the 604 caches every data access, CF8/CFC
+  included; DBATs map RAM and ROM cacheable, 80000000 cache-inhibited):
+  line fills and castouts through the swap. **LE PASS**.
+
+The first runs found two test bugs, no CPU bug: the switch fetched from the
+bus after setting PICR1 (and so ran scrambled code), and ILE set through
+SRR1 (rfi ignores it). A waveform build (`make TRACE=1`, `--fst`,
+`tools/fst2vcd`, `tools/vcdq.py`) showed the exception taken with MSR 1040.
+
+MacPPC7300's real-604 golden vectors (`verilator/run.py`, run from a
+scratch copy of MacPPC7300 `21ba191` with this core's `rtl/DSPPC604`,
+`LE_MODE = 0`): 11,444 integer and 25,598 FP vectors, all pass.

@@ -121,6 +121,18 @@ L2 cache (the MPC105's, 256/512 KB), the model option (planar IDs F0-F7:
 
 ## Little-endian mode (separate track)
 
+**Status (2026-10-17): built and passing here.** The CPU half
+(`DSPPC604`, `LE_MODE`) and the bridge half (`IBMRS6K7248_machine`: the
+MPC105's PICR1 bit 5 swapping each doubleword's byte lanes) pass
+`sim/tests/le_test.rom` and `le_test_dc.rom` (`docs/bringup_log.md`).
+The CPU change as a patch against MacPPC7300's tree:
+`docs/cpu_patches/0001-DSPPC604-little-endian-mode.patch` (applies to
+MacPPC7300 `21ba191`). MacPPC7300's real-604 golden vectors pass with it
+(`LE_MODE = 0`); its pipeline suite (`run_core.py`, lockstep with
+dingusppc) is the remaining check before it goes back there.
+
+The original estimate follows.
+
 AIX does not need it. Windows NT 3.51/4.0, OS/2 Warp PPC and Solaris 2.5.1
 PPC run little-endian and do; so do the NT ARC boot loaders in scratch.
 
