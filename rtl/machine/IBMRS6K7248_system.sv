@@ -4,6 +4,8 @@
 //  The CPU, the machine and the clock crossing to memory, as one block
 //
 //    DSPPC604 --(memory port)--> IBMRS6K7248_machine --(RAM, ROM)--> DSPPC604_memcdc --> b_*
+//                  ^ snoop                 | the 53C810's SCSI bus
+//                  +-- (the 810's DMA) ----+--> IBMRS6K7248_scsitgt --(clk_b)--> sd_* (hps_io)
 //
 //  Everything left of the crossing runs in the CPU's clock; b_* is the same
 //  port protocol in the memory's clock, addressed by SDRAM offset, for the
@@ -23,7 +25,8 @@ module IBMRS6K7248_system
 	parameter int unsigned TB_HZ  = 16_666_667,
 	parameter int unsigned PERF   = 0,            // 1: the CPU's performance counters
 	parameter int unsigned LE_MODE = 1,           // 1: little-endian mode, the CPU's munging and the MPC105's swap
-	parameter int unsigned UART_FAST = 0          // 1 (the bench only): the serial ports at CLK_HZ / 16
+	parameter int unsigned UART_FAST = 0,         // 1 (the bench only): the serial ports at CLK_HZ / 16
+	parameter int unsigned STO_UNIT = CPU_HZ / 16000   // the 53C810's selection timeout unit (the bench: shorter)
 )
 (
 	input  logic         clk,             // the CPU's clock
@@ -81,6 +84,22 @@ module IBMRS6K7248_system
 	output logic         vid_hblank,
 	output logic         vid_vblank,
 
+	// the SCSI devices' images (hps_io block devices 0-2: disk ID 0, disk ID 1,
+	// CD-ROM ID 3), 8-bit; img_* quasi-static, sd_* in the memory's clock
+	input  logic [2:0]   img_present,
+	input  logic [31:0]  img_blocks [3],
+	output logic [31:0]  sd_lba [3],
+	output logic [5:0]   sd_blk_cnt [3],
+	output logic [2:0]   sd_rd,
+	output logic [2:0]   sd_wr,
+	input  logic [2:0]   sd_ack,
+	input  logic [13:0]  sd_buff_addr,
+	input  logic [7:0]   sd_buff_dout,
+	output logic [7:0]   sd_buff_din [3],
+	input  logic         sd_buff_wr,
+	input  logic         cd_change,
+	output logic         scsi_activity,
+
 	// the machine's device accesses (see IBMRS6K7248_machine)
 	output logic         io_ev,
 	output logic         io_we,
@@ -110,6 +129,12 @@ logic [31:2]  m_addr;
 logic [3:0]   m_be;
 logic [255:0] m_wdata, m_rdata;
 logic         ext_irq, tb_tick;
+logic         snoop_req, snoop_we, snoop_ack;
+logic [31:5]  snoop_addr;
+// the 53C810's SCSI bus
+logic         sb_sel, sb_sel_atn, sb_sel_done, sb_sel_fail, sb_bsy, sb_req, sb_ack, sb_ackhold, sb_atn, sb_rst;
+logic [2:0]   sb_sel_id, sb_phase;
+logic [7:0]   sb_tdata, sb_idata;
 
 // (from a register: it fans out to every register of the CPU)
 logic         cpu_reset = 1'b1;
@@ -120,7 +145,7 @@ DSPPC604 #(.PERF(PERF), .LE_MODE(LE_MODE)) cpu (
 	.ext_irq, .tb_tick,
 	.mem_req(c_req), .mem_we(c_we), .mem_line(c_line), .mem_addr(c_addr), .mem_be(c_be),
 	.mem_wdata(c_wdata), .mem_ack(c_ack), .mem_rdata(c_rdata),
-	.snoop_req(1'b0), .snoop_we(1'b0), .snoop_addr(27'd0), .snoop_ack(),
+	.snoop_req, .snoop_we, .snoop_addr, .snoop_ack,
 	.trace_valid, .trace_last, .trace_pc, .trace_insn, .trace_fold(), .trace_fold_insn(),
 	.trace_reg2_we(), .trace_reg2_idx(), .trace_reg2_val(), .trace_reg_we(), .trace_reg_idx(), .trace_reg_val(),
 	.trace_cr(), .trace_xer(), .trace_lr(), .trace_ctr(), .trace_fpscr(), .trace_msr,
@@ -147,10 +172,13 @@ logic [3:0]   vb_be;
 logic [255:0] vb_wdata, vb_rdata;
 logic [255:0] v_rdata_w;
 
-IBMRS6K7248_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .LE_MODE(LE_MODE), .UART_FAST(UART_FAST)) machine (
+IBMRS6K7248_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .LE_MODE(LE_MODE), .UART_FAST(UART_FAST), .STO_UNIT(STO_UNIT)) machine (
 	.clk, .reset, .simm_cfg, .rom_at, .rom_512k, .planar_id,
 	.c_req, .c_we, .c_line, .c_addr, .c_be, .c_wdata, .c_ack, .c_rdata,
 	.m_req, .m_we, .m_line, .m_addr, .m_be, .m_wdata, .m_ack, .m_rdata,
+	.snoop_req, .snoop_we, .snoop_addr, .snoop_ack,
+	.sb_sel, .sb_sel_id, .sb_sel_atn, .sb_sel_done, .sb_sel_fail, .sb_bsy, .sb_req, .sb_phase, .sb_tdata,
+	.sb_ack, .sb_idata, .sb_ackhold, .sb_atn, .sb_rst,
 	.ext_irq, .tb_tick, .kbc_reset, .speaker,
 	.ps2_key, .ps2_mouse, .rtc_set, .rtc_time,
 	.v_req, .v_we, .v_addr, .v_be, .v_wdata, .v_ack, .v_rdata,
@@ -159,6 +187,17 @@ IBMRS6K7248_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .LE_MODE(LE_MODE), .UART_F
 	.pal_vaddr, .pal_vq, .vretrace_v, .disp_en_v,
 	.com1_txd, .com1_rxd, .com1_cts_n, .com1_rts_n,
 	.io_ev, .io_we, .io_stub, .io_addr, .io_be, .io_wdata, .io_rdata
+);
+
+// ---- the SCSI devices ----------------------------------------------------------------------
+IBMRS6K7248_scsitgt scsi (
+	.clk, .rst(reset), .clk_h(clk_b),
+	.sel(sb_sel), .sel_id(sb_sel_id), .sel_atn(sb_sel_atn), .sel_done(sb_sel_done), .sel_fail(sb_sel_fail),
+	.bsy(sb_bsy), .req(sb_req), .phase(sb_phase), .tdata(sb_tdata),
+	.ack(sb_ack), .idata(sb_idata), .ackhold(sb_ackhold), .atn(sb_atn), .brst(sb_rst),
+	.img_present, .img_blocks, .sd_lba, .sd_blk_cnt, .sd_rd, .sd_wr, .sd_ack,
+	.sd_buff_addr, .sd_buff_dout, .sd_buff_din, .sd_buff_wr,
+	.cd_change, .cd_l(), .cd_r(), .activity(scsi_activity)
 );
 
 // ---- the S3's VRAM: its port across to the memory's clock, then DDR3 and the scan-out ----

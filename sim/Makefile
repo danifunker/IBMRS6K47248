@@ -56,7 +56,7 @@ machine_tb: $(BUILD)/machine_tb
 
 $(BUILD)/VIBMRS6K7248_system.mk: $(CPU_SRCS) $(MACH_SRCS) $(HERE)tb_main.cpp $(CPU)/DSPPC604.qip $(MACH)/IBMRS6K7248_machine.qip $(HERE)Makefile
 	@mkdir -p $(BUILD)
-	@$(VERILATOR) $(VFLAGS) --top-module IBMRS6K7248_system -GUART_FAST=1 -Mdir $(BUILD) -o machine_tb \
+	@$(VERILATOR) $(VFLAGS) --top-module IBMRS6K7248_system -GUART_FAST=1 -GSTO_UNIT=2 -Mdir $(BUILD) -o machine_tb \
 		-CFLAGS "-std=c++17 $(GCC_MEM)" \
 		$(CPU_SRCS) $(MACH_SRCS) $(HERE)tb_main.cpp \
 		> $(BUILD)/build.log 2>&1 || (cat $(BUILD)/build.log; false)

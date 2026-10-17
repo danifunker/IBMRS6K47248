@@ -31,7 +31,9 @@
 //                                          device 0 the MPC105, device 11 Fire
 //                                          Coral; any other reads FFFFFFFF
 //    80800000-80FFFFFF  PCI config direct  not used by this board: reads FFFFFFFF
-//    81000000-BF7FFFFF  PCI I/O            reads FF
+//    81000000-BF7FFFFF  PCI I/O            port = address[29:0]: the 53C810's
+//                                          BAR0 (2000_0000 as the firmware sets
+//                                          it); the rest reads FF
 //    BFFFF000-BFFFFFFF  interrupt ack      reads 0 (no 8259s yet)
 //    C0000000-FEFFFFFF  PCI/ISA memory     reads FF
 //    FFF00000-FFFFFFFF  system ROM         from SDRAM offset rom_at x 4 MB:
@@ -68,6 +70,8 @@
 //    0840-0844  the memory and L2 error status registers: no error (0)
 //    0880-0882  SIMM presence detect (read only)
 //    Fire Coral's BAR0 (1000 as the firmware sets it): its index/data pair
+//    PCI device 16: the NCR 53C810 (IBMRS6K7248_ncr810) at its BAR0, IRQ 15
+//               with the S3's; its DMA through the CPU's snoop port (below)
 //    0852       planar ID (read only): the model, which the firmware reads to
 //               choose its personality (F4-F7 a 7248, with SCSI: F5 100 MHz,
 //               F4 120, F6/F7 133; F0-F3 a Power Series 830/850, without)
@@ -89,6 +93,16 @@
 //  little-endian program meant. (To be checked against the MPC105 manual:
 //  docs/plan.md, the little-endian track.)
 //
+//  The 53C810's DMA (one doubleword a request, PCI address 8000_0000 + n
+//  for memory n, the MPC105's map; anything else a master abort) shares the
+//  memory port with the CPU, as MacPPC7300's DMA does: its line goes first to
+//  the CPU's snoop port (the caches write it back if dirty, and drop it for
+//  a write), then the access takes the port when it is free, before any new
+//  CPU access (a read: the line; a write: one or two words), then a write's
+//  line is snooped again (a copy fetched in between is dropped). No byte
+//  swapping: the bridge keeps bytes at their addresses for PCI masters in
+//  either mode.
+//
 //  Also made here: tb_tick for the CPU's time base and decrementer, at
 //  TB_HZ on average (the 604 counts every fourth bus clock: 16.67 MHz on a
 //  66 MHz bus).
@@ -100,7 +114,8 @@ module IBMRS6K7248_machine
 	parameter int unsigned CPU_HZ = 100_000_000,
 	parameter int unsigned TB_HZ  = 16_666_667,
 	parameter int unsigned LE_MODE = 1,            // 1: the MPC105's little-endian mode (PICR1's LE_MODE bit) swaps the bus
-	parameter int unsigned UART_FAST = 0           // 1 (the bench only): the serial ports run at CLK_HZ / 16
+	parameter int unsigned UART_FAST = 0,          // 1 (the bench only): the serial ports run at CLK_HZ / 16
+	parameter int unsigned STO_UNIT = CPU_HZ / 16000    // the 53C810's selection timeout unit
 )
 (
 	input  logic         clk,
@@ -129,6 +144,28 @@ module IBMRS6K7248_machine
 	output logic [255:0] m_wdata,
 	input  logic         m_ack,
 	input  logic [255:0] m_rdata,
+
+	// the CPU's snoop port (DSPPC604)
+	output logic         snoop_req,
+	output logic         snoop_we,
+	output logic [31:5]  snoop_addr,
+	input  logic         snoop_ack,
+
+	// the 53C810's SCSI bus (IBMRS6K7248_scsitgt's byte-level one)
+	output logic         sb_sel,
+	output logic [2:0]   sb_sel_id,
+	output logic         sb_sel_atn,
+	input  logic         sb_sel_done,
+	input  logic         sb_sel_fail,
+	input  logic         sb_bsy,
+	input  logic         sb_req,
+	input  logic [2:0]   sb_phase,
+	input  logic [7:0]   sb_tdata,
+	output logic         sb_ack,
+	output logic [7:0]   sb_idata,
+	output logic         sb_ackhold,
+	output logic         sb_atn,
+	output logic         sb_rst,
 
 	output logic         ext_irq,
 	output logic         tb_tick,
@@ -249,29 +286,94 @@ wire  [255:0] x_wdata = ~le_bus ? c_wdata : c_line ? swap_line(c_wdata) : {224'h
 
 wire [31:0] a      = {x_addr, 2'b00};
 
-// the bank holding the address (the lowest if programmed to overlap), and its offset in the SDRAM
-logic       is_ram;
-logic [7:0] ram_mb_at;                  // SDRAM offset of the address's MB
-always_comb begin
-	is_ram    = 1'b0;
-	ram_mb_at = 8'd0;
+// the bank holding an address (the lowest if programmed to overlap), and its MB's offset in
+// the SDRAM: {hit, offset}
+function automatic logic [8:0] ram_dec(input logic [31:20] ad);
+	ram_dec = 9'd0;
 	for (int n = 5; n >= 0; n--)
-		if (bank_en[n] && bk_dram[n] && a[31:30] == 2'b00 &&
-		    a[29:20] >= bank_start[n] && a[29:20] <= bank_end[n]) begin
-			is_ram    = 1'b1;
-			ram_mb_at = bk_base[n] + {3'd0, (a[24:20] - bank_start[n][4:0]) & (bk_big[n] ? 5'h1F : 5'h07)};
-		end
-end
+		if (bank_en[n] && bk_dram[n] && ad[31:30] == 2'b00 &&
+		    ad[29:20] >= bank_start[n] && ad[29:20] <= bank_end[n])
+			ram_dec = {1'b1, bk_base[n] + {3'd0, (ad[24:20] - bank_start[n][4:0]) & (bk_big[n] ? 5'h1F : 5'h07)}};
+endfunction
+wire  [8:0] c_dec     = ram_dec(a[31:20]);
+wire        is_ram    = c_dec[8];
+wire  [7:0] ram_mb_at = c_dec[7:0];             // SDRAM offset of the address's MB
 wire        is_rom = a[31:20] == 12'hFFF && !(rom_512k && a[19]);
 wire        to_mem = is_ram | (is_rom & ~c_we);
 wire [19:2] rom_a  = a[19:2];
 
-assign m_req   = c_req & to_mem & ~dev_busy;
-assign m_we    = c_we;
-assign m_line  = c_line;
-assign m_addr  = is_rom ? {5'd0, rom_at, 2'b00, rom_a} : {4'd0, ram_mb_at, a[19:2]};
-assign m_be    = x_be;
-assign m_wdata = x_wdata;
+// ---- the 53C810's DMA and the CPU on the memory port ---------------------------------------
+logic         dm_req, dm_we, dm_ack, dm_err;
+logic [31:3]  dm_addr;
+logic [7:0]   dm_be;
+logic [63:0]  dm_wdata, dm_rdata;
+wire  [31:0]  dpa     = {dm_addr, 3'b000};                 // the PCI address
+wire  [8:0]   d_dec   = ram_dec({1'b0, dpa[30:20]});
+wire          d_ok    = dpa[31] & d_dec[8];                // memory behind the MPC105's window
+
+typedef enum logic [2:0] {DQ_IDLE, DQ_SNOOP, DQ_MEM, DQ_SNOOP2, DQ_DONE} dq_t;
+dq_t          dq;
+logic         dq_w1;                                       // a write's second word (be 3-0) still to go
+logic         own_cpu, own_dma;                            // whose request the crossing holds
+logic         snoop_gap;
+wire          port_free = ~own_cpu & ~own_dma;
+wire          grant_dma = port_free & (dq == DQ_MEM);
+wire          grant_cpu = port_free & ~grant_dma & (dq != DQ_MEM) & c_req & to_mem & ~dev_busy;
+wire          pres_dma  = own_dma | grant_dma;
+// the doubleword's word this access is: a read takes the line, a write word 0 (be 7-4) then 1
+wire          dm_hi     = dm_we & (dq_w1 | dm_be[7:4] == 4'h0);
+
+assign snoop_req  = dq == DQ_SNOOP || (dq == DQ_SNOOP2 && !snoop_gap);
+assign snoop_we   = dm_we;
+assign snoop_addr = dpa[31:5] & 27'h3FF_FFFF;              // the memory address (bit 31 the window's)
+
+assign m_req   = pres_dma | ((own_cpu | grant_cpu) & c_req & to_mem);
+assign m_we    = pres_dma ? dm_we : c_we;
+assign m_line  = pres_dma ? ~dm_we : c_line;
+assign m_addr  = pres_dma ? {4'd0, d_dec[7:0], dpa[19:3], dm_hi} :
+                 is_rom ? {5'd0, rom_at, 2'b00, rom_a} : {4'd0, ram_mb_at, a[19:2]};
+assign m_be    = pres_dma ? (dm_hi ? dm_be[3:0] : dm_be[7:4]) : x_be;
+assign m_wdata = pres_dma ? {224'h0, dm_hi ? dm_wdata[31:0] : dm_wdata[63:32]} : x_wdata;
+wire   cpu_m_ack = m_ack & own_cpu;
+
+always_ff @(posedge clk) begin
+	dm_ack <= 1'b0;
+	if (m_ack) begin
+		own_cpu <= 1'b0;
+		own_dma <= 1'b0;
+	end
+	else begin
+		if (grant_cpu) own_cpu <= 1'b1;
+		if (grant_dma) own_dma <= 1'b1;
+	end
+	snoop_gap <= 1'b0;
+	case (dq)
+		DQ_IDLE: if (dm_req && !dm_ack) begin
+			dq_w1 <= 1'b0;
+			if (!d_ok) begin                                   // a master abort
+				dm_err <= 1'b1; dm_rdata <= 64'hFFFF_FFFF_FFFF_FFFF; dm_ack <= 1'b1; dq <= DQ_DONE;
+			end
+			else begin dm_err <= 1'b0; dq <= DQ_SNOOP; end
+		end
+		DQ_SNOOP: if (snoop_ack) dq <= DQ_MEM;
+		DQ_MEM: if (m_ack && own_dma) begin
+			dm_rdata <= m_rdata[255 - 64 * dpa[4:3] -: 64];
+			if (dm_we && !dm_hi && dm_be[3:0] != 4'h0) dq_w1 <= 1'b1;      // the second word next
+			else if (dm_we) begin snoop_gap <= 1'b1; dq <= DQ_SNOOP2; end
+			else begin dm_ack <= 1'b1; dq <= DQ_DONE; end
+		end
+		DQ_SNOOP2: if (!snoop_gap && snoop_ack) begin dm_ack <= 1'b1; dq <= DQ_DONE; end
+		default: dq <= DQ_IDLE;                                 // the acknowledge's cycle
+	endcase
+	if (reset) begin
+		dq        <= DQ_IDLE;
+		own_cpu   <= 1'b0;
+		own_dma   <= 1'b0;
+		snoop_gap <= 1'b0;
+		dm_ack    <= 1'b0;
+		dq_w1     <= 1'b0;
+	end
+end
 
 // ---- device accesses, a word at a time ----------------------------------------------------
 logic         dev_busy;                 // a device request taken, not yet answered
@@ -422,6 +524,23 @@ IBMRS6K7248_s3 #(.CLK_HZ(CPU_HZ)) s3 (
 	.irq(s3_irq), .monitor_id(4'hF)
 );
 
+// ---- the NCR 53C810 (PCI device 16): its registers at BAR0 in PCI I/O space -------------------
+wire         s_pciio = p_a[31:30] == 2'b10 && !s_pcicf && !s_iack;      // 80000000-BF7FFFFF less the above
+logic        ncr_io_on;
+logic [31:8] ncr_io_base;
+wire         ncr_hit = s_pciio && ncr_io_on && ncr_io_base == {2'b00, p_a[29:8]};
+logic [31:0] ncr_cfg_q, ncr_q;
+logic        ncr_irq;
+IBMRS6K7248_ncr810 #(.STO_UNIT(STO_UNIT)) ncr810 (
+	.clk, .reset,
+	.cfg_sel(d_sel & cfg_dev16), .cfg_we(d_we), .cfg_reg(cf8[7:2]), .cfg_be(le_be), .cfg_wdata(le_wd), .cfg_rdata(ncr_cfg_q),
+	.io_on(ncr_io_on), .io_base(ncr_io_base),
+	.sel(d_sel & ncr_hit), .we(d_we), .off(p_a[7:2]), .be(p_be), .wdata(p_wd), .rdata(ncr_q), .irq(ncr_irq),
+	.dm_req, .dm_we, .dm_addr, .dm_be, .dm_wdata, .dm_ack, .dm_err, .dm_rdata,
+	.sb_sel, .sb_sel_id, .sb_sel_atn, .sb_sel_done, .sb_sel_fail, .sb_bsy, .sb_req, .sb_phase, .sb_tdata,
+	.sb_ack, .sb_idata, .sb_ackhold, .sb_atn, .sb_rst
+);
+
 // ---- the ISA core: the 8259s, the 8254, the 8042, the RTC and NVRAM, port 92 -------------
 wire        pic_hit  = s_isa && (bport[15:1] == 15'h0010 || bport[15:1] == 15'h0050);   // 20/21, A0/A1
 wire        elcr_hit = s_isa && bport[15:1] == 15'h0268;                            // 4D0/4D1
@@ -483,8 +602,8 @@ always_ff @(posedge clk) begin
 end
 
 // the request lines: COM1's INTR as a PC board gates it, with OUT2
-// IRQ 15: every PCI device's interrupt (Carolina's routing); the S3's so far
-assign irq = {s3_irq, 2'b00, irq12, 3'b000, irq8, 3'b000, com1_irq & com1_out2, com2_irq & com2_out2, 1'b0, irq1, irq0} | (16'(irq6) << 6);
+// IRQ 15: every PCI device's interrupt (Carolina's routing): the S3's and the 53C810's
+assign irq = {s3_irq | ncr_irq, 2'b00, irq12, 3'b000, irq8, 3'b000, com1_irq & com1_out2, com2_irq & com2_out2, 1'b0, irq1, irq0} | (16'(irq6) << 6);
 
 // the planar ID, the SIMMs' presence detect
 wire        planar_hit = s_isa && bport == 16'h0852;
@@ -513,6 +632,7 @@ wire        cfg_on  = cf8[31] && cf8[23:16] == 8'd0 && cf8[10:8] == 3'd0;   // b
 wire        cfg_dev0  = cfc_hit && cfg_on && cf8[15:11] == 5'd0;
 wire        cfg_dev11 = cfc_hit && cfg_on && cf8[15:11] == 5'd11;
 wire        cfg_dev14 = cfc_hit && cfg_on && cf8[15:11] == 5'd14;
+wire        cfg_dev16 = cfc_hit && cfg_on && cf8[15:11] == 5'd16;
 always_ff @(posedge clk) begin
 	if (d_sel & d_we & cf8_hit)
 		for (int k = 0; k < 4; k++) if (le_be[k]) cf8[8 * k +: 8] <= le_wd[8 * k +: 8];
@@ -541,7 +661,7 @@ IBMRS6K7248_firecoral firecoral (
 // the answer, the cycle after the access
 logic       q_sio, q_com2, q_dev14, q_fdc;
 logic       q_pic, q_pit, q_kbc, q_rtc, q_p92, q_err, q_aud, q_audc;
-logic       q_com1, q_planar, q_pd, q_cf8, q_cfc, q_dev0, q_dev11, q_fcio, q_pcicf, q_iack;
+logic       q_com1, q_planar, q_pd, q_cf8, q_cfc, q_dev0, q_dev11, q_fcio, q_pcicf, q_iack, q_dev16, q_ncr;
 logic [1:0] q_lane;
 always_ff @(posedge clk) if (d_sel) begin
 	q_com1  <= com1_hit;
@@ -563,6 +683,8 @@ always_ff @(posedge clk) if (d_sel) begin
 	q_dev0  <= cfg_dev0;
 	q_dev11 <= cfg_dev11;
 	q_dev14 <= cfg_dev14;
+	q_dev16 <= cfg_dev16;
+	q_ncr   <= ncr_hit;
 	q_s3    <= s3_hit;
 	q_fcio  <= fc_io_hit;
 	q_pcicf <= s_pcicf;
@@ -586,7 +708,9 @@ always_comb begin
 	else if (q_pd)    dev_rdata = {4{simm_pd[q_lane]}};
 	else if (q_fcio)  dev_rdata = {4{fc_io_q}};
 	else if (q_cf8)   dev_rdata = swap32(cf8);
-	else if (q_cfc)   dev_rdata = q_dev0 ? swap32(mpc_q) : q_dev11 ? swap32(fc_q) : q_dev14 ? swap32(s3_cfg_q) : 32'hFFFF_FFFF;
+	else if (q_cfc)   dev_rdata = q_dev0 ? swap32(mpc_q) : q_dev11 ? swap32(fc_q) : q_dev14 ? swap32(s3_cfg_q) :
+	                              q_dev16 ? swap32(ncr_cfg_q) : 32'hFFFF_FFFF;
+	else if (q_ncr)   dev_rdata = ncr_q;
 	else if (q_pcicf) dev_rdata = 32'hFFFF_FFFF;
 	else if (q_iack)  dev_rdata = {4{pic_q}};             // the vector
 	else if (d_addr[31]) dev_rdata = 32'hFFFF_FFFF;          // I/O and bus space: nothing answers
@@ -599,7 +723,7 @@ always_ff @(posedge clk) begin
 	io_ev <= w_done;
 	if (w_done) begin
 		io_we    <= d_we;
-		io_stub  <= ~(q_s3 | q_fdc | q_com1 | q_com2 | q_sio | q_planar | q_pd | q_fcio | q_cf8 | q_dev0 | q_dev11 | q_dev14 |
+		io_stub  <= ~(q_s3 | q_fdc | q_com1 | q_com2 | q_sio | q_planar | q_pd | q_fcio | q_cf8 | q_dev0 | q_dev11 | q_dev14 | q_dev16 | q_ncr |
 		              q_pic | q_pit | q_kbc | q_rtc | q_p92 | q_err | q_aud | q_audc | q_iack);
 		io_addr  <= p_a;
 		io_be    <= p_be;
@@ -610,7 +734,7 @@ always_ff @(posedge clk) begin
 end
 
 // ---- to the CPU -------------------------------------------------------------------------
-assign c_ack   = m_ack | dev_ack;
+assign c_ack   = cpu_m_ack | dev_ack;
 logic [255:0] x_rdata;
 assign c_rdata = ~le_bus ? x_rdata : c_line ? swap_line(x_rdata) : {224'h0, rev32(x_rdata[31:0])};
 assign x_rdata = ~dev_ack ? m_rdata :

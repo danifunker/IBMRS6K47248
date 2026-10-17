@@ -38,6 +38,30 @@ static uint32_t rd32(uint32_t a) {
 }
 static void wr8(uint32_t a, uint8_t v) { mem[a] = v; }
 
+// the SCSI devices' images, served as hps_io serves its block devices: slot 0 disk ID 0,
+// 1 disk ID 1, 2 the CD-ROM (ID 3). Reads come from the file; writes go to a copy in memory
+// unless --disk-rw (then to the file).
+struct Image {
+	FILE* f = nullptr;
+	uint64_t blocks = 0;
+	bool rw = false;
+	std::map<uint32_t, std::vector<uint8_t>> overlay;    // written blocks (read-only mode)
+	void read(uint32_t lba, uint8_t* p) {
+		auto it = overlay.find(lba);
+		if (it != overlay.end()) { memcpy(p, it->second.data(), 512); return; }
+		memset(p, 0, 512);
+		if (f && lba < blocks && fseeko(f, off_t(lba) * 512, SEEK_SET) == 0) {
+			size_t n = fread(p, 1, 512, f);
+			(void)n;
+		}
+	}
+	void write(uint32_t lba, const uint8_t* p) {
+		if (rw && f) { if (fseeko(f, off_t(lba) * 512, SEEK_SET) == 0) fwrite(p, 1, 512, f); }
+		else overlay[lba].assign(p, p + 512);
+	}
+};
+static Image images[3];
+
 struct StubInfo { uint64_t reads = 0, writes = 0; uint32_t first_pc = 0; uint32_t last_wdata = 0; uint32_t last_rdata = 0; };
 
 static void usage() {
@@ -52,6 +76,8 @@ static void usage() {
 	       "  --vram FILE  the S3's 2 MB VRAM at the end, raw (tools/vram.py draws it)\n"
 	       "  --frame FILE the picture's latest whole frame, as a PPM, rewritten at each vertical sync\n"
 	       "  --com1 FILE  COM1's bytes as sent, raw (tools/vt.py FILE draws the terminal's screen)\n"
+	       "  --disk0 FILE, --disk1 FILE, --cd FILE  SCSI images: disks at IDs 0 and 1, the CD-ROM at 3 (writes kept in memory)\n"
+	       "  --disk-rw    the disks' writes go to their files\n"
 	       "  --fst FILE   write a waveform (needs a make TRACE=1 build) of clocks --from N --to M\n"
 	       "  --lat N      the bench memory answers N clocks after a request (default 6, about the SDRAM's)\n"
 	       "  --cycles N   stop after N clocks (default 50,000,000)\n"
@@ -88,6 +114,8 @@ int main(int argc, char** argv) {
 	const char* vram_path = nullptr;               // the S3's VRAM at the end, raw
 	const char* frame_path = nullptr;              // the latest whole frame of the picture (PPM)
 	const char* com1_path = nullptr;               // COM1's bytes as sent (tools/vt.py draws the screen)
+	const char* img_path[3] = {nullptr, nullptr, nullptr};   // the SCSI images
+	bool disk_rw = false;
 	const char* fst_path = nullptr;                // a waveform (a TRACE=1 build) ...
 	uint64_t fst_from = 0, fst_to = ~0ull;         // ... of these clocks                      // a heartbeat line every so many clocks (0 none)
 	for (int i = 1; i < argc; i++) {
@@ -107,6 +135,11 @@ int main(int argc, char** argv) {
 		else if (a == "--save") save_path = next();
 		else if (a == "--save-pc") save_pc = strtoul(next(), nullptr, 16);
 		else if (a == "--restore") restore_path = next();
+		else if (a == "--disk0" || a == "--disk1" || a == "--cd") {
+			int n = a == "--disk0" ? 0 : a == "--disk1" ? 1 : 2;
+			img_path[n] = next();
+		}
+		else if (a == "--disk-rw") disk_rw = true;
 		else if (a == "--fst") fst_path = next();
 		else if (a == "--from") fst_from = strtoull(next(), nullptr, 0);
 		else if (a == "--to") fst_to = strtoull(next(), nullptr, 0);
@@ -148,6 +181,24 @@ int main(int argc, char** argv) {
 	top->com1_rxd = 1;
 	top->com1_cts_n = 0;
 	top->b_ack = 0;
+	// the SCSI images
+	for (int n = 0; n < 3; n++) {
+		top->img_blocks[n] = 0;
+		if (!img_path[n]) continue;
+		Image& im = images[n];
+		im.rw = disk_rw && n < 2;
+		im.f = fopen(img_path[n], im.rw ? "r+b" : "rb");
+		if (!im.f) { fprintf(stderr, "cannot open %s\n", img_path[n]); return 1; }
+		fseeko(im.f, 0, SEEK_END);
+		im.blocks = uint64_t(ftello(im.f)) / 512;
+		top->img_blocks[n] = uint32_t(im.blocks);
+		printf("SCSI %s %s: %llu blocks\n", n == 2 ? "CD-ROM ID 3" : n == 1 ? "disk ID 1" : "disk ID 0", img_path[n],
+		       (unsigned long long)im.blocks);
+	}
+	top->img_present = (images[0].f ? 1 : 0) | (images[1].f ? 2 : 0) | (images[2].f ? 4 : 0);
+	top->cd_change = 0;
+	top->sd_ack = 0;
+	top->sd_buff_wr = 0;
 	top->reset = 1;
 	top->reset_b = 1;
 
@@ -233,8 +284,42 @@ int main(int argc, char** argv) {
 	const char* why = "cycle limit";
 	signal(SIGINT, on_stop);
 	signal(SIGTERM, on_stop);
+	// the block device being served: hps_io's protocol, a byte a clock
+	int sd_n = -1;                                  // the slot, -1 none
+	bool sd_w = false;
+	uint32_t sd_pos = 0, sd_len = 0, sd_lba0 = 0;
+	std::vector<uint8_t> sd_buf;
+	uint64_t sd_reads = 0, sd_writes = 0;
 	for (cycle = cycle0; cycle < max_cycles; cycle++) {
 		if (stop_req) { why = "a signal"; break; }
+		// hps_io's side of the SCSI images
+		top->sd_buff_wr = 0;
+		if (sd_n < 0) {
+			for (int n = 0; n < 3; n++)
+				if (((top->sd_rd | top->sd_wr) >> n) & 1) {
+					sd_n = n; sd_w = (top->sd_wr >> n) & 1;
+					sd_lba0 = top->sd_lba[n];
+					sd_len = (uint32_t(top->sd_blk_cnt[n]) + 1) * 512;
+					sd_pos = 0;
+					sd_buf.assign(sd_len, 0);
+					if (!sd_w) { for (uint32_t b = 0; b < sd_len / 512; b++) images[n].read(sd_lba0 + b, &sd_buf[512 * b]); sd_reads++; }
+					else sd_writes++;
+					top->sd_ack = 1 << n;
+					break;
+				}
+		} else if (!sd_w) {
+			if (sd_pos < sd_len) {
+				top->sd_buff_addr = sd_pos; top->sd_buff_dout = sd_buf[sd_pos]; top->sd_buff_wr = 1; sd_pos++;
+			} else { top->sd_ack = 0; sd_n = -1; }
+		} else {
+			// the core's byte at the address set a clock before (its buffer is registered)
+			if (sd_pos >= 1) sd_buf[sd_pos - 1] = top->sd_buff_din[sd_n];
+			if (sd_pos < sd_len) { top->sd_buff_addr = sd_pos; sd_pos++; }
+			else {
+				for (uint32_t b = 0; b < sd_len / 512; b++) images[sd_n].write(sd_lba0 + b, &sd_buf[512 * b]);
+				top->sd_ack = 0; sd_n = -1;
+			}
+		}
 		// the memory side, before the edge: set ack/rdata for this edge
 		if (ack_now) { top->b_ack = 0; ack_now = false; }
 		else if (top->b_req) {
@@ -405,6 +490,7 @@ int main(int argc, char** argv) {
 		}
 	}
 	printf("%llu frames of the picture\n", (unsigned long long)frames);
+	if (sd_reads || sd_writes) printf("SCSI images: %llu reads, %llu writes\n", (unsigned long long)sd_reads, (unsigned long long)sd_writes);
 #if VM_TRACE
 	if (tfp) tfp->close();
 #endif
