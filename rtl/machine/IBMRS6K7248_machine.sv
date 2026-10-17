@@ -50,14 +50,19 @@
 //  table at FFF05BA4 has them).
 //
 //  Devices answered so far, in ISA I/O space:
-//    03F8-03FF  COM1, a 16550A (IBMRS6K7248_uart) on the MiSTer's UART
+//    0398-0399  the PC87312's configuration (IBMRS6K7248_sio); where it puts them:
+//    COM1       a 16550A (IBMRS6K7248_uart) on the MiSTer's UART (3F8 at reset)
+//    COM2       a 16550A with nothing on its line (2F8 at reset)
+//    LPT        the parallel port's registers (378 at reset; the firmware's
+//               progress codes go to its data latch at 3BC)
 //    0020-0021, 00A0-00A1, 04D0-04D1   the 8259s and their ELCR (IBMRS6K7248_pic);
 //               BFFFFFF0 read: the interrupt acknowledge
 //    0040-0043, 0061   the 8254 and port 61 (IBMRS6K7248_pit)
 //    0060, 0064 the 8042 with a PS/2 keyboard and mouse (IBMRS6K7248_kbc)
 //    0070-0071, 0074-0076   the RTC and the 4 KB NVRAM (IBMRS6K7248_rtc)
-//    0220-022F, 0534-0537   the CS4232's Sound Blaster DSP and WSS codec, present
-//               but silent (IBMRS6K7248_cs4232)
+//    0279       the CS4232's configuration (the Crystal key and commands); its
+//               Sound Blaster DSP and WSS codec where they are placed and
+//               only while active, present but silent (IBMRS6K7248_cs4232)
 //    0092       port 92 (stored; its endian bit is for little-endian mode)
 //    0840-0844  the memory and L2 error status registers: no error (0)
 //    0880-0882  SIMM presence detect (read only)
@@ -286,8 +291,21 @@ end
 wire [15:0] bport = {port[15:2], lane};
 wire [7:0]  bwd   = p_wd[31 - 8 * lane -: 8];
 
+// the PC87312: its configuration, its parallel port; then COM1 and COM2 where it puts them
+logic        lpt_on, uart1_on, uart2_on, fdc_on, fdc_alt, ide_on, ide_alt;
+logic [15:2] lpt_base;
+logic [15:3] uart1_base, uart2_base;
+logic  [7:0] sio_q, com2_q;
+wire         sio_hit  = s_isa && bport[15:1] == 15'h01CC;                        // 398/399
+wire         lpt_hit  = s_isa && lpt_on && bport[15:2] == lpt_base && bport[1:0] != 2'd3;
+IBMRS6K7248_sio sio (
+	.clk, .reset,
+	.sel(d_sel & sio_hit), .lpt_sel(d_sel & lpt_hit), .we(d_we), .off(bport[1:0]), .wdata(bwd), .rdata(sio_q),
+	.lpt_on, .lpt_base, .uart1_on, .uart1_base, .uart2_on, .uart2_base, .fdc_on, .fdc_alt, .ide_on, .ide_alt
+);
+
 // COM1
-wire        com1_hit = s_isa && bport[15:3] == 13'h007F;     // 03F8-03FF
+wire        com1_hit = s_isa && uart1_on && bport[15:3] == uart1_base;
 wire  [7:0] com1_q;
 logic       com1_irq, com1_out2;
 IBMRS6K7248_uart #(.CLK_HZ(CPU_HZ)) com1 (
@@ -299,6 +317,18 @@ IBMRS6K7248_uart #(.CLK_HZ(CPU_HZ)) com1 (
 	.rts_n(com1_rts_n), .dtr_n()
 );
 
+// COM2: nothing on its line
+wire        com2_hit = s_isa && uart2_on && bport[15:3] == uart2_base;
+logic       com2_irq, com2_out2;
+IBMRS6K7248_uart #(.CLK_HZ(CPU_HZ)) com2 (
+	.clk, .reset,
+	.sel(d_sel & com2_hit), .we(d_we), .addr(bport[2:0]), .wdata(bwd), .rdata(com2_q),
+	.irq(com2_irq), .out2(com2_out2),
+	.txd(), .rxd(1'b1),
+	.cts_n(1'b1), .dsr_n(1'b1), .dcd_n(1'b1), .ri_n(1'b1),
+	.rts_n(), .dtr_n()
+);
+
 // ---- the ISA core: the 8259s, the 8254, the 8042, the RTC and NVRAM, port 92 -------------
 wire        pic_hit  = s_isa && (bport[15:1] == 15'h0010 || bport[15:1] == 15'h0050);   // 20/21, A0/A1
 wire        elcr_hit = s_isa && bport[15:1] == 15'h0268;                            // 4D0/4D1
@@ -307,8 +337,12 @@ wire        kbc_hit  = s_isa && (bport == 16'h0060 || bport == 16'h0064);
 wire        rtc_hit  = s_isa && (bport[15:1] == 15'h0038 || (bport[15:2] == 14'h001D && bport[1:0] != 2'd3));   // 70/71, 74-76
 wire        p92_hit  = s_isa && bport == 16'h0092;
 wire        err_hit  = s_isa && bport >= 16'h0840 && bport <= 16'h0844;
-wire        sb_hit   = s_isa && bport[15:4] == 12'h022;                             // 220-22F
-wire        wss_hit  = s_isa && bport[15:2] == 14'h014D;                            // 534-537
+logic        aud_on;
+logic [15:4] sb_base;
+logic [15:2] wss_base;
+wire        aud_cfg  = s_isa && bport == 16'h0279;
+wire        sb_hit   = s_isa && aud_on && bport[15:4] == sb_base;
+wire        wss_hit  = s_isa && aud_on && bport[15:2] == wss_base;
 
 logic [15:0] irq;
 logic  [7:0] pic_q, pit_q, kbc_q, rtc_q, aud_q;
@@ -345,7 +379,9 @@ IBMRS6K7248_rtc #(.CLK_HZ(CPU_HZ)) rtc (
 
 IBMRS6K7248_cs4232 cs4232 (
 	.clk, .reset,
-	.sel(d_sel & (sb_hit | wss_hit)), .we(d_we), .wss(wss_hit), .off(bport[3:0]), .wdata(bwd), .rdata(aud_q)
+	.cfg_sel(d_sel & d_we & aud_cfg),
+	.sel(d_sel & (sb_hit | wss_hit)), .we(d_we), .wss(wss_hit), .off(bport[3:0]), .wdata(bwd), .rdata(aud_q),
+	.on(aud_on), .sb_base, .wss_base
 );
 
 always_ff @(posedge clk) begin
@@ -354,7 +390,7 @@ always_ff @(posedge clk) begin
 end
 
 // the request lines: COM1's INTR as a PC board gates it, with OUT2
-assign irq = {3'b000, irq12, 3'b000, irq8, 3'b000, com1_irq & com1_out2, 1'b0, 1'b0, irq1, irq0};
+assign irq = {3'b000, irq12, 3'b000, irq8, 3'b000, com1_irq & com1_out2, com2_irq & com2_out2, 1'b0, irq1, irq0};
 
 // the planar ID, the SIMMs' presence detect
 wire        planar_hit = s_isa && bport == 16'h0852;
@@ -408,11 +444,14 @@ IBMRS6K7248_firecoral firecoral (
 );
 
 // the answer, the cycle after the access
-logic       q_pic, q_pit, q_kbc, q_rtc, q_p92, q_err, q_aud;
+logic       q_sio, q_com2;
+logic       q_pic, q_pit, q_kbc, q_rtc, q_p92, q_err, q_aud, q_audc;
 logic       q_com1, q_planar, q_pd, q_cf8, q_cfc, q_dev0, q_dev11, q_fcio, q_pcicf, q_iack;
 logic [1:0] q_lane;
 always_ff @(posedge clk) if (d_sel) begin
 	q_com1  <= com1_hit;
+	q_com2  <= com2_hit;
+	q_sio   <= sio_hit | lpt_hit;
 	q_pic   <= pic_hit | elcr_hit;
 	q_pit   <= pit_hit;
 	q_kbc   <= kbc_hit;
@@ -420,6 +459,7 @@ always_ff @(posedge clk) if (d_sel) begin
 	q_p92   <= p92_hit;
 	q_err   <= err_hit;
 	q_aud   <= sb_hit | wss_hit;
+	q_audc  <= aud_cfg;
 	q_planar <= planar_hit;
 	q_pd    <= pd_hit;
 	q_cf8   <= cf8_hit;
@@ -435,6 +475,8 @@ end
 logic [31:0] dev_rdata;
 always_comb begin
 	if      (q_com1)  dev_rdata = {4{com1_q}};               // every lane: the byte reaches whichever one was asked
+	else if (q_com2)  dev_rdata = {4{com2_q}};
+	else if (q_sio)   dev_rdata = {4{sio_q}};
 	else if (q_pic)   dev_rdata = {4{pic_q}};
 	else if (q_pit)   dev_rdata = {4{pit_q}};
 	else if (q_kbc)   dev_rdata = {4{kbc_q}};
@@ -459,8 +501,8 @@ always_ff @(posedge clk) begin
 	io_ev <= d_sel_q;
 	if (d_sel_q) begin
 		io_we    <= d_we;
-		io_stub  <= ~(q_com1 | q_planar | q_pd | q_fcio | q_cf8 | q_dev0 | q_dev11 |
-		              q_pic | q_pit | q_kbc | q_rtc | q_p92 | q_err | q_aud | q_iack);
+		io_stub  <= ~(q_com1 | q_com2 | q_sio | q_planar | q_pd | q_fcio | q_cf8 | q_dev0 | q_dev11 |
+		              q_pic | q_pit | q_kbc | q_rtc | q_p92 | q_err | q_aud | q_audc | q_iack);
 		io_addr  <= p_a;
 		io_be    <= p_be;
 		io_wdata <= p_wd;

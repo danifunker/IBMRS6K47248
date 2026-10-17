@@ -39,6 +39,7 @@ static void usage() {
 	       "  --ram MB     installed RAM, as SIMM pairs: 8 16 24 32 48 56 64 96 112 (default 32)\n"
 	       "  --planar ID  the planar ID at port 0852 (default 0xF5, a 7248-100; F0-F3 a Power Series 830/850)\n"
 	       "  --watch PC   report when PC (hex) first retires (FFF10100 and 8398, main_control, always)\n"
+	       "  --beat N     every N clocks, a line with the instructions retired, the PC and the last progress code (default 20,000,000; 0 none)\n"
 	       "  --cycles N   stop after N clocks (default 50,000,000)\n"
 	       "  --instr N    stop after N instructions retired\n"
 	       "  --io         print every device access as it happens\n"
@@ -61,6 +62,7 @@ int main(int argc, char** argv) {
 	uint64_t max_cycles = 50000000, max_instr = 0, stall_lim = 2000000;
 	bool io_print = false, post_print = true;
 	uint64_t pcs_print = 0;
+	uint64_t beat = 20000000;                      // a heartbeat line every so many clocks (0 none)
 	for (int i = 1; i < argc; i++) {
 		std::string a = argv[i];
 		auto next = [&]() { if (i + 1 >= argc) { usage(); exit(2); } return argv[++i]; };
@@ -72,6 +74,7 @@ int main(int argc, char** argv) {
 		else if (a == "--instr") max_instr = strtoull(next(), nullptr, 0);
 		else if (a == "--io") io_print = true;
 		else if (a == "--quiet-progress") post_print = false;
+		else if (a == "--beat") beat = strtoull(next(), nullptr, 0);
 		else if (a == "--pcs") pcs_print = strtoull(next(), nullptr, 0);
 		else if (a == "--stall") stall_lim = strtoull(next(), nullptr, 0);
 		else { usage(); return 2; }
@@ -174,6 +177,9 @@ int main(int argc, char** argv) {
 			} else mem_wait--;
 		}
 		tick();
+		if (beat && cycle && cycle % beat == 0)
+			printf("  [clock %llu: %llu instructions, pc %08X, progress %02X]\n", (unsigned long long)cycle,
+			       (unsigned long long)instr, last_pc, post_last);
 
 		if (top->trace_valid && top->trace_last) {
 			uint32_t pc = top->trace_pc;
