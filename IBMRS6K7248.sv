@@ -4,11 +4,11 @@
 //  The top: the framework's ports, the clocks, the ROM upload, the SDRAM,
 //  the machine (IBMRS6K7248_system), COM1 on the MiSTer's UART
 //
-//  Clocks from one PLL (rtl/pll.v, MacPPC7300's, built for 100 MHz only):
-//    clk_cpu  100 MHz  the CPU and the machine (IBMRS6K7248_system)
+//  Clocks from one PLL (rtl/pll.v, MacPPC7300's: counter 1 at 70 or 100 MHz by CPU_MHZ):
+//    clk_cpu   70 MHz  the CPU and the machine (IBMRS6K7248_system)
 //    clk_mem  100 MHz  the SDRAM controller, hps_io, the ROM upload, the picture
-//  (the two are one PLL counter at 100 MHz; the clock crossing between them
-//  stays, as in MacPPC7300's 100 MHz build.) outclk_0 (20 MHz) is unused.
+//  (at CPU_MHZ = 100 the two are one PLL counter; the clock crossing between
+//  them is DSPPC604_memcdc's, as in MacPPC7300.) outclk_0 (20 MHz) is unused.
 //
 //  The picture is the S3 Vision864's (IBMRS6K7248_s3video: its VRAM in the
 //  HPS's DDR3); the firmware's serial console is COM1, the MiSTer's UART.
@@ -34,7 +34,7 @@ module emu
 	`include "sys/emu_ports.vh"
 );
 
-localparam int CPU_MHZ = 100;
+localparam int CPU_MHZ = 70;                // the PLL's 70 or 100: the first fit at 100 missed by 6.2 ns (the CPU's paths, as MacPPC7300's, which runs at 70)
 localparam int TB_HZ   = 16_666_667;        // the 604's time base: a quarter of a 66 MHz bus
 
 ///////// Default values for ports not used in this core /////////
