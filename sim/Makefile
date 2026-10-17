@@ -25,9 +25,10 @@ WARN   := -Wall -Wno-DECLFILENAME -Wno-UNUSEDSIGNAL -Wno-UNUSEDPARAM -Wno-PINCON
 # and ccache keeps what an RTL change leaves the same. Two jobs: this 14 GB
 # machine has been run out of memory twice by more. `make` runs the build in a
 # systemd scope capped at MEM (no swap), so a build that grows too far is
-# killed alone; `make machine_tb` builds without the cap.
+# killed alone (5G was not enough once the S3 came: 2026-10-17); `make machine_tb` builds
+# without the cap.
 JOBS   ?= 2
-MEM    ?= 5G
+MEM    ?= 7G
 # the optimisation of the model's C++ (OPT_FAST): -O2 builds in ~14 minutes and runs
 # ~390,000 clocks a second; -O1 builds in ~8 and runs ~150,000 (make OPT=-O1 for
 # a short test)
