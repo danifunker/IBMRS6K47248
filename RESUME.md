@@ -108,6 +108,11 @@ What to find next, in this order:
    `snap10_user.bin` at init's first instruction (instruction 1,324.0 M);
    replay from there with `--io-range` for the S3 (PCI dev 14), the 53C810
    and COM1, and `--exc`.
+   The bench run to 2.6 G instructions (`~/ibmrs6k/run10.txt`) ended with no
+   COM1 output and one stubbed line read: physical 100277C0-100277FC (beyond
+   the 32 MB), from the low-memory routine at A8C0 that the VMM calls: a
+   probe or a stray line fill; check what A8C0 is at run time
+   (`scratch/work/aix/ram8.bin`, RAM from `snap8_pcopy.bin`).
 3. The firmware's error icon (00016000, top left before AIX starts) is drawn
    dark blue on black: probably the DAC palette (6-bit values scaled wrong?)
    or a missing colour; and what 00016000 means (not found as a constant in
