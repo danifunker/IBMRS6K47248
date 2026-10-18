@@ -421,3 +421,42 @@ never reaches the S3 driver.
 - The boot screen's wait (`rxchar`) polls COM1's LSR (3FD, 13,588 reads
   in 25 M clocks; nothing at 60/64): a byte on COM1 should answer it; a
   PS/2 key may too (through IRQ 1).
+
+## 2026-10-17 late night: the main block's sizing read from its code
+
+- **The queue fix worked** (the queue keeps its first 4 KB): the board's
+  trace (`scratch/work/cfg2.raw`) now holds the main block's whole sizing.
+- **The disassembly corrects what the codes were taken to mean**
+  (`scratch/work/ppcdis.py ADDR ADDR`, capstone):
+  - **23** (FFF15BF0, in FFF15B40) is "this SIMM slot's presence code looks
+    up as empty" (the table at FFF15F40; the codes come from ports 880-882
+    and an aliasing test at 8 MB steps, FFF1582C, into SPRG2).
+  - **24** (FFF15A00) is "an error was seen: switch off the lowest enabled
+    bank" (A0, the memory bank enable register, bit by bit from bit 24 of
+    the CPU's word), and **22** is "no bank left": halt.
+  - So `23 24 23 24 23 24 23 24 23 22` is one empty slot per pass and the
+    banks switched off one at a time: A0 goes 37, 36, 34, 30, 20, then 00.
+  - The trace's order of progress codes against configuration accesses
+    is loose (the queue serves pending events by priority).
+- **The main block's sizing is FFF15490, not FFF15E04** (that is the
+  recovery block's). It probes only RAM 0-3FC (so no access to 7FC
+  appears), clears the error flag (C0) and checks it: **C0 reads 0, the
+  check passes**. Then it copies FFF1554C-FFF15828 to RAM 0 and runs it
+  from there: a clear of C0 (seen), then FFF155E0's tests (walking ones at
+  word 0; byte stores at 0-3 read back as a word; the five patterns over
+  0x400-0x2FFFFC, 3 MB), then the C0 check, which **never comes**: one of
+  the RAM tests fails, and the firmware returns to FFF1558C, calls the bank
+  switch-off and loops (FFF1559C to FFF154A0).
+- So the failure is a RAM test run from RAM, and the first one to reach
+  past the data cache (0-3FC fits in it): the 3 MB fill and check means
+  line write-backs and line fills through the SDRAM, which the shadow
+  detector (single-word reads only) never saw.
+- **In flight**: a build whose debug UART logs the RAM copy's entry (PC 0)
+  and its failure exits (RAM 1E0 = FFF1572C, the walking-ones and byte
+  tests; 22C = FFF15778, a pattern mismatch; 1E4 = FFF15730) with the PC
+  retired before, `Ppppppppp-xxx` (commit "the debug UART logs the main
+  block's RAM test", `scratch/work/quartus_pc.log`).
+- The bench's boot-screen wait: over several RTC minutes (with `RTC_FAST`)
+  the loop reads the RTC's seconds, status A and C about four times a
+  second and rereads NVRAM bytes 0x0C4-0xBDB (index at 74/75, data at 76)
+  each time; it is a timed loop, not a short timeout.
