@@ -242,6 +242,17 @@ always_ff @(posedge clk) nv_q <= nvram[nv_addr];
 assign irq8 = |(flags & reg_b[6:4]);
 
 // a sensible clock before the first set_time (the bench, or a MiSTer without one)
+// The CMOS as the firmware's init_cmos leaves it, its "the CMOS was reset" bit (1F bit 5) clear:
+// the century 19 at 1A, the rest zero, the CRCs over 20-2D (at 2E-2F) and 30-3D (at 3E-3F)
+// valid (scratch/work/cmos_image.py). A blank CMOS fails those CRCs, so init_cmos runs and sets
+// the bit, and with it set the boot program (BOOT.6XE, through password() and security(35))
+// gives up without trying a device: on the real machine the boot after a battery change.
+initial begin
+	for (int i = 0; i < 128; i++) cmos_ram[i] = 8'h00;
+	cmos_ram[7'h1A] = 8'h19;
+	cmos_ram[7'h2E] = 8'hA9; cmos_ram[7'h2F] = 8'h6A;
+	cmos_ram[7'h3E] = 8'hA9; cmos_ram[7'h3F] = 8'h6A;
+end
 initial begin
 	sec = 6'd0; min = 6'd0; hour = 5'd12; date = 5'd1; month = 4'd1; year = 7'd26; dow = 3'd5;
 	reg_a = 7'b010_0110; reg_b = 8'b0000_0010; div = '0;
