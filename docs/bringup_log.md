@@ -562,3 +562,29 @@ to be used until they say so. `scratch/work/stage.sh`, `capture_cd.sh` and
 - Earlier this morning the same boot was taken for an ISI loop: the 12-bit
   vector field made the decompressor's 0x13F8 -> 0x1400 look like one (the
   exception log now takes the vectors 100-800 and F00 only).
+
+## 2026-10-18 midday: the kernel is not stuck: it reaches user space
+
+- **The repeated DSI from copypage is the RAM disk being filled, not a loop
+  on one page.** The bench reproduces the board (32 MB, `snap8_pcopy.bin` at
+  copypage's first call, instruction 1,178,758,754), and the call trace
+  (`run9.sh`; `scratch/work/calltree_k.py` with the kernel's names) shows
+  `initramdisk` calling `copypage` page after page: each call's first store
+  into segment 13 (DAR D0000000, DSISR 42000000) is a demand-allocation fault
+  (`v_dpfget` -> `v_pfprot` -> `v_pagein` -> `v_getframe` -> `v_inspft` and
+  `p_enter_604` -> `p_inspte_604`, the 604's hardware PTE), the copy
+  completes and copypage restores SR13 (`0xA480` at run time: mfsrin, mtsrin).
+  About 5,600 instructions a page; then the same with 0x56ACC, 0x94E60, ...
+- **The complete AIX kernel disassembly**: `scratch/work/aix/kernel.s` (not in
+  git: IBM's code), 3,692 functions named from their traceback tables
+  (`firmware/tools/tbtab.py`, `firmware/tools/capdis.py`). Low memory is
+  installed at run time from blocks of the text (0x4000-0x4FFF from
+  0xA4000: the 604 DSI handler, `li r1,3; mfdar r7; mfdsisr r8` at 0x47DC).
+- **On the board the kernel then runs user code**: after the RAM disk, kernel
+  extensions in segment 0xD (`PD00BCFC0-300` ...), then init's text and data
+  faults (`P10000188-400`, `P2009464C-300`, `P10001F9C-400`), then nothing but
+  the alive dots: the screen keeps the firmware's PowerPC logo (and its error
+  icon, 00016000, drawn dark blue on black: the palette is suspect) and
+  COM1 (OSD UART = COM1, 9600 baud) stays silent. Next: what user space waits
+  on (a bitstream logging the first 250 device accesses after user code
+  starts; the bench's `run10.sh` snapshots at init's first instruction).
