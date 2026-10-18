@@ -462,8 +462,8 @@ always @(posedge clk_cpu) begin
 	if (trace_valid & trace_last) pc_prev <= trace_pc;
 	if (pc_hit) begin pc_from <= pc_prev; pc_to <= trace_pc[11:0]; pc_rom <= trace_pc[31]; end
 end
-// after the boot hand-off (progress 2F), once, when the PC below retires (the AIX kernel's panic, 0x3925C:
-// it copies its message argument r3 to r30 in its tenth instruction): LR, CTR and MSR as it
+// after the boot hand-off (progress 2F), once, when the PC below retires (the AIX kernel's kreboot, 0xCE1D8:
+// LR names its caller; the panic at 0x3925C never fired): LR, CTR and MSR as it
 // retires ("IL=... C=... M=..."), then that and the next 39 instructions retired,
 // "pppp=vvvvvvvv " (the PC's low half and the GPR each wrote, "--------" none)
 reg         isi_armed = 0, isi_done = 0;
@@ -480,7 +480,7 @@ reg  [7:0]  usr_n = 8'd250;
 reg         usr_pend = 0, usr_we, usr_isa;
 reg  [15:0] usr_a;
 reg  [31:0] usr_d;
-wire        isi_go = trace_valid & trace_last & isi_armed & ~isi_done & (trace_pc == 32'h0003925C);
+wire        isi_go = trace_valid & trace_last & isi_armed & ~isi_done & (trace_pc == 32'h000CE1D8);
 always @(posedge clk_cpu) begin
 	if (post_ev && io_wdata[31:24] == 8'h2F) isi_armed <= 1'b1;
 	if (trace_valid && trace_last && (isi_go || isi_n != 6'd0)) begin
