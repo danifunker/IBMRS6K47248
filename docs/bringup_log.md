@@ -653,7 +653,10 @@ to be used until they say so. `scratch/work/stage.sh`, `capture_cd.sh` and
   0x3925C, which calls `panic_msg` 125E8; `reboot` 3D830, `sys_reboot` 16AC50).
   The decrementer is right (~100 Hz on the bench), so the quiet minutes are
   AIX's own waits (a panic's delay, or init's). The FP traps are a user
-  program's `stfd` sequence and lazy FP at D0140C0C in a kernel extension.
+  program's `stfd` sequence; D0140C0C runs with MSR D032 (PR set): **segment D is
+  AIX's shared-library segment (libc), not kernel extensions**, and the `kext`
+  samples above are user-space library code (so user space is busier than the
+  `user` count suggests). Lazy FP per process: normal.
 - **Tools made**: the bench's `--daddr N [--daddr-from M]` (the physical data
   addresses per instruction; build7 = build6's model plus it, so the snapshots
   restore: `scratch/work/build7.sh` swaps in the 6451968 system file for the
