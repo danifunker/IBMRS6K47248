@@ -313,6 +313,7 @@ wire [31:2]  b_addr;
 wire  [3:0]  b_be;
 wire [255:0] b_wdata, b_rdata;
 wire         trace_valid, trace_last;
+wire [31:0]  trace_pc;
 wire        com1_txd;
 wire        io_ev, io_we;
 wire [31:0] io_addr, io_wdata, io_rdata;
@@ -355,7 +356,7 @@ IBMRS6K7248_system #(.CPU_HZ(CPU_MHZ * 1_000_000), .TB_HZ(TB_HZ)) system
 	.cd_change(|cd_change_s), .scsi_activity(scsi_act),
 
 	.io_ev, .io_we, .io_stub(), .io_addr, .io_be, .io_wdata, .io_rdata,
-	.trace_valid, .trace_last, .trace_pc(), .trace_insn(), .trace_msr(),
+	.trace_valid, .trace_last, .trace_pc, .trace_insn(), .trace_msr(),
 	.trace_dreq(), .trace_dwe(), .trace_daddr()
 );
 assign UART_RTS = 0;
@@ -437,6 +438,19 @@ always @(posedge clk_cpu) begin
 	cpu_reset_q <= cpu_reset;
 	if (trace_valid & trace_last) alive <= alive + 1'd1;
 end
+// the main block's RAM test (FFF1554C copied to RAM 0 and run there): its entry and failure
+// exits, "Ppppppppp-xxx " with the PC retired before (the branch that led there)
+reg  [31:0] pc_prev = 0;
+reg  [31:0] pc_from;
+reg  [11:0] pc_to;
+reg         pc_pend = 0;
+wire        pc_hit = trace_valid & trace_last & (trace_pc[31:12] == 20'd0) &
+                     (trace_pc[11:0] == 12'h000 || trace_pc[11:0] == 12'h1E0 || trace_pc[11:0] == 12'h1E4 ||
+                      trace_pc[11:0] == 12'h22C || trace_pc[11:0] == 12'h230) & (pc_prev != trace_pc - 32'd4);
+always @(posedge clk_cpu) begin
+	if (trace_valid & trace_last) pc_prev <= trace_pc;
+	if (pc_hit) begin pc_from <= pc_prev; pc_to <= trace_pc[11:0]; end
+end
 
 // the memory port (the memory clock): the word accesses to 7FC, and the shadow of the
 // CPU's word writes to 0-7FC compared with every word read there
@@ -491,6 +505,7 @@ always @(posedge clk_cpu) begin
 	reset_pend <= reset_pend | reset_ev;
 	alive_pend <= alive_pend | alive_ev;
 	m_pend     <= m_pend     | m_ev;
+	pc_pend    <= pc_pend    | pc_hit;
 	if (stage_n != 4'd0) begin             // (a full queue holds the stage: the first 4 KB win, later events are dropped)
 		if (dq_w + 12'd1 != dq_r) begin
 			dq[dq_w] <= stage[111:104];
@@ -519,6 +534,11 @@ always @(posedge clk_cpu) begin
 			stage_n <= 4'd12;
 			stage   <= {m_we ? 8'h57 : 8'h52, 8'h37, 8'h3D, hex8(m_d), 8'h20, 16'h0};
 		end
+	end
+	else if (pc_pend) begin
+		pc_pend <= 1'b0;
+		stage_n <= 4'd14;
+		stage   <= {8'h50, hex8(pc_from), 8'h2D, hex(pc_to[11:8]), hex(pc_to[7:4]), hex(pc_to[3:0]), 8'h20};
 	end
 	else if (post_pend | post_ev)   begin stage_n <= 4'd3; stage <= {hex(post_code[7:4]), hex(post_code[3:0]), 8'h20, 88'h0}; post_pend <= 1'b0; end
 	else if (reset_pend | reset_ev) begin stage_n <= 4'd3; stage <= {8'h0D, 8'h0A, 8'h52, 88'h0}; reset_pend <= 1'b0; end
