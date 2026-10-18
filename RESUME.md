@@ -45,57 +45,24 @@ machine):
 Read `docs/bringup_log.md`'s last six sections first: they are the day. The
 two open problems, in the order to take them:
 
-### A. The board halts in the firmware's memory sizing (the first problem)
+### A. The board's sizing halt: SOLVED (2026-10-17 late night)
 
-On the user's MiSTer at 192.168.99.92 (**the only board to use, one board at a
-time, never .143**) the core loads, the OSD works, the debug UART (ttyS1 on
-the board at 115200; OSD "UART" = debug, the default) shows the CPU running
-the recovery block to its end and the main block **into the sizing's halt
-loop** (FFF15AD0, code 22 forever): `R 04 04 08 23 23 09 ... 33 04 19 23 23
-24 23 24 23 24 23 24 23 22 22 ...`. Decoded (`docs/bringup_log.md`, "the
-two clocks" and after): the main block's sizing routine FFF15E04 probes RAM
-0-7FC with five patterns (FFF15738) and then checks the MPC105's error
-register (FFF157E8: CF8 = 800000C0, CFC read, bit 18 of the word the CPU
-gets = PCI byte 1 = C1, ErrDR1); on a failure it calls the retry FFF15A00
-(writes "24"), re-sizes (the "23"s) and probes again, four times, then halts.
-What is established:
-- Same halt at 50 MHz (slack +3.6 ns) and at 70, and on the .143 board: not
-  CPU timing, not the SDRAM module.
-- The bench passes the whole thing: the plain bench, the SDRAM-in-the-loop
-  bench (`make machine_sd`: the board's controller plus MacPPC7300's chip
-  model) with one clock, and with two clocks at their rates (`--cpu-mhz 70
-  --mem-mhz 100`), with 16 and 112 MB, through the memory phase to
-  `main_control` and the console drivers.
-- On the board, the debug UART's shadow-RAM detector (every word read of
-  RAM 0-7FC compared with the CPU's own last write) reports **no mismatch**,
-  and in the main block **no word access to 7FC reaches the memory port at
-  all** (in the recovery block they do, and match): the main block's probe
-  runs through the data cache. So the data compare is not what fails; the
-  MPC105 error-register check (FFF157E8) or something before it must be.
-  The model answers C1/C3/C5/C7 as 0 (`IBMRS6K7248_mpc105.sv`), so on the
-  bench that check always passes; on the board the CPU must read something
-  else back from CFC (the config address not matching dev 0? the stub's
-  FFFFFFFF?).
-- **The configuration-trace build ran on the board** (`scratch/work/cfg.raw`):
-  the recovery block's accesses are all there and sane (the MPC105's
-  registers written, C0 read 00000000, written 00040000 (the W1C clear), the
-  probe's 7FC writes and reads matching for all five patterns), then "11 33
-  04" and at once the 22 flood: **the main block's events were overwritten in
-  the queue** by the halt loop's flood before the UART sent them (the
-  recovery block's survived because the CRC phase let the queue drain).
-  **In flight at the end**: the fix (the queue keeps its first 4 KB and drops
-  later bytes; commit "the debug queue keeps its first 4 KB",
-  `scratch/work/quartus_cfg2.log`, then `output_files/IBMRS6K7248.rbf`).
-  **First thing**: when it is done, stage and load it (`scratch/work/stage.sh`
-  with `MISTER=192.168.99.92`, then the ssh recipe below; fetch `/tmp/x.raw`
-  with scp and read it with Python, not `grep -o`) and read the main block's
-  "19 ... 23 23 24" with its "C8=/cR=/cW=" pairs: which register the firmware
-  reads before each "24" and what it gets. On the bench the check reads C0
-  (CF8 = C0000080 as the CPU writes it) and gets byte 1 = 0.
-- The debug UART's text is in `IBMRS6K7248.sv` "THE DEBUG UART" (events in
-  the CPU's clock, the memory-port events by toggle from the memory clock).
+The MiSTer SDRAM boards wire the chip's DQMH/DQML to A12/A11; the
+controller put zeros there in WRITEs, so every word write stored all four
+bytes and the main block's byte-store test (FFF15630, run from RAM 0 by the
+sizing FFF15490) failed on every bank. Fixed in `IBMRS6K7248_sdram.sv`
+(commit "sdram: the write byte masks on A12-A11"); the SDRAM bench now takes
+DQM from A12-A11 and reproduces the old halt. **The board now reaches the
+same boot screen as the bench** (the drive icon and the SMS diskette). The
+codes 23/24/22 mean "slot empty" / "error: switch off the lowest bank" /
+"no bank left" (`docs/bringup_log.md`, the last two sections). MacPPC7300
+has the same omission: `docs/cpu_patches/sdram_dqm_on_a12_a11.patch` (not
+applied there; tell the user). Board tools: `scratch/work/stage.sh`, then
+`scratch/work/capture.sh OUT SECS` (loads the core, captures the debug UART
+into `scratch/work/OUT`); `scratch/work/ppcdis.py A B` disassembles the ROM.
+The debug UART also logs the RAM test's PCs (`Ppppppppp-xxx`).
 
-### B. On the bench the firmware boots to a screen and waits (the second)
+### B. The firmware boots to a screen and waits (now the first problem, board and bench)
 
 - With the CD at ID 3 the scan's INQUIRY is good (progress 98), LUN 1 too.
 - After 00017006 the firmware sleeps 3 s on the timebase (`sleep(3,1)` in
