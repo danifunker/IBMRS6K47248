@@ -304,7 +304,7 @@ int main(int argc, char** argv) {
 			if (!top->clk_b) {                                // the SDRAM's rising edge
 				bool drv; uint16_t dq;
 				chip.edge(sd_clocks++, top->SDRAM_nCS, top->SDRAM_nRAS, top->SDRAM_nCAS, top->SDRAM_nWE, top->SDRAM_BA,
-				          top->SDRAM_A, (top->SDRAM_DQMH << 1) | top->SDRAM_DQML, top->dq_oe, top->dq_out, drv, dq);
+				          top->SDRAM_A, (top->SDRAM_A >> 11) & 3 /* the board: DQMH, DQML on A12, A11 */, top->dq_oe, top->dq_out, drv, dq);
 				top->dq_in = dq;
 				top->eval();
 			}
@@ -324,7 +324,7 @@ int main(int argc, char** argv) {
 		{	// the SDRAM's rising edge (its clock is the controller's inverted)
 			bool drv; uint16_t dq;
 			chip.edge(sd_clocks++, top->SDRAM_nCS, top->SDRAM_nRAS, top->SDRAM_nCAS, top->SDRAM_nWE, top->SDRAM_BA,
-			          top->SDRAM_A, (top->SDRAM_DQMH << 1) | top->SDRAM_DQML, top->dq_oe, top->dq_out, drv, dq);
+			          top->SDRAM_A, (top->SDRAM_A >> 11) & 3 /* the board: DQMH, DQML on A12, A11 */, top->dq_oe, top->dq_out, drv, dq);
 			top->dq_in = dq;
 			top->eval();
 		}
