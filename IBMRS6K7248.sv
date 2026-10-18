@@ -458,25 +458,25 @@ always @(posedge clk_cpu) begin
 	if (trace_valid & trace_last) pc_prev <= trace_pc;
 	if (pc_hit) begin pc_from <= pc_prev; pc_to <= trace_pc[11:0]; pc_rom <= trace_pc[31]; end
 end
-// the first exception after the boot hand-off (progress 2F), once: LR, CTR and MSR as its vector
-// retires ("IL=... C=... M=..."), then that and the next 23 instructions retired,
+// an exception after the boot hand-off (progress 2F), once, the one from the PC below: LR, CTR and MSR as its vector
+// retires ("IL=... C=... M=..."), then that and the next 39 instructions retired,
 // "pppp=vvvvvvvv " (the PC's low half and the GPR each wrote, "--------" none)
 reg         isi_armed = 0, isi_done = 0;
-reg  [4:0]  isi_n = 0, isi_w = 0, isi_r = 0;
-reg  [15:0] isi_pc [24];
-reg  [31:0] isi_v [24];
-reg  [23:0] isi_vw = 0;
+reg  [5:0]  isi_n = 0, isi_w = 0, isi_r = 0;
+reg  [15:0] isi_pc [40];
+reg  [31:0] isi_v [40];
+reg  [39:0] isi_vw = 0;
 reg  [31:0] isi_lr, isi_ctr, isi_msr;
 reg  [1:0]  isi_hdr = 0;                  // header parts left to send (3: all)
-wire        isi_go = pc_hit & isi_armed & ~isi_done;                  // (any of the vectors logged)
+wire        isi_go = pc_hit & isi_armed & ~isi_done & (pc_prev == 32'h0025616C);   // (the AIX kernel's page copy: DSI there over and over)
 always @(posedge clk_cpu) begin
 	if (post_ev && io_wdata[31:24] == 8'h2F) isi_armed <= 1'b1;
-	if (trace_valid && trace_last && (isi_go || isi_n != 5'd0)) begin
+	if (trace_valid && trace_last && (isi_go || isi_n != 6'd0)) begin
 		isi_pc[isi_w]  <= trace_pc[15:0];
 		isi_v[isi_w]   <= trace_reg_val[31:0];
 		isi_vw[isi_w]  <= trace_reg_we & ~trace_reg_idx[6] & ~trace_reg_idx[5];
-		isi_w          <= isi_w + 5'd1;
-		isi_n          <= isi_go ? 5'd23 : isi_n - 5'd1;
+		isi_w          <= isi_w + 6'd1;
+		isi_n          <= isi_go ? 6'd39 : isi_n - 6'd1;
 	end
 	if (isi_go) begin isi_done <= 1'b1; isi_lr <= trace_lr; isi_ctr <= trace_ctr; isi_msr <= trace_msr; end
 end
@@ -577,11 +577,11 @@ always @(posedge clk_cpu) begin
 		            hex8(isi_hdr == 2'd3 ? isi_lr : isi_hdr == 2'd2 ? isi_ctr : isi_msr), 8'h20, 16'h0};
 		isi_hdr <= isi_hdr - 2'd1;
 	end
-	else if (isi_done && isi_n == 5'd0 && isi_r != isi_w) begin
+	else if (isi_done && isi_n == 6'd0 && isi_r != isi_w) begin
 		stage_n <= 4'd14;
 		stage   <= {hex(isi_pc[isi_r][15:12]), hex(isi_pc[isi_r][11:8]), hex(isi_pc[isi_r][7:4]), hex(isi_pc[isi_r][3:0]), 8'h3D,
 		            isi_vw[isi_r] ? hex8(isi_v[isi_r]) : {8{8'h2D}}, 8'h20};
-		isi_r   <= isi_r + 5'd1;
+		isi_r   <= isi_r + 6'd1;
 	end
 	else if (pc_pend) begin
 		pc_pend <= 1'b0;
