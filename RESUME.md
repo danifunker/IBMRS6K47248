@@ -40,60 +40,88 @@ machine):
   (`support/ibmrs6k/`, reusing the disk write buffer, fast SCSI service loop
   and Ethernet mailbox of the user's other family branches): `docs/plan.md` M5/M7.
 
-## Where it stands (2026-10-17, end of the second session: on Windows, with a MiSTer)
+## Where it stands (2026-10-17 late evening, the end of the second session)
 
-Read `docs/bringup_log.md`'s last five sections first: they are the day.
+Read `docs/bringup_log.md`'s last six sections first: they are the day. The
+two open problems, in the order to take them:
 
-- **M0-M2, the floppy, M4 phase 1, M5 phase 1 run on the bench** as before:
-  the firmware from reset to its start-up screen (PowerPC logo, the POST
-  icons, the 00017006 triangle: no console named in the blank NVRAM).
-- **The 53C810 and the CD are good through the scan**: with the CD at ID 3,
-  INQUIRY runs through selection, SDTR negotiation, command, data in,
-  status and message to a good status (progress 98), then LUN 1. (A restored
-  run had lost its images: the snapshot's inputs came back; fixed.)
-- **After 00017006 the firmware sleeps 3 s on the CMOS clock** (`sleep(3,1)`
-  in `text_errormsg_tr`) — the "idle at 7B" of every earlier run — then goes
-  on: `cold_boot_path`, D2, D4, DE, FE (word FF007BFE), draws a boot screen
-  (a drive icon and the "System Management Services" diskette,
-  `docs/images/`: `scratch/work/frame_boot.png` in the session) and **waits
-  for a key in `rxchar` (RAM 1A204)**, polling a port held at 516(r2) (which
-  one: two runs with `--io-range 80000060:80000064` and `800003F8:800003FF`
-  were in progress at the end). No SCSI command is sent after the scan. The
-  bench can now press keys: `--key-at CLOCK:CODE[:e]` (PS/2 set 2) and
-  `--com1-at CLOCK:BYTE`; and `RTC_FAST` (on by default in `sim/Makefile`)
-  runs the RTC's seconds 64 x faster so such sleeps cost 5 M clocks.
-  **Next**: from `snap3_cbp.bin` (the RTC_FAST build's `cold_boot_path`
-  snapshot, being made at the end), run to the wait (~320 M clocks less the
-  sleep) and press Enter / F1 / F4 (set 2: 5A, 05, 0C) or send 0D on COM1;
-  see what the firmware does with the boot list (diskette first by default:
-  the empty drive; then "SCSI CDROM"); watch `boot_cmd` 133A0, `ParallelBoot`
-  232EC, `netboot` A9524, `setboot` 1EF64 and the 53C810's registers.
-- **The first Quartus fits**: 100 MHz misses by 6.2 ns, 70 MHz by 2.6 ns
-  (every failing path in the CPU: the FPU's result mux into the completion
-  queue, the data cache's address into writeback). **The CPU is MacPPC7300's
-  master as it stands** (checked: only the LE patch differs; MacPPC7300 runs
-  at 70, not 100). The top is at 70 MHz (`CPU_MHZ`; the PLL also has a
-  50 MHz counter option, built once as a diagnostic, not wanted as a speed).
-  80-82 % of the ALMs (CPU 15,900; framework ~6,900; 53C810+targets 3,075;
-  S3 2,286; the two PCI config spaces 1,759 and the 8042 772 as flops).
-- **On the board** (the user's MiSTer at 192.168.99.92; the .143 one is the
-  PPC_Mac sessions'): the core loads, the OSD works, and the UART (ttyS1 on
-  the board, 115200; OSD "UART" = POST codes, the default) shows the CPU
-  running the recovery block to its end and the main block **into the memory
-  sizing's halt loop** (FFF15AD0, code 22 forever, after `23 24 23 24 ...`),
-  with 112 MB (the 128 MB module's "Most") and with 16 MB alike. The screen
-  shows the S3's reset-state scan-out of whatever DDR3 held. The plain
-  bench with 16 and 112 MB and **the new SDRAM-in-the-loop bench** (`make
-  machine_sd`: the board's controller plus MacPPC7300's chip model, the ROM
-  through the upload port) pass that sizing; the 16 MB SDRAM-bench run
-  through the whole memory phase (`run_sd16`, to 800 M clocks) was in
-  progress at the end. If it passes too, the board's halt is not the
-  controller's logic: then timing (the CPU at -2.6 ns; a one-off 50 MHz load
-  would prove it: `CPU_MHZ = 50`, the PLL counter 7/7 is in) or something
-  the chip model does not have (the real board's data path).
-- Then: the Main_MiSTer branch (ask first), M6 (AIX), M7 (PCnet, CS4232
-  sound, the L2, the model option); the EEPROM at ports 78-7C (stubbed:
-  `EEPROM_Wait` polls 7C 2,000 times a boot) and the NVRAM's configuration.
+### A. The board halts in the firmware's memory sizing (the first problem)
+
+On the user's MiSTer at 192.168.99.92 (**the only board to use, one board at a
+time, never .143**) the core loads, the OSD works, the debug UART (ttyS1 on
+the board at 115200; OSD "UART" = debug, the default) shows the CPU running
+the recovery block to its end and the main block **into the sizing's halt
+loop** (FFF15AD0, code 22 forever): `R 04 04 08 23 23 09 ... 33 04 19 23 23
+24 23 24 23 24 23 24 23 22 22 ...`. Decoded (`docs/bringup_log.md`, "the
+two clocks" and after): the main block's sizing routine FFF15E04 probes RAM
+0-7FC with five patterns (FFF15738) and then checks the MPC105's error
+register (FFF157E8: CF8 = 800000C0, CFC read, bit 18 of the word the CPU
+gets = PCI byte 1 = C1, ErrDR1); on a failure it calls the retry FFF15A00
+(writes "24"), re-sizes (the "23"s) and probes again, four times, then halts.
+What is established:
+- Same halt at 50 MHz (slack +3.6 ns) and at 70, and on the .143 board: not
+  CPU timing, not the SDRAM module.
+- The bench passes the whole thing: the plain bench, the SDRAM-in-the-loop
+  bench (`make machine_sd`: the board's controller plus MacPPC7300's chip
+  model) with one clock, and with two clocks at their rates (`--cpu-mhz 70
+  --mem-mhz 100`), with 16 and 112 MB, through the memory phase to
+  `main_control` and the console drivers.
+- On the board, the debug UART's shadow-RAM detector (every word read of
+  RAM 0-7FC compared with the CPU's own last write) reports **no mismatch**,
+  and in the main block **no word access to 7FC reaches the memory port at
+  all** (in the recovery block they do, and match): the main block's probe
+  runs through the data cache. So the data compare is not what fails; the
+  MPC105 error-register check (FFF157E8) or something before it must be.
+  The model answers C1/C3/C5/C7 as 0 (`IBMRS6K7248_mpc105.sv`), so on the
+  bench that check always passes; on the board the CPU must read something
+  else back from CFC (the config address not matching dev 0? the stub's
+  FFFFFFFF?).
+- **In flight at the end**: a build whose debug UART also traces the PCI
+  configuration accesses ("C8=" a CF8 write, "cW="/"cR=" CFC, the data as
+  the CPU's; a 4 KB queue; commit "io_rdata wired", `scratch/work/quartus_cfg.log`,
+  then `output_files/IBMRS6K7248.rbf`). **First thing**: when it is done,
+  stage and load it (`scratch/work/stage.sh` with `MISTER=192.168.99.92`,
+  then the ssh recipe below) and read the CF8/CFC pairs around the "19 23
+  23 24": which register the firmware reads before each "24" and what it
+  gets. Expected on the bench: CF8=800000C0 then cR=0000xxxx with byte 1 = 0.
+- The debug UART's text is in `IBMRS6K7248.sv` "THE DEBUG UART" (events in
+  the CPU's clock, the memory-port events by toggle from the memory clock).
+
+### B. On the bench the firmware boots to a screen and waits (the second)
+
+- With the CD at ID 3 the scan's INQUIRY is good (progress 98), LUN 1 too.
+- After 00017006 the firmware sleeps 3 s on the timebase (`sleep(3,1)` in
+  `text_errormsg_tr`; the "idle at 7B" of every earlier run), then
+  `cold_boot_path` goes on: D2, D4, DE, FE (word FF007BFE), a boot screen (a
+  drive icon and the "System Management Services" diskette,
+  `docs/images/boot_screen_sms_diskette.png`) and **a wait**: `rxchar`
+  (1A204) polls COM1's LSR, and the hot loop is loaded code at 0x20D9F4-
+  0x20DA08 (a countdown calling a service through 0x208D74, with an `out16`
+  each time: which port was being logged at the end, `run_wait_io.txt`,
+  `scratch/work/run_wait_io.sh`). Enter, F1, F4, F5, F6, ESC (PS/2) with
+  CR/"1"/"4"/"5"/"6"/ESC on COM1 changed nothing (`scratch/work/run_key2.sh`,
+  `run_key_*.txt`, `frame_key_*.ppm`). No SCSI command after the scan.
+  Next: find what the loop waits for (the port; a diskette? a timeout on the
+  timebase: a `TB_FAST` knob like `RTC_FAST` would shorten it); then the boot
+  list (diskette first by default: the empty drive; then "SCSI CDROM").
+- Bench tools made today: `RTC_FAST` (the RTC's seconds 64 x faster, on by
+  default), `--key-at CLOCK:CODE[:e]`, `--com1-at CLOCK:BYTE`, `--pcs-from`,
+  `--cpu-mhz/--mem-mhz`, `make machine_sd`; `scratch/work/pcs_path.py` maps a
+  `--pcs` trace to the firmware's symbols; `sizing_path.py` to the sizing's
+  blocks. Snapshots (`~/ibmrs6k/` in WSL, the `build3` binary = RTC_FAST):
+  `snap3_mc.bin` (main_control, clock 520,051,476), `snap3_cbp.bin`
+  (cold_boot_path with the CD, clock 1,232,285,474); the wait begins about
+  322 M clocks after it.
+
+### The rest
+
+- The first Quartus fits: 100 MHz misses by 6.2 ns, 70 MHz by 1.8-2.6 ns
+  (the CPU's paths). **The CPU is MacPPC7300's master as it stands** (only
+  the LE patch differs; MacPPC7300 runs at 70, not 100). The top is at 70
+  (`CPU_MHZ`; the PLL has a 50 MHz counter too: a diagnostic only, the user
+  wants the core faster, never slower). 80-82 % of the ALMs.
+- Then: the Main_MiSTer branch (ask first), M6 (AIX), M7; the EEPROM at
+  78-7C (stubbed) and the NVRAM's configuration.
 
 ## On this machine (Windows 11, 32 GB, 20 cores)
 
@@ -117,7 +145,11 @@ Read `docs/bringup_log.md`'s last five sections first: they are the day.
   screen through the MiSTerKVMS capture server on this PC
   (`scratch/work/grab.py MiSTer-SS1 out.jpg`); keys through mrext
   (`POST http://192.168.99.92:8182/api/controls/keyboard-raw/<linux keycode>`);
-  the POST codes: `stty -F /dev/ttyS1 115200 raw; cat /dev/ttyS1`.
+  the debug UART: on the board `stty -F /dev/ttyS1 115200 raw -echo; (timeout 30 cat /dev/ttyS1 > /tmp/x.raw) & sleep 1; echo load_core ... > /dev/MiSTer_cmd; sleep 32; tr -d '\000' < /tmp/x.raw | grep -o -a 'R.\{0,1600\}'`
+  (the ssh heredoc must not share stdin with stage.sh: run them in separate calls).
+- Long WSL runs: `setsid nohup bash /mnt/c/.../scratch/work/X.sh args > /dev/null 2>&1 &`
+  inside `wsl -d Ubuntu-24.04 -- bash -lc '...'`; a `$var` or `pkill -f` pattern in that
+  string is eaten or self-matching: keep commands in script files, poll with a watch script.
 
 ## The bench (sim/)
 
