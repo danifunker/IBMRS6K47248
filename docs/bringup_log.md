@@ -710,3 +710,27 @@ to be used until they say so. `scratch/work/stage.sh`, `capture_cd.sh` and
   lines and the commands' messages: `run19.sh` (from `snap10_user.bin`,
   build7) snapshots at 3D830 (`snap12_reboot.bin`, ~4 hours of bench time);
   then search its RAM for "INIT: EXECUTING" / "rc.boot" / "console".
+- **The reason, from the diagnostics CD's own `rc.boot`** (the RAM disk is a
+  table of 1780 LZW-compressed 4 KB pages in the boot image after the kernel
+  stream; `scratch/work/ramfs_boot.py` inflates it to `scratch/work/aix/ramfs.img`,
+  a 7.1 MB JFS; the script is at image offset 0x281000, saved as
+  `scratch/work/aix/rc.boot.sh`; the kernel inflates those pages lazily, which
+  is why the scripts were never in the snapshots' RAM): after `cfgmgr -f` it
+  runs **`bootinfo -M`** and, unless the exit status is 101 or 103, ejects the
+  CD, sleeps 3 s and runs `/usr/sbin/reboot -n -q` ("no diagnostics support
+  on this machine"). `bootinfo_rspc` (image 0x313000) computes that from
+  `sys0`'s ODM attribute `modelcode`: base 100 or 102 from bits 0-1 of the
+  code, +1 if bits 2-3 are set; so **our model code has bits 2-3 clear
+  (probably 0)**. `cfgsys_rspc` (image 0x63C000) sets `modelcode` as
+  `0x%08x` of field +0x34 of a system-info structure it fills from
+  `/dev/nvram` ioctls (the residual data, the IPL control block, the NVRAM);
+  the exact field is still being traced (it is not the VPD, which `build_vpd`
+  never writes at +0x30..0x5F, and not the PCI vendor packet, whose bytes
+  4-7 are the config address). Our residual data already shows the stubs:
+  Serial `ffffffffffffffff` (the VPD EEPROM at 78-7C is a stub), NvramSize -1
+  (`nvram_good` wants a PReP header: byte 2 = 1, byte 3 = 4, area sizes, a
+  CRC; ours is blank). The 55 s and 47 s quiets are the `eject` of a CD that
+  has no configured driver and the `reboot`'s sync (both time out).
+- **`docs/stubbed-hardware.md`** started (the user's request): every device the
+  firmware and AIX touch, with the core's state (real, partial, stub, absent),
+  what needs it, and the plan; the identity check is its "blocker today".

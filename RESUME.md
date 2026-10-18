@@ -79,31 +79,32 @@ otherwise"); the scratch/work board scripts point there.
   trace ports change the model's snapshot layout: build the bench from that
   file's 6451968 version to keep using these snapshots).
 
-### Open: AIX re-boots itself every ~3 minutes (the first problem now)
+### Open: the diagnostics CD rejects the machine (the first problem now)
 
-Read the bringup log's "2026-10-18 afternoon" section. In short: after init
-starts, user space runs the same programs for about a minute (no device
-access at all: the bench's `--io` from `snap10_user.bin` shows none), then
-there are ~55 s and ~47 s of complete quiet, then the whole AIX boot repeats
-from the boot image in RAM (the CD's boot program at 0x1278 and the kernel's
-RAM-disk fill recur; no firmware POST codes). The exception counts of the
-three cycles in `most1.raw` are identical; 112 MB behaves the same; COM1 is
-silent for 30 minutes. The diagnostics CD has no driver for the planar S3
-(only IBM GXT adapters), so its console can only be COM1 (S1), per
-`/etc/consdef`, once configuration gets that far. So: find what panics or
-reboots. In flight at the end of the session:
-1. A bitstream whose one-shot debug capture fires when the kernel's `panic`
-   (0x3925C) retires: LR names the caller, r30 (written in its tenth
-   instruction) is the message pointer; read the string from
-   `scratch/work/aix_unz.bin` / `kernel.s` at that address (kernel data is
-   V=R). If the capture never fires, the reboot is init's (`sys_reboot`
-   16AC50 -> `kreboot` CE1D8 -> `mdreboot` 148E24): move the trigger there and
-   look at LR. The cycle takes ~3 minutes: record 5 minutes.
-2. The bench `run17.sh` (build7, from `snap10_user.bin`, ~3 hours): `--watch`
-   on those entries, `--save` at `panic_msg`; the RAM of that snapshot holds the
-   kernel's console log (search for "PANIC"/"panic" and the message).
-3. The user-space programs: `run12.sh`'s calls trace (`calls_user.py`), the
-   RAM disk's compressed JFS (see the log for its block format).
+Read the bringup log's "2026-10-18 afternoon" section and
+`docs/stubbed-hardware.md` ("The blocker today"). In short: AIX boots, runs
+`cfgmgr -f`, then `rc.boot` (the CD's own script, `scratch/work/aix/rc.boot.sh`)
+runs `bootinfo -M`; it must return 101 or 103 ("supports diagnostics") and
+returns 100 because `sys0`'s `modelcode` has bits 2-3 clear; so the script
+ejects the CD and calls `reboot(0)`, the firmware re-boots the CD, every ~3
+minutes. Nothing touches a device in user space before that; COM1 would be
+the console (the CD has no S3 driver) once the check passes. To do, in order:
+1. Pin the source of `modelcode`: `cfgsys_rspc` (`ramfs.img` 0x63C000) fills a
+   global system-info structure (TOC[0xd0]) in its routine at 0x10001118 from
+   `/dev/nvram` ioctls; field +0x34 is the code. Candidates: the IPL control
+   block's system-info area (built by the CD's boot program, `prep_boot.bin`
+   XCOFF at 0x12C00, from the residual data: the PrintableModel string, the
+   planar PnP ID IBM0005, or the VPD), or the NVRAM. Then make the core supply
+   it: a real VPD EEPROM at 78-7C with a 7248-100 image and/or an NVRAM with a
+   valid PReP header (the firmware's `nvram_good`: byte 2 = 1, byte 3 = 4).
+2. Then the SCSI CD under AIX's `ncr810dd`, the tty on S1, `cfgcon`, and the
+   diagnostics' console prompt on COM1 (`com1_listen.sh`).
+3. Keep `docs/stubbed-hardware.md` current with every stub a run finds.
+
+In flight at the end of the session: `run19.sh` (build7, from
+`snap10_user.bin`, ~8 hours): `--watch` on the kernel's reboot entries and a
+snapshot at the `reboot` syscall 3D830 (`snap12_reboot.bin`); its RAM would
+hold the console messages ("INIT: ...", the commands' errors) and the ODM.
 
 **Lessons from this session (to save time):** the debug UART's queue is 4 KB
 and drops events when full, so a burst (page faults: thousands a second)
