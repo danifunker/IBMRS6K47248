@@ -98,6 +98,7 @@ static void usage() {
 	       "  --pcs N      print the retired PCs up to instruction N (--pcs-from M: from M; absolute, as --beat counts)\n"
 	       "  --calls N    print the calls (C target caller instr: the retire after a branch with LK) and returns (R pc)\n"
 	       "               up to instruction N (--calls-from M: from M)\n"
+	       "  --exc N      print the first N exceptions (X vector from PC instr msr; --exc-from M: from instruction M)\n"
 	       "  --key-at CLOCK:CODE[:e]  press a PS/2 key (set 2 code, hex; e: extended) at that clock, release it 300,000 later; repeatable\n"
 	       "  --cpu-mhz A --mem-mhz B  the two clocks at their own rates, as on the board (70 and 100); default both one clock\n"
 	       "  --com1-at CLOCK:BYTE     a byte (hex) into COM1 at that clock, at the bench's line rate (16 clocks a bit); repeatable\n"
@@ -124,6 +125,7 @@ int main(int argc, char** argv) {
 	uint32_t io_lo = 0, io_hi = 0xFFFFFFFF;            // --io's range
 	uint64_t pcs_print = 0, pcs_from = 0, calls_print = 0, calls_from = 0;
 	uint32_t prev_insn = 0, prev_pc = 0;
+	uint64_t exc_left = 0, exc_from = 0;
 	unsigned cpu_mhz = 0, mem_mhz = 0;               // 0: the two clocks as one
 	struct KeyAt { uint64_t clock; unsigned code; bool ext; };
 	std::vector<KeyAt> keys;                      // --key-at
@@ -179,6 +181,8 @@ int main(int argc, char** argv) {
 		else if (a == "--pcs-from") pcs_from = strtoull(next(), nullptr, 0);
 		else if (a == "--calls") calls_print = strtoull(next(), nullptr, 0);
 		else if (a == "--calls-from") calls_from = strtoull(next(), nullptr, 0);
+		else if (a == "--exc") exc_left = strtoull(next(), nullptr, 0);
+		else if (a == "--exc-from") exc_from = strtoull(next(), nullptr, 0);
 		else if (a == "--cpu-mhz") cpu_mhz = unsigned(strtoul(next(), nullptr, 0));
 		else if (a == "--mem-mhz") mem_mhz = unsigned(strtoul(next(), nullptr, 0));
 		else if (a == "--key-at") {
