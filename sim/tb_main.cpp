@@ -96,6 +96,8 @@ static void usage() {
 	       "  --io-range LO:HI  print the device accesses with addresses LO-HI (hex) only\n"
 	       "  --quiet-progress  do not print the firmware's progress codes (port 680) as they come\n"
 	       "  --pcs N      print the retired PCs up to instruction N (--pcs-from M: from M; absolute, as --beat counts)\n"
+	       "  --calls N    print the calls (C target caller instr: the retire after a branch with LK) and returns (R pc)\n"
+	       "               up to instruction N (--calls-from M: from M)\n"
 	       "  --key-at CLOCK:CODE[:e]  press a PS/2 key (set 2 code, hex; e: extended) at that clock, release it 300,000 later; repeatable\n"
 	       "  --cpu-mhz A --mem-mhz B  the two clocks at their own rates, as on the board (70 and 100); default both one clock\n"
 	       "  --com1-at CLOCK:BYTE     a byte (hex) into COM1 at that clock, at the bench's line rate (16 clocks a bit); repeatable\n"
@@ -559,6 +561,18 @@ int main(int argc, char** argv) {
 					       (unsigned long long)instr, (unsigned long long)cycle);
 				}
 			if (instr < pcs_print && instr >= pcs_from) printf("  pc %08X  %08X  msr %08X\n", pc, top->trace_insn, top->trace_msr);
+			if (instr < calls_print && instr >= calls_from) {
+				// the instruction retired before: b/bc/bclr/bcctr with LK is a call, bclr without it a return
+				uint32_t op = prev_insn >> 26, xo = (prev_insn >> 1) & 0x3FF;
+				bool br = op == 18 || op == 16 || (op == 19 && (xo == 16 || xo == 528));
+				if (br && (prev_insn & 1)) printf("C %08X %08X %llu\n", pc, prev_pc, (unsigned long long)instr);
+				else if (op == 19 && xo == 16 && pc != prev_pc + 4) printf("R %08X\n", pc);
+			}
+			// the instruction word from the bench's memory (trace_insn is per retire group, not per instruction)
+			if (pc < MEM_BYTES - 4) prev_insn = rd32(pc);
+			else if (pc >= 0xFFF00000u) prev_insn = rd32((ROM_AT << 22) + (pc - 0xFFF00000u));
+			else prev_insn = 0;
+			prev_pc = pc;
 			instr++;
 			last_pc = pc;
 			if (seen_pc.emplace(pc, instr).second) since_new = 0;
