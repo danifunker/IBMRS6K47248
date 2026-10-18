@@ -588,3 +588,50 @@ to be used until they say so. `scratch/work/stage.sh`, `capture_cd.sh` and
   COM1 (OSD UART = COM1, 9600 baud) stays silent. Next: what user space waits
   on (a bitstream logging the first 250 device accesses after user code
   starts; the bench's `run10.sh` snapshots at init's first instruction).
+
+## 2026-10-18 afternoon: what user space does (no device access; the CD has no S3 driver)
+
+- **The bench from `snap10_user.bin` (init's first instruction) with `--io`**
+  (`scratch/work/run11.sh`): in the first 130 M instructions of user space
+  **there is no device access at all** except one 64-byte line read at physical
+  100277C0 (two lines, beyond the 32 MB) from the kernel's `simple_lock` at
+  low memory A8C0 (`lwarx` on r3: a lock word at a bogus address, once; the
+  residual data says TotalMemory = GoodMemory = 32 MB, so AIX is not confused
+  about the RAM size). The kernel takes decrementer interrupts, user-space
+  page faults (text and data from the RAM disk) and lazy floating-point traps
+  (800 at D0140C0C, a kernel extension); nothing touches the SCSI, the UART or
+  the S3.
+- **The calls from user space** (`run12.sh`, `--calls-from` the user start;
+  `scratch/work/calls_user.py` names them): in 46 M instructions, 5 `execve`;
+  the time goes to `z_decompress`/`getcode`/`out_char`/`in_char` (about half
+  of all calls): **the RAM disk is a compressed JFS** (superblock magic
+  43218765 at BDF000 in `scratch/work/aix/ram10.bin`, the RAM from snap10; the
+  directory of /etc at C0D000: lpp, methods, microcode, drivers, init, cfgmgr,
+  flattendb, rmfiles, chkdskt, eject, graphics1-3.dep ...) whose blocks the
+  kernel inflates on every read. (Its block format is not plain headerless
+  `compress`: `scratch/work/ramfs_z2.py` found no block; not pursued.) The boot
+  image (`prep_boot.bin`) holds the RAM disk after the kernel stream (0x16D59D)
+  as a table of per-page compressed lengths; the firmware loads the image at
+  0x24BA69.
+- **The board's 10-minute run profiled by eighths** (`most1.raw`): mostly the
+  scheduler idle (`should_boost`, `find_local_thread`, `waitproc_find_run_queue`),
+  with `z_decompress`, kernel extensions, and in the last eighth `dnlc_lookup`,
+  `lookuppn`, `devswqry`, `rdevopen`, `pn_getcomponent`: it is **configuring**
+  (opening device files), slowly. The exception counts: 1697 lazy-FP traps at
+  D0140C0C (spaced, not a loop).
+- **The diagnostics CD** (an ISO9660 with Rock Ridge plus the type-41 PReP
+  partition; `isoinfo` lists it: `scratch/work/aix/iso_list.txt`, files
+  extracted to `scratch/work/aix/cd/`): its PCI display drivers are IBM GXT
+  adapters only (ggadd, igadd, mgadd, mg2dd, mirdd, mir2ddd, mtndd, sondd,
+  sonldd, `libtu_lft_*` for kau/mir2d/mirage/mtns/son): **no driver for the
+  7248's planar S3**, so this CD can never show its console on our display.
+  `/etc/consdef` says the console-selection prompt goes to "all natively
+  attached graphic displays, any async terminal on native serial port S1":
+  COM1 is the right place to watch. The CD has the rspc serial path
+  (`rsdd_rspc`, `cfgasync_rspc`, `cfgsio`, `cfgtty`, `cfgcon`, `cfgsys_rspc`,
+  `cfgbus_pci`, `cfgbus_isa`, `ncr810dd`).
+- **Speed**: the bench retires ~200 K instructions/s; the board ~31 M/s (70 MHz,
+  2.24 clocks per instruction), about a quarter of a real 7248's. If a real
+  7248 needs ~3-5 minutes to the console prompt, ours needs 12-20. A 30-minute
+  COM1 recording (`scratch/work/com1_long.sh`: CFG byte 0 = 0x10, COM1 + 32 MB
+  with the new menu) was started at 14:00.

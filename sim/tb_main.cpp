@@ -98,6 +98,7 @@ static void usage() {
 	       "  --pcs N      print the retired PCs up to instruction N (--pcs-from M: from M; absolute, as --beat counts)\n"
 	       "  --calls N    print the calls (C target caller instr: the retire after a branch with LK) and returns (R pc)\n"
 	       "               up to instruction N (--calls-from M: from M)\n"
+	       "  --daddr N    print the data accesses (D R/W physical address, pc, instr) up to instruction N (--daddr-from M: from M)\n"
 	       "  --exc N      print the first N exceptions (X vector from PC instr msr; --exc-from M: from instruction M)\n"
 	       "  --key-at CLOCK:CODE[:e]  press a PS/2 key (set 2 code, hex; e: extended) at that clock, release it 300,000 later; repeatable\n"
 	       "  --cpu-mhz A --mem-mhz B  the two clocks at their own rates, as on the board (70 and 100); default both one clock\n"
@@ -123,6 +124,7 @@ int main(int argc, char** argv) {
 	uint64_t max_cycles = 50000000, max_instr = 0, stall_lim = 2000000;
 	bool io_print = false, post_print = true;
 	uint32_t io_lo = 0, io_hi = 0xFFFFFFFF;            // --io's range
+	uint64_t daddr_print = 0, daddr_from = 0;          // --daddr: the data addresses (physical) up to an instruction
 	uint64_t pcs_print = 0, pcs_from = 0, calls_print = 0, calls_from = 0;
 	uint32_t prev_insn = 0, prev_pc = 0;
 	uint64_t exc_left = 0, exc_from = 0;
@@ -182,6 +184,8 @@ int main(int argc, char** argv) {
 		else if (a == "--calls") calls_print = strtoull(next(), nullptr, 0);
 		else if (a == "--calls-from") calls_from = strtoull(next(), nullptr, 0);
 		else if (a == "--exc") exc_left = strtoull(next(), nullptr, 0);
+		else if (a == "--daddr") daddr_print = strtoull(next(), nullptr, 0);
+		else if (a == "--daddr-from") daddr_from = strtoull(next(), nullptr, 0);
 		else if (a == "--exc-from") exc_from = strtoull(next(), nullptr, 0);
 		else if (a == "--cpu-mhz") cpu_mhz = unsigned(strtoul(next(), nullptr, 0));
 		else if (a == "--mem-mhz") mem_mhz = unsigned(strtoul(next(), nullptr, 0));
@@ -597,6 +601,8 @@ int main(int argc, char** argv) {
 			if (max_instr && instr >= max_instr) { why = "instruction limit"; break; }
 			if (stall_lim && since_new >= stall_lim) { why = "no new code for the stall limit"; break; }
 		}
+		if (top->trace_dreq && instr < daddr_print && instr >= daddr_from)
+			printf("D %c %08X  (pc %08X, instr %llu)\n", top->trace_dwe ? 'W' : 'R', uint32_t(top->trace_daddr) << 2, last_pc, (unsigned long long)instr);
 		if (top->io_ev) {
 			io_count++;
 			uint32_t a = top->io_addr;
