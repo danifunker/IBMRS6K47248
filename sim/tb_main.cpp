@@ -438,6 +438,9 @@ int main(int argc, char** argv) {
 					sd_len = (uint32_t(top->sd_blk_cnt[n]) + 1) * 512;
 					sd_pos = 0;
 					sd_buf.assign(sd_len, 0);
+					if (sd_reads + sd_writes < 2000)
+						printf("  image %d %s block %u x%u  (instr %llu)\n", n, sd_w ? "write" : "read", sd_lba0, sd_len / 512,
+						       (unsigned long long)instr);
 					if (!sd_w) { for (uint32_t b = 0; b < sd_len / 512; b++) images[n].read(sd_lba0 + b, &sd_buf[512 * b]); sd_reads++; }
 					else sd_writes++;
 					top->sd_ack = 1 << n;
