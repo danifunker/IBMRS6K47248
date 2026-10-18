@@ -670,3 +670,19 @@ to be used until they say so. `scratch/work/stage.sh`, `capture_cd.sh` and
   is building (`quartus_panic.log`); the bench runs from `snap10_user.bin` with
   `--watch` on the panic and reboot entries and a snapshot at `panic_msg`
   (`run17.sh`, ~3 hours), and `run16.sh` traces the D0140C0C FP trap.
+- The panic-triggered capture (0x3925C) **did not fire** in 5.3 minutes
+  (`panic1.raw`) though the cycle recurred (bursts at marks 72-152 and
+  352-416; user start at mark 79). The second cycle's boot program exception
+  at mark 353 is preceded by the **firmware's** codes `7B 7B`, `2F` and PCI
+  configuration writes without a reset: AIX's reboot enters the firmware's
+  warm-restart path, which boots the CD again. So the re-boot is deliberate
+  (the kernel's `kreboot` CE1D8 -> `mdreboot` 148E24 -> the firmware), not a
+  CPU fault. 0x3925C is only a helper of `p_slih` (0x3587C, the panic
+  second-level handler, 11 callers), so a panic could have bypassed it; the
+  next bitstream captures at `kreboot` (its LR tells the caller). The timeline
+  of a cycle (in alive marks of ~0.54 s): user burst ~70 marks, quiet ~110
+  marks (55 s), then the firmware and the boot program (~90 marks: the LZW
+  kernel decompression), the kernel's RAM-disk fill, and user space again.
+  `init` here is `ssh.c` (bosboot's simple shell: runs `/sbin/rc.boot 1`, then
+  `2`, prints "INIT: ... failed"/"FATAL ERROR"/"EXITING" to /dev/console and
+  exits), so the reboot comes from rc.boot or from the kernel when init exits.
