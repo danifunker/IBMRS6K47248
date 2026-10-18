@@ -522,3 +522,43 @@ never reaches the S3 driver.
   clear (1A = 19, the century; 2E-2F = A9 6A, 3E-3F = A9 6A; the rest 0;
   `scratch/work/cmos_image.py`). Bench run from reset (`build5`, `run5.sh`)
   and a bitstream in progress.
+
+## 2026-10-18 late morning: the CD boots; the AIX boot program and kernel run
+
+(The board is now **.143**: the user's instruction of 2026-10-18; `.92` is not
+to be used until they say so. `scratch/work/stage.sh`, `capture_cd.sh` and
+`listen.sh` point at .143; `capture_cd.sh` loads the core through an MGL,
+`scratch/work/ibm_cd.mgl`, that mounts the diagnostics ISO on S2.)
+
+- **With the initialized CMOS the firmware boots the CD** (board, first
+  bitstream with the RTC fix): after the scan, `CB` (BOOT.6XE), the boot
+  partition read (bench: `image 2 read block 126660 ...`, 2 KB at a time, the
+  4.5 MB type-41 partition), `21 FC 7B`, `2F` (`audio_quiesce`, part of
+  `QuiesceMisc`: the hand-off), then the CD's code. On the screen, after the
+  POST icons, an error icon with a code (0001600x, dark blue on black, not
+  readable on the capture) while the image runs.
+- **The CD's PReP image** (`scratch/work/prep_boot.bin`; entry at 0x430, "AIXM"
+  header): a loader that copies itself to 0x4FD0 (runtime = file + 0x4BD0),
+  clears the BATs and segment registers, sets DBAT0-3 (0, C0000000, 80000000,
+  A0000000; no IBATs on a 604) and MSR = ME|DR, and runs an XCOFF boot program
+  linked at 0 (file 0x12C00: text 3A5E, bss to 3F60), whose **LZW
+  decompressor** (0x13EC-0x1430, putbyte at 0xCC8) unpacks the compress (.Z)
+  stream at file 0x16C00: **the AIX kernel**, an XCOFF linked at 0 (text
+  0x26904C, data at 0x269050; `scratch/work/unz.py` decodes it to
+  `scratch/work/aix_unz.bin`, `aix_kernel_text.bin`). Its vectors and low
+  handlers are installed at run time (zeros in the file).
+- **Where it stops** (debug UART: exceptions other than 500/900 as
+  `Pfrom-vec`, and a one-shot capture of LR/CTR/MSR and 40 instructions with
+  their GPR writes at a chosen exception): after the decompression a program
+  exception (from 0x1278), DSIs at 2552B4, 2553A4, 25616C, 57C1C, 1417DC, then
+  **a DSI at 0x256170 over and over**: the kernel's page copy (the function at
+  25611C: 4 KB from page r5 to page r0 through segment 0xD, which it sets up
+  with `bla 0xA480`, r3 = 0xD) faults on its store into segment 0xD with
+  **DSISR 42000000** (no PTE, store); the handler (0x300, then 47CC-4828,
+  4A50-4A80 at run time) returns and the store faults again. Either the
+  handler's mapping is not one our hashed-page-table walk finds, or it gives
+  up. Next: the bench from a snapshot at the decompressor (`run7.sh`,
+  `snap7_lzw.bin`) to trace the handler and read the page table.
+- Earlier this morning the same boot was taken for an ISI loop: the 12-bit
+  vector field made the decompressor's 0x13F8 -> 0x1400 look like one (the
+  exception log now takes the vectors 100-800 and F00 only).
