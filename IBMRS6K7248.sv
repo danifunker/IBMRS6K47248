@@ -438,18 +438,21 @@ always @(posedge clk_cpu) begin
 	cpu_reset_q <= cpu_reset;
 	if (trace_valid & trace_last) alive <= alive + 1'd1;
 end
-// the main block's RAM test (FFF1554C copied to RAM 0 and run there): its entry and failure
-// exits, "Ppppppppp-xxx " with the PC retired before (the branch that led there)
+// the exceptions other than the external interrupt and the decrementer: a vector (100-400,
+// 600-800, F00-1F00) reached other than from the instruction before it, at 0 or at FFF00000,
+// "Ppppppppp-xxx " ("Q" for FFF00000) with the PC retired before
 reg  [31:0] pc_prev = 0;
 reg  [31:0] pc_from;
 reg  [11:0] pc_to;
+reg         pc_rom;
 reg         pc_pend = 0;
-wire        pc_hit = trace_valid & trace_last & (trace_pc[31:12] == 20'd0) &
-                     (trace_pc[11:0] == 12'h000 || trace_pc[11:0] == 12'h1E0 || trace_pc[11:0] == 12'h1E4 ||
-                      trace_pc[11:0] == 12'h22C || trace_pc[11:0] == 12'h230) & (pc_prev != trace_pc - 32'd4);
+wire        vec_at = trace_pc[7:0] == 8'h00 && (trace_pc[31:13] == 19'd0 || trace_pc[31:13] == 19'h7FF80) &&
+                     trace_pc[12:8] != 5'h00 && trace_pc[12:8] != 5'h05 && trace_pc[12:8] != 5'h09 &&
+                     (trace_pc[12:8] <= 5'h08 || trace_pc[12:8] >= 5'h0F);
+wire        pc_hit = trace_valid & trace_last & vec_at & (pc_prev != trace_pc - 32'd4);
 always @(posedge clk_cpu) begin
 	if (trace_valid & trace_last) pc_prev <= trace_pc;
-	if (pc_hit) begin pc_from <= pc_prev; pc_to <= trace_pc[11:0]; end
+	if (pc_hit) begin pc_from <= pc_prev; pc_to <= trace_pc[11:0]; pc_rom <= trace_pc[31]; end
 end
 
 // the memory port (the memory clock): the word accesses to 7FC, and the shadow of the
@@ -499,8 +502,14 @@ reg  [31:0]  mis_got;                     // a mismatch's second half, queued af
 reg          mis_half = 0;
 reg          post_pend = 0, reset_pend = 0, alive_pend = 0, m_pend = 0;   // events seen while the stage was busy
 reg  [7:0]   post_code;
+reg  [31:0]  post_pc;                     // the PC before a code written from outside 7000-7FFF (else 0)
+reg          k92_pend = 0;
+reg  [7:0]   k92_d;
+wire         k92_ev = io_ev & io_we & (io_addr[31:2] == 30'h2000_0024) & io_be[1];   // port 92 (the byte in bits 15-8)
 always @(posedge clk_cpu) begin
-	if (post_ev) post_code <= io_wdata[31:24];
+	if (post_ev) begin post_code <= io_wdata[31:24]; post_pc <= pc_prev[31:12] == 20'h00007 ? 32'd0 : pc_prev; end
+	if (k92_ev) k92_d <= io_wdata[15:8];
+	k92_pend   <= k92_pend | k92_ev;
 	post_pend  <= post_pend  | post_ev;
 	reset_pend <= reset_pend | reset_ev;
 	alive_pend <= alive_pend | alive_ev;
@@ -538,7 +547,11 @@ always @(posedge clk_cpu) begin
 	else if (pc_pend) begin
 		pc_pend <= 1'b0;
 		stage_n <= 4'd14;
-		stage   <= {8'h50, hex8(pc_from), 8'h2D, hex(pc_to[11:8]), hex(pc_to[7:4]), hex(pc_to[3:0]), 8'h20};
+		stage   <= {pc_rom ? 8'h51 : 8'h50, hex8(pc_from), 8'h2D, hex(pc_to[11:8]), hex(pc_to[7:4]), hex(pc_to[3:0]), 8'h20};
+	end
+	else if (k92_pend) begin stage_n <= 4'd5; stage <= {8'h4B, 8'h3D, hex(k92_d[7:4]), hex(k92_d[3:0]), 8'h20, 72'h0}; k92_pend <= 1'b0; end
+	else if ((post_pend | post_ev) && post_pc != 32'd0) begin
+		stage_n <= 4'd12; stage <= {hex(post_code[7:4]), hex(post_code[3:0]), 8'h40, hex8(post_pc), 8'h20, 16'h0}; post_pend <= 1'b0;
 	end
 	else if (post_pend | post_ev)   begin stage_n <= 4'd3; stage <= {hex(post_code[7:4]), hex(post_code[3:0]), 8'h20, 88'h0}; post_pend <= 1'b0; end
 	else if (reset_pend | reset_ev) begin stage_n <= 4'd3; stage <= {8'h0D, 8'h0A, 8'h52, 88'h0}; reset_pend <= 1'b0; end
