@@ -40,7 +40,7 @@ machine):
   (`support/ibmrs6k/`, reusing the disk write buffer, fast SCSI service loop
   and Ethernet mailbox of the user's other family branches): `docs/plan.md` M5/M7.
 
-## Where it stands (2026-10-18 afternoon, the fourth session)
+## Where it stands (2026-10-18 afternoon, the end of the fourth session)
 
 Read `docs/bringup_log.md`'s last four sections first. **The board is now
 .143** (the user, 2026-10-18: "use .143 now, do not use .92 until I tell you
@@ -79,14 +79,52 @@ otherwise"); the scratch/work board scripts point there.
   trace ports change the model's snapshot layout: build the bench from that
   file's 6451968 version to keep using these snapshots).
 
-### Open: what AIX waits on after init starts
-On the board, after init's first page faults: no exceptions, no device
-accesses, nothing on COM1, the firmware's PowerPC logo still on the screen.
-The bench (`run10.sh`, from snap8) is behind the board in time; at 1.7 G
-instructions it was taking FP-unavailable exceptions at D0140C0C and DSIs at
-D013E50C (kernel extensions). A bitstream printing the PC every 2^24
-instructions is the next look at the board's quiet state. Also: the
-firmware's error icon (00016000) is drawn dark blue on black (palette?).
+### Open: AIX runs but never shows a console (the first problem now)
+
+**AIX is not hung.** With the alive mark carrying the PC (`.pppppppp` every
+2^24 instructions; `scratch/work/most1.raw`, 10 minutes on .143), the kernel
+keeps working for the whole run: early on mostly idle waiting for I/O
+(`waitproc_find_run_queue`, `devstrat_service`: disk/CD traffic), later path
+lookups and device-switch queries (`lookuppn`, `dnlc_lookup`, `devswqry`,
+`jfs_*`, `devcopen`, `rdevopen`, `openpnp`), with `z_decompress` (files from
+the RAM disk). Name the samples with `scratch/work/aix/kernel_syms.txt` (the
+snippet is in this session's log: bisect over the symbol starts). But the
+screen keeps the firmware's PowerPC logo the whole time and COM1 (OSD UART =
+COM1, 9600 baud; `scratch/work/com1_listen.sh OUT SECS BAUD CFG0`) stays
+silent over 10 minutes. (The "Most" RAM run was the same: RAM size is not it.)
+
+What to find next, in this order:
+1. **What the diagnostics' init is waiting for.** A real 7248 asks "define
+   the System Console" on the graphics display or on the serial port after a
+   few minutes of configuration (cfgmgr). Either AIX has no driver for our
+   display (the 7248's planar S3: check which PCI IDs and BARs AIX's config
+   methods read for device 14, and what our S3 answers: `docs/s3_design.md`),
+   or configuration is stuck on a device (the SCSI CD's reads: devstrat), or
+   it is just slow (bench time: 1.7 G instructions is ~75 s of board time).
+   The board's debug stream can log device accesses after user code starts
+   (the first 250: `rWWWW=` lines); widen that to a later window, or a ring
+   of the last accesses dumped on a key.
+2. The bench: `run10.sh` (from `snap8_pcopy.bin`, build6) took
+   `snap10_user.bin` at init's first instruction (instruction 1,324.0 M);
+   replay from there with `--io-range` for the S3 (PCI dev 14), the 53C810
+   and COM1, and `--exc`.
+3. The firmware's error icon (00016000, top left before AIX starts) is drawn
+   dark blue on black: probably the DAC palette (6-bit values scaled wrong?)
+   or a missing colour; and what 00016000 means (not found as a constant in
+   the RAM firmware or BOOT.6XE).
+
+**Lessons from this session (to save time):** the debug UART's queue is 4 KB
+and drops events when full, so a burst (page faults: thousands a second)
+hides later events; filter at the source. The exception log's vector field is
+12 bits (0x1400 looked like 0x400). A PC logged before an exception is the
+last instruction that *retired*: the faulting one is usually the next.
+A per-page fault repeating at one PC can be a loop over pages, not a hang:
+check the data addresses or the call tree before calling it stuck.
+
+The OSD's RAM menu now lists sizes (32, 48, 56, 64, 96, 112 MB, then 16, 24;
+32 the default): commit 63d6756, bitstream being built at the end of the
+session. The core's options on .143 are in `/media/fat/config/IBMRS6K7248.CFG`
+(byte 0: bits 3-1 the RAM entry, bit 4 the UART: 1 = COM1).
 
 ### The rest
 
