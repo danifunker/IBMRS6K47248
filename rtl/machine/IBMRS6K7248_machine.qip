@@ -5,6 +5,7 @@ set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) I
 set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) IBMRS6K7248_pic.sv]
 set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) IBMRS6K7248_pit.sv]
 set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) IBMRS6K7248_rtc.sv]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) IBMRS6K7248_eeprom.sv]
 set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) IBMRS6K7248_kbc.sv]
 set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) IBMRS6K7248_cs4232.sv]
 set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) IBMRS6K7248_mpc105.sv]

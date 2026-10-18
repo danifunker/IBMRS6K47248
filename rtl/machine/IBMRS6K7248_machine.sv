@@ -63,6 +63,7 @@
 //    0040-0043, 0061   the 8254 and port 61 (IBMRS6K7248_pit)
 //    0060, 0064 the 8042 with a PS/2 keyboard and mouse (IBMRS6K7248_kbc)
 //    0070-0071, 0074-0076   the RTC and the 4 KB NVRAM (IBMRS6K7248_rtc)
+//    0078-007F              the VPD EEPROM's controller (IBMRS6K7248_eeprom)
 //    0279       the CS4232's configuration (the Crystal key and commands); its
 //               Sound Blaster DSP and WSS codec where they are placed and
 //               only while active, present but silent (IBMRS6K7248_cs4232)
@@ -549,6 +550,7 @@ wire        pit_hit  = s_isa && (bport[15:2] == 14'h0010 || bport == 16'h0061); 
 wire        kbc_hit  = s_isa && (bport == 16'h0060 || bport == 16'h0064);
 wire        rtc_hit  = s_isa && (bport[15:1] == 15'h0038 || (bport[15:2] == 14'h001D && bport[1:0] != 2'd3));   // 70/71, 74-76
 wire        p92_hit  = s_isa && bport == 16'h0092;
+wire        ee_hit   = s_isa && bport[15:3] == 13'h000F;                              // 78-7F: the VPD EEPROM's controller
 wire        err_hit  = s_isa && bport >= 16'h0840 && bport <= 16'h0844;
 logic        aud_on;
 logic [15:4] sb_base;
@@ -558,7 +560,7 @@ wire        sb_hit   = s_isa && aud_on && bport[15:4] == sb_base;
 wire        wss_hit  = s_isa && aud_on && bport[15:2] == wss_base;
 
 logic [15:0] irq;
-logic  [7:0] pic_q, pit_q, kbc_q, rtc_q, aud_q;
+logic  [7:0] pic_q, pit_q, kbc_q, rtc_q, aud_q, ee_q;
 logic        irq0, irq1, irq8, irq12, nmi_mask;
 logic  [7:0] p92;
 
@@ -588,6 +590,11 @@ IBMRS6K7248_rtc #(.CLK_HZ(CPU_HZ), .FAST(RTC_FAST)) rtc (
 	.sel(d_sel & rtc_hit), .we(d_we), .port(bport[2:0]), .wdata(bwd), .rdata(rtc_q),
 	.irq8, .nmi_mask,
 	.set_time(rtc_set), .time_bcd(rtc_time)
+);
+
+IBMRS6K7248_eeprom eeprom (
+	.clk, .reset,
+	.sel(d_sel & ee_hit), .we(d_we), .port(bport[2:0]), .wdata(bwd), .rdata(ee_q)
 );
 
 IBMRS6K7248_cs4232 cs4232 (
@@ -661,7 +668,7 @@ IBMRS6K7248_firecoral firecoral (
 
 // the answer, the cycle after the access
 logic       q_sio, q_com2, q_dev14, q_fdc;
-logic       q_pic, q_pit, q_kbc, q_rtc, q_p92, q_err, q_aud, q_audc;
+logic       q_pic, q_pit, q_kbc, q_rtc, q_p92, q_err, q_aud, q_audc, q_ee;
 logic       q_com1, q_planar, q_pd, q_cf8, q_cfc, q_dev0, q_dev11, q_fcio, q_pcicf, q_iack, q_dev16, q_ncr;
 logic [1:0] q_lane;
 always_ff @(posedge clk) if (d_sel) begin
@@ -673,6 +680,7 @@ always_ff @(posedge clk) if (d_sel) begin
 	q_pit   <= pit_hit;
 	q_kbc   <= kbc_hit;
 	q_rtc   <= rtc_hit;
+	q_ee    <= ee_hit;
 	q_p92   <= p92_hit;
 	q_err   <= err_hit;
 	q_aud   <= sb_hit | wss_hit;
@@ -702,6 +710,7 @@ always_comb begin
 	else if (q_pit)   dev_rdata = {4{pit_q}};
 	else if (q_kbc)   dev_rdata = {4{kbc_q}};
 	else if (q_rtc)   dev_rdata = {4{rtc_q}};
+	else if (q_ee)    dev_rdata = {4{ee_q}};
 	else if (q_p92)   dev_rdata = {4{p92}};
 	else if (q_err)   dev_rdata = 32'h0000_0000;
 	else if (q_aud)   dev_rdata = {4{aud_q}};
@@ -725,7 +734,7 @@ always_ff @(posedge clk) begin
 	if (w_done) begin
 		io_we    <= d_we;
 		io_stub  <= ~(q_s3 | q_fdc | q_com1 | q_com2 | q_sio | q_planar | q_pd | q_fcio | q_cf8 | q_dev0 | q_dev11 | q_dev14 | q_dev16 | q_ncr |
-		              q_pic | q_pit | q_kbc | q_rtc | q_p92 | q_err | q_aud | q_audc | q_iack);
+		              q_pic | q_pit | q_kbc | q_rtc | q_ee | q_p92 | q_err | q_aud | q_audc | q_iack);
 		io_addr  <= p_a;
 		io_be    <= p_be;
 		io_wdata <= p_wd;
