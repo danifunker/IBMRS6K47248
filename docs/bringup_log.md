@@ -761,3 +761,14 @@ to be used until they say so. `scratch/work/stage.sh`, `capture_cd.sh` and
   (`IBMRS6K7248_eeprom.sv`, `eeprom_image.py`); the IDE ports answer FF. All
   await the bench (build8, `run20.sh`: the residual's NvramSize and Serial)
   and the board (Quartus `quartus_hw.log`).
+- **The AIX 4.3.3 install CD** (volume 1, LCD4-0286-07, fetched from
+  fsck.technology, MD5 verified; `scratch/downloads/fsck.technology/aix433/`)
+  has its boot partition at block 1299140 (3.4 MB, `scratch/work/prep_boot_vol1.bin`);
+  its RAM disk (1171 pages, 4.8 MB: `scratch/work/aix/ramfs_vol1.img`, by the
+  now generic `ramfs_boot.py`, which finds the page table by its invariant:
+  the first entry's offset is 36 + 12 x pages) holds the standard `rc.boot`,
+  which only *branches* on `bootinfo -M` ("diagnostics are not supported",
+  `diag_ok=0`) and goes on to the console setup. It is the boot medium from
+  here: `scratch/work/ibm_cd433.mgl`, `capture_cd433.sh`, `com1_listen433.sh`;
+  `board433.sh` chains the new bitstream, the ISO copy, a debug-UART capture
+  and a COM1 recording.
