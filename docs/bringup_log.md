@@ -487,3 +487,38 @@ never reaches the S3 driver.
   (`rtl/machine/MacPPC7300_sdram.sv`, the WRITE's `SDRAM_A <= {2'b00, ...}`):
   `docs/cpu_patches/sdram_dqm_on_a12_a11.patch` applies to it cleanly (checked,
   not applied: that repository is the PPC_Mac sessions').
+
+## 2026-10-18 morning: why "boot 0" gives up (the CMOS-reset bit)
+
+- **"boot 0" is not an internal command**: `check_internal_cmd`'s table (58
+  entries at F9958, TOC+328) has no `boot`, so `bad_cmd` runs it through
+  `spawn_external` as **BOOT.6XE from the VDISK** ("DAKOTA VDSK", a FAT12
+  volume at 43F1C in the RAM image: 512-byte sectors, 7 reserved+FAT, 240
+  root entries; every file contiguous). `scratch/work/vdisk/` holds the
+  extracted files; `scratch/work/moddis.py FILE` disassembles a module,
+  and `BOOT.6XE.s` there is annotated with the firmware services it calls
+  (the vector table at F83D8: `lwzu r11,N(rX)` then `bl` the glue at +574).
+  On the bench BOOT.6XE loads at 3F2210 (file offset = PC - 3F2210).
+- **The call trace** (`--calls N`/`--calls-from M` on the bench: the retire
+  after a branch with LK, read from the bench's memory since `trace_insn` is
+  per retire group; `scratch/work/calltree.py TRACE SYMS DEPTH [FROM TO]`
+  nests them by the returns) of the tail, from `snap3_cbp`: BOOT.6XE's
+  `password(2, req)` (file DC8) runs `cold_boot_path` -> `check_tamper_or_init_path`
+  -> the 00017006 message and the 3 s sleep, returns **1**, and BOOT.6XE
+  (DD4-DFC: a result of 1 or 5) calls `query_terminal_state(0)` and exits
+  with -1, about 100 instructions after the message's NVRAM log write:
+  no device is tried, then D2 D4 and the no-bootable-media screen.
+- **Why 1**: `password(2, req)` returns `req | security(35)`, and
+  `security(35)` = `S[4] | S[8] | security(4)`; **`security(4)` is bit 5
+  (0x20) of CMOS byte 1F** (`yo_cmos(204)`). `init_cmos` (B8B0) sets it
+  (through `security(21)`) after clearing the CMOS; `init_cmos` runs because
+  the blank CMOS fails the CRCs over 20-2F and 30-3F (`calc_and_put_errorCheck`
+  with `crcgen`, the CRC stored big-endian at 2E-2F and 3E-3F: checked as a
+  zero residue), seen at instruction 96.0 M of the trace from `snap3_mc`.
+  `check_tamper_or_init_path` clears the bit again (`security(5)`) as it
+  reports 00017006, so on the real machine only the first boot after a
+  CMOS reset ends on that screen; ours started blank on every load.
+- **The fix**: the RTC's CMOS starts as `init_cmos` leaves it with the bit
+  clear (1A = 19, the century; 2E-2F = A9 6A, 3E-3F = A9 6A; the rest 0;
+  `scratch/work/cmos_image.py`). Bench run from reset (`build5`, `run5.sh`)
+  and a bitstream in progress.
