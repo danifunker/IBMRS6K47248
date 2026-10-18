@@ -109,8 +109,8 @@ that cannot proceed without it.
 | 8237 DMA + 82378 extensions | `00`-`0F`, `80`-`8F`, `C0`-`DF`, `40A`/`40B`, `410`-`417`, `481`, `4D6` | **stub** (writes logged) | firmware floppy/audio; AIX floppy, audio, ECP | the firmware's `dma_setup` writes are dropped harmlessly today; a floppy or audio DMA needs the channel logic |
 | 8042 keyboard/mouse | `60`/`64` | **real** (PS/2 keyboard and mouse) | firmware SMS, AIX `kbddd`/`mousedd` | |
 | RTC/CMOS (MC146818) | `70`/`71` | **real**; starts with `init_cmos`'s image (valid CRCs, reset bit clear) | the firmware's "boot 0" (BOOT.6XE) | |
-| **PReP NVRAM 4 KB** | `74`/`75`/`76` | **partial**: the RAM is there, but blank; `nvram_good` fails (no header), NvramSize -1 | AIX: boot list, console choice, `modelcode`?; the firmware's SMS settings | **plan**: preload a valid image (see "Sizing the open jobs"); the firmware does not format it at boot |
-| **VPD / security EEPROM** | `78`-`7C` (base and alternate ports) | **stub** (reads 0: the serial becomes `ffff...`) | the firmware's VPD (`build_vpd`, `GetEEPROMSerialNumber`), passwords; AIX's `modelcode`/`systemid` | **plan**: a serial command EEPROM (`EEPROM_Create_Command`/`Send_Command`: command, address, data bits through 78-7C) with a 7248-100's VPD image; first find the real layout from the firmware's reader |
+| **PReP NVRAM 4 KB** | `74`/`75`/`76` | **partial**: starts with the image the firmware's own formatter makes (`firmware/tools/nvram_image.py`: valid header and CRCs, blank areas), so `nvram_good` should pass; writes are lost on a core load | AIX: boot list, console choice; the firmware's SMS settings | **plan**: persistence through the Main_MiSTer branch (save the NVRAM and CMOS to the SD, as other cores do); verify NvramSize = 4096 in the residual data (bench build8) |
+| **VPD / security EEPROM** | `78`-`7C` | **modelled, contents inferred** (`IBMRS6K7248_eeprom.sv`: the controller with two register sets, a 93C46-class 64-word EEPROM; `firmware/tools/eeprom_image.py`: the CRC word, a 16-digit serial, no passwords) | the firmware's VPD (`build_vpd`, `GetEEPROMSerialNumber`), passwords; AIX's `systemid`, maybe `modelcode` | **to verify** on the bench: the firmware's EEPROM_init and reads succeed (no `EEPROM locked`/password path), the residual's Serial becomes the image's; adjust the image as the firmware's readers show what else they expect |
 | Flash lock, system registers | `98`, `800`, `808`, `80C`/`80D`, `810`/`812`, `814`, `81C`, `82A`/`82B`, `838`/`83C`, `860`/`862`, `880`-`882` (SIMM presence), `8A0`, `8C0`/`8C1` | **partial**: planar ID `852`, the SIMM presence `880`-`882` and the L2 status bits the firmware reads are real; the rest stubbed | firmware (L2 init, power management, LEDs, security) | AIX's `planar_pal_rspc` touches `82A`-`83C` (power, LEDs) and the reboot path (`Q014288DC-100`: PCI scan then the ROM reset vector); harmless as stubs so far |
 | Checkpoint ports | `680` (32-bit), `3BC` (LPT data), `8C0` | **real as logs** (the bench prints `680`; the UART logs it) | debugging | |
 | Port 92 | `92` | logged | firmware A20/reset | the kernel's reboot does not use it (it jumps to FFF00100) |
@@ -150,3 +150,11 @@ that cannot proceed without it.
 
 - 2026-10-17: the IDE/floppy probes (`3F6`/`376`, `3F4`/`3F5`: 65 K reads each), ports `80`-`8F`/`D0`-`DE` DMA, `410`-`415`, `3BC` checkpoints, `22C`/`23A`/`2E2`/`33A`/`3EA` (serial port probes), `278`/`378`/`3BC` (parallel probes), `78`/`7B`/`7C` EEPROM (2135 reads of `7C` per boot), `98`, `D0`, `DA`, `174`-`177`/`1F4`-`1F7` IDE (bench runs `run5`-`run7`, `run_scsi*`, `run_cbp*`).
 - 2026-10-18: the bank-register writes `0800000`-`2800008` from the sizing (`FFF054B4`, every run); the kernel's `100277C0` line read; **no device access at all in the first 0.7 G instructions of AIX user space** (`run11`), so the identity check, not a device, is what stops the diagnostics boot.
+- 2026-10-18 evening: the NVRAM image (the firmware's own format: header, CRCs
+  skipping bytes 4-7, GE area F8-9FF, empty config area, OS area A00-BFF) is
+  built into `_rtc.sv`; the VPD EEPROM's controller is modelled from the
+  firmware's `EEPROM_*` routines (command word hi/lo at 79/78, start bit 7 of
+  7C, status bits 7-4 polled, data at 7B:7A, the alternate register set by bit
+  3 of 7C with the size code at 78); both await the bench (build8). The RTC's
+  time already comes from Main (hps_io's rtc); NVRAM/CMOS persistence is for
+  the Main_MiSTer branch.
