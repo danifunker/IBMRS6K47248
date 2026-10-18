@@ -425,7 +425,7 @@ sdramclk_ddr
 // CPU's clock: "R" when the CPU leaves reset; every write of a word to port
 // 680 (the firmware's progress codes, the code in the first byte, as the bench
 // prints them) as two hex digits and a space; "." every 2^24 instructions
-// retired (the CPU is alive); the PCI configuration accesses ("C8=xxxxxxxx "
+// retired (the CPU is alive), with the PC then (".pppppppp "); the PCI configuration accesses ("C8=xxxxxxxx "
 // a write of CF8, "cW=" and "cR=" a write and a read of CFC, the data as the
 // CPU's); and, from the memory clock, the CPU's word accesses to RAM 7FC
 // ("W7=xxxxxxxx ", "R7=xxxxxxxx ") and any word read of RAM 0-7FC that differs
@@ -436,11 +436,13 @@ wire        cfc_ev  = io_ev & (io_addr == 32'h8000_0CFC);
 wire [31:0] io_d    = io_we ? io_wdata : io_rdata;
 reg         cpu_reset_q = 1;
 reg  [23:0] alive = 0;
+reg  [31:0] alive_pc = 0;                 // the PC at the last alive mark
 wire        reset_ev = cpu_reset_q & ~cpu_reset;
 wire        alive_ev = trace_valid & trace_last & (&alive);
 always @(posedge clk_cpu) begin
 	cpu_reset_q <= cpu_reset;
 	if (trace_valid & trace_last) alive <= alive + 1'd1;
+	if (alive_ev) alive_pc <= trace_pc;
 end
 // the exceptions other than the external interrupt and the decrementer: a vector (100-400,
 // 600-800, F00; not 1000 up, where code runs) reached other than from the instruction before it, at 0 or at FFF00000,
@@ -612,7 +614,7 @@ always @(posedge clk_cpu) begin
 	end
 	else if (post_pend | post_ev)   begin stage_n <= 4'd3; stage <= {hex(post_code[7:4]), hex(post_code[3:0]), 8'h20, 88'h0}; post_pend <= 1'b0; end
 	else if (reset_pend | reset_ev) begin stage_n <= 4'd3; stage <= {8'h0D, 8'h0A, 8'h52, 88'h0}; reset_pend <= 1'b0; end
-	else if (alive_pend | alive_ev) begin stage_n <= 4'd1; stage <= {8'h2E, 104'h0}; alive_pend <= 1'b0; end
+	else if (alive_pend | alive_ev) begin stage_n <= 4'd10; stage <= {8'h2E, hex8(alive_pc), 8'h20, 24'h0}; alive_pend <= 1'b0; end
 end
 // the transmitter: a byte fetched from the RAM a clock ahead
 reg  [9:0]  tx_sh = 10'h3FF;              // start, 8 data, stop
