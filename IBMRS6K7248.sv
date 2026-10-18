@@ -416,50 +416,88 @@ sdramclk_ddr
 ///////////////////////   THE DEBUG UART   ///////////////////////////////
 
 // The MiSTer's UART carries either COM1 (the firmware's serial console) or, for
-// bring-up (OSD "UART", the default), the firmware's progress codes: every write
-// of a word to port 680 (the code in its first byte, as the bench prints them)
-// goes out as two hex digits and a space at 115200 baud; "R" when the CPU leaves
-// reset, "." every 2^24 instructions retired (the CPU is alive).
+// bring-up (OSD "UART", the default), a debug stream at 115200 baud, in the
+// memory clock: "R" when the CPU leaves reset; every write of a word to port
+// 680 (the firmware's progress codes, the code in the first byte, as the bench
+// prints them) as two hex digits and a space; "." every 2^24 instructions
+// retired (the CPU is alive); and the CPU's word accesses to RAM 0 and 7FC
+// (the firmware's memory probe writes patterns from 0 to 7FC and reads them
+// back) as "W0=xxxxxxxx ", "R7=xxxxxxxx " (the data as the CPU sees it, the
+// low word of the port). A 1 KB queue in a RAM.
 wire        post_ev = io_ev & io_we & (io_addr == 32'h8000_0680) & (io_be == 4'hF);
-
-localparam logic [15:0] UART_DIV1 = CPU_MHZ * 1_000_000 / 115_200 - 1;   // clocks per bit, less one
-reg  [7:0]  dq [64];                      // the byte queue
-reg  [5:0]  dq_w = 0, dq_r = 0;
-reg  [2:0]  push_n;                       // bytes to queue this clock (0-3)
-reg  [23:0] push_v;
+// the events of the CPU's clock, carried by toggles (their data stands still long enough)
+reg         post_tog = 0, alive_tog = 0, reset_tog = 0;
+reg  [7:0]  post_code = 0;
 reg         cpu_reset_q = 1;
-reg  [24:0] alive = 0;
-reg         alive_q = 0;
+reg  [23:0] alive = 0;
+always @(posedge clk_cpu) begin
+	cpu_reset_q <= cpu_reset;
+	if (post_ev) begin post_tog <= ~post_tog; post_code <= io_wdata[31:24]; end
+	if (cpu_reset_q & ~cpu_reset) reset_tog <= ~reset_tog;
+	if (trace_valid & trace_last) begin
+		alive <= alive + 1'd1;
+		if (&alive) alive_tog <= ~alive_tog;
+	end
+end
+reg  [2:0]  post_s = 0, alive_s = 0, reset_s = 0;
+always @(posedge clk_mem) begin
+	post_s  <= {post_s[1:0], post_tog};
+	alive_s <= {alive_s[1:0], alive_tog};
+	reset_s <= {reset_s[1:0], reset_tog};
+end
+wire post_m  = post_s[2] ^ post_s[1];
+wire alive_m = alive_s[2] ^ alive_s[1];
+wire reset_m = reset_s[2] ^ reset_s[1];
+// the memory port's word accesses to 0 and 7FC, at their acknowledgement
+wire        mem_ev = b_req & b_ack & ~b_line & (b_addr[31:2] == 30'h0 || b_addr[31:2] == 30'h1FF);
+wire [31:0] mem_d  = b_we ? b_wdata[31:0] : b_rdata[31:0];
+
 function automatic [7:0] hex(input [3:0] n);
 	hex = n < 4'd10 ? 8'h30 + {4'd0, n} : 8'h37 + {4'd0, n};
 endfunction
-always @(posedge clk_cpu) begin
-	cpu_reset_q <= cpu_reset;
-	if (trace_valid & trace_last) alive <= alive + 1'd1;
-	alive_q <= alive[24];
-	push_n = 3'd0;
-	if (post_ev) begin push_n = 3'd3; push_v = {hex(io_wdata[31:28]), hex(io_wdata[27:24]), 8'h20}; end
-	else if (cpu_reset_q & ~cpu_reset) begin push_n = 3'd3; push_v = {8'h0D, 8'h0A, 8'h52}; end
-	else if (alive_q ^ alive[24]) begin push_n = 3'd1; push_v = {8'h2E, 16'h0}; end
-	if (push_n != 3'd0) begin
-		dq[dq_w] <= push_v[23:16];
-		if (push_n > 3'd1) dq[dq_w + 6'd1] <= push_v[15:8];
-		if (push_n > 3'd2) dq[dq_w + 6'd2] <= push_v[7:0];
-		dq_w <= dq_w + {3'd0, push_n};
+
+localparam logic [15:0] UART_DIV1 = 16'(100_000_000 / 115_200 - 1);   // memory clocks per bit, less one
+reg  [7:0]  dq [1024];                    // the byte queue (a RAM: one byte in a clock)
+reg  [9:0]  dq_w = 0, dq_r = 0;
+reg  [95:0] stage;                        // the bytes being queued, the first in the top byte
+reg  [3:0]  stage_n = 0;                  // ... how many are left
+reg         post_pend = 0, reset_pend = 0, alive_pend = 0;   // events seen while the stage was busy
+always @(posedge clk_mem) begin
+	post_pend  <= post_pend  | post_m;
+	reset_pend <= reset_pend | reset_m;
+	alive_pend <= alive_pend | alive_m;
+	if (stage_n != 4'd0) begin
+		dq[dq_w] <= stage[95:88];
+		dq_w     <= dq_w + 10'd1;
+		stage    <= {stage[87:0], 8'h00};
+		stage_n  <= stage_n - 4'd1;
 	end
+	else if (mem_ev) begin                 // (a memory event during a drain is lost)
+		stage_n <= 4'd12;
+		stage   <= {b_we ? 8'h57 : 8'h52, b_addr[2] ? 8'h37 : 8'h30, 8'h3D,
+		            hex(mem_d[31:28]), hex(mem_d[27:24]), hex(mem_d[23:20]), hex(mem_d[19:16]),
+		            hex(mem_d[15:12]), hex(mem_d[11:8]), hex(mem_d[7:4]), hex(mem_d[3:0]), 8'h20};
+	end
+	else if (post_pend | post_m)   begin stage_n <= 4'd3; stage <= {hex(post_code[7:4]), hex(post_code[3:0]), 8'h20, 72'h0}; post_pend <= 1'b0; end
+	else if (reset_pend | reset_m) begin stage_n <= 4'd3; stage <= {8'h0D, 8'h0A, 8'h52, 72'h0}; reset_pend <= 1'b0; end
+	else if (alive_pend | alive_m) begin stage_n <= 4'd1; stage <= {8'h2E, 88'h0}; alive_pend <= 1'b0; end
 end
+// the transmitter: a byte fetched from the RAM a clock ahead
 reg  [9:0]  tx_sh = 10'h3FF;              // start, 8 data, stop
 reg  [3:0]  tx_n = 0;                     // bits left
 reg  [15:0] tx_div = 0;
+reg  [7:0]  tx_byte;
+reg         tx_have = 0;
 reg         post_txd = 1;
-always @(posedge clk_cpu) begin
+always @(posedge clk_mem) begin
+	if (!tx_have && dq_r != dq_w) begin tx_byte <= dq[dq_r]; dq_r <= dq_r + 10'd1; tx_have <= 1'b1; end
 	if (tx_n == 4'd0) begin
 		post_txd <= 1'b1;
-		if (dq_r != dq_w) begin
-			tx_sh  <= {1'b1, dq[dq_r], 1'b0};
-			tx_n   <= 4'd10;
-			tx_div <= 16'd0;
-			dq_r   <= dq_r + 6'd1;
+		if (tx_have) begin
+			tx_sh   <= {1'b1, tx_byte, 1'b0};
+			tx_n    <= 4'd10;
+			tx_div  <= 16'd0;
+			tx_have <= 1'b0;
 		end
 	end else if (tx_div == UART_DIV1) begin
 		tx_div   <= 16'd0;
