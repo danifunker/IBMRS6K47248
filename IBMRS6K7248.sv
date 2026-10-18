@@ -77,9 +77,9 @@ localparam CONF_STR = {
 	"S1,IMGHDAVHD,SCSI disk ID 1;",
 	"S2,ISOBINCUECHD,SCSI CD-ROM ID 3;",
 	"-;",
-	// the RAM as the board's SIMM pairs, beside the ROM (the SDRAM's top 4 MB): the most the
-	// SDRAM holds (24, 56 or 112 MB), or less
-	"O[3:1],RAM (on reset),Most,16 MB,32 MB,48 MB,64 MB,96 MB;",
+	// the RAM as the board's SIMM pairs, beside the ROM (the SDRAM's top 4 MB); a size the
+	// SDRAM cannot hold gives the most it can (24, 56 or 112 MB). 32 MB first: AIX's least
+	"O[3:1],RAM (on reset),32 MB,48 MB,56 MB,64 MB,96 MB,112 MB,16 MB,24 MB;",
 	"-;",
 	"O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
 	"-;",
@@ -221,12 +221,14 @@ reg  [8:0] simm_sel;
 reg  [1:0] sel_rank;                       // the smallest board the choice fits
 always @(*) begin
 	case (status[3:1])
-		3'd1:    begin simm_sel = SIMM_16; sel_rank = 2'd0; end
-		3'd2:    begin simm_sel = SIMM_32; sel_rank = 2'd1; end
-		3'd3:    begin simm_sel = SIMM_48; sel_rank = 2'd1; end
-		3'd4:    begin simm_sel = SIMM_64; sel_rank = 2'd2; end
-		3'd5:    begin simm_sel = SIMM_96; sel_rank = 2'd2; end
-		default: begin simm_sel = simm_max; sel_rank = 2'd0; end
+		3'd0:    begin simm_sel = SIMM_32;  sel_rank = 2'd1; end
+		3'd1:    begin simm_sel = SIMM_48;  sel_rank = 2'd1; end
+		3'd2:    begin simm_sel = SIMM_56;  sel_rank = 2'd1; end
+		3'd3:    begin simm_sel = SIMM_64;  sel_rank = 2'd2; end
+		3'd4:    begin simm_sel = SIMM_96;  sel_rank = 2'd2; end
+		3'd5:    begin simm_sel = SIMM_112; sel_rank = 2'd2; end
+		3'd6:    begin simm_sel = SIMM_16;  sel_rank = 2'd0; end
+		default: begin simm_sel = SIMM_24;  sel_rank = 2'd0; end
 	endcase
 end
 reg [8:0] simm_opt;
