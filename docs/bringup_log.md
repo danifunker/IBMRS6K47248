@@ -460,3 +460,30 @@ never reaches the S3 driver.
   the loop reads the RTC's seconds, status A and C about four times a
   second and rereads NVRAM bytes 0x0C4-0xBDB (index at 74/75, data at 76)
   each time; it is a timed loop, not a short timeout.
+
+## 2026-10-17 late night: the sizing halt found and fixed (the byte masks)
+
+- **The PC trace named the failing test**: `PFFF15548-000` (the RAM copy
+  entered) then `P000000E4-1E0` on every pass: RAM E4 is FFF15630, the
+  byte-store test (a zero word at 0, 0xFF stored to bytes 3 and 1, read
+  back as a word, expected 00FF00FF). The walking ones before it pass.
+- **The cause**: the MiSTer SDRAM boards wire the chip's DQMH and DQML to
+  the address lines A12 and A11 (Sorgelig's sdram.sv drives them so:
+  `assign {SDRAM_DQMH,SDRAM_DQML} = SDRAM_A[12:11]`). This controller
+  (MacPPC7300's) drives the separate DQM pins and put zeros on A12-A11 in
+  its WRITE commands, so on the board **every single-word write stored all
+  four bytes**. The bench's chip model read the DQM pins, so it never saw it.
+- **The fix** (`IBMRS6K7248_sdram.sv`): a WRITE carries its byte masks on
+  A12-A11 too (a column command does not use them). The SDRAM bench now
+  takes DQM from A12-A11 like the board, and **reproduces the halt with the
+  old controller** (`19 23 ... 24 23 23 23 22 22 ...`, halted at FFF15AE8)
+  and passes it with the new one.
+- **On the board** the fixed build goes through the memory phase, the
+  console drivers and `main_control` to the boot screen (the drive icon and
+  the System Management Services diskette), as the bench does: `19 23 23
+  1A 1B ... 20 30 3A 7B 40 50 60 71 70 80 82 ... 90 91 A0 A1 (DE A2 A3)...
+  B0 91 91 71 72 C0 26 27 D0 F0 F6 DE CD` in 60 s.
+- **MacPPC7300 has the same controller and the same omission**
+  (`rtl/machine/MacPPC7300_sdram.sv`, the WRITE's `SDRAM_A <= {2'b00, ...}`):
+  `docs/cpu_patches/sdram_dqm_on_a12_a11.patch` applies to it cleanly (checked,
+  not applied: that repository is the PPC_Mac sessions').
