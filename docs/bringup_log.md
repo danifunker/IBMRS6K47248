@@ -734,3 +734,30 @@ to be used until they say so. `scratch/work/stage.sh`, `capture_cd.sh` and
 - **`docs/stubbed-hardware.md`** started (the user's request): every device the
   firmware and AIX touch, with the core's state (real, partial, stub, absent),
   what needs it, and the plan; the identity check is its "blocker today".
+
+## 2026-10-18 evening: the diagnostics CD rejects the 7248 by design; the NVRAM and EEPROM
+
+- **The model code, traced to its source.** `cfgsys_rspc` fills a system-info
+  structure through two `/dev/nvram` ioctls (0xE: the IPL control block's
+  directory, then the area at directory+0x18, 0x598 bytes) and sets `sys0`'s
+  `modelcode` to `0x%08x` of its field +0x34. That area is built by the CD's
+  PReP loader (`aixmon`, `prep_boot.bin` file 0x430, runtime +0x4BD0, TOC
+  0xFD7C; `scratch/work/aix/` has the tools) from the residual data's
+  PrintableModel string: model = 0x0800004C, the hex digits after `(` replace
+  the low byte, and the letters before `)` set flags: A -> 0x00080000,
+  D -> 0x00040000, E -> 0x00030000. Our firmware's string, "IBM PPS Model
+  7248 (E)", gives **0x0803004C**. `bootinfo -M` takes the string, shifts it
+  right 16 (0x0803), bits 0-1 = 3 -> base 100, bits 2-3 = 0 -> stays **100**;
+  only an A or D machine gets 101/103. `Get_PrintableModel` (RAM 0x20654)
+  returns one of two fixed strings by the planar flags, "IBM PPS Model
+  6050/6070 (E)" or "IBM PPS Model 7248 (E)": **a real 7248 with firmware 1.12
+  gets 100 as well, and this diagnostics CD (4.3.3.3 standalone) ejects and
+  reboots on it by design.** The core reproduces a real machine here. The
+  next medium is the AIX 4.3.3 install CD (volume 1), whose `rc.boot` has no
+  such check (to confirm from its RAM disk with `ramfs_boot.py`).
+- **Hardware added meanwhile** (`docs/stubbed-hardware.md`): the NVRAM starts
+  with the firmware's own formatted image (header, CRCs: `nvram_image.py`);
+  the VPD EEPROM's controller at 78-7C is modelled with an inferred image
+  (`IBMRS6K7248_eeprom.sv`, `eeprom_image.py`); the IDE ports answer FF. All
+  await the bench (build8, `run20.sh`: the residual's NvramSize and Serial)
+  and the board (Quartus `quartus_hw.log`).

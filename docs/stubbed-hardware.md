@@ -26,7 +26,7 @@ it, and every device that gets modelled moves up. The hardware itself is in
   which devices each boot phase needs; `docs/firmware_analysis.md` §4 lists
   the firmware's.
 
-## The blocker today: the machine's identity (2026-10-18)
+## The blocker today: the machine's identity (2026-10-18) -- resolved: the CD rejects a real 7248 too
 
 The AIX 4.3.3 diagnostics CD boots, runs `cfgmgr -f`, then `bootinfo -M`,
 and unless that returns 101 or 103 ("this machine supports diagnostics") it
@@ -44,10 +44,12 @@ the places fed by stubbed hardware:
 | VPD.NvramSize | -1 (`nvram_good` false) | 4096 | the 4 KB NVRAM has no valid PReP header (byte 2 = 1, byte 3 = 4, area sizes, CRC): the firmware never initialised ours |
 | model code (AIX) | 0 -> `bootinfo -M` = 100 | 101/103 | not yet pinned down: the firmware's VPD/NVRAM/EEPROM data |
 
-The exact source of `modelcode` is still being traced in `cfgsys_rspc`
-(`scratch/work/aix/ramfs.img` at 0x63C000); whichever it is, the fix is on
-this list: a real EEPROM with a 7248's VPD, and an NVRAM the firmware accepts
-(or pre-initialised with a 7248's contents).
+**Resolved (evening):** `modelcode` comes from the CD's PReP loader, which
+derives it from the residual's PrintableModel string; the firmware's fixed
+"IBM PPS Model 7248 (E)" gives 0x0803004C and `bootinfo -M` = 100 on a real
+7248 as well: this diagnostics CD does not support the 7248. The NVRAM and
+EEPROM below are still right to have (the VPD serial, the boot list); the
+boot medium moves to the AIX 4.3.3 install CD.
 
 ## What AIX needs, in boot order (the diagnostics CD)
 
