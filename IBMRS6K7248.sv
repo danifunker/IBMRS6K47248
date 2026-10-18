@@ -491,11 +491,13 @@ always @(posedge clk_cpu) begin
 	reset_pend <= reset_pend | reset_ev;
 	alive_pend <= alive_pend | alive_ev;
 	m_pend     <= m_pend     | m_ev;
-	if (stage_n != 4'd0) begin
-		dq[dq_w] <= stage[111:104];
-		dq_w     <= dq_w + 12'd1;
-		stage    <= {stage[103:0], 8'h00};
-		stage_n  <= stage_n - 4'd1;
+	if (stage_n != 4'd0) begin             // (a full queue holds the stage: the first 4 KB win, later events are dropped)
+		if (dq_w + 12'd1 != dq_r) begin
+			dq[dq_w] <= stage[111:104];
+			dq_w     <= dq_w + 12'd1;
+			stage    <= {stage[103:0], 8'h00};
+			stage_n  <= stage_n - 4'd1;
+		end
 	end
 	else if (mis_half) begin
 		stage_n  <= 4'd9;
