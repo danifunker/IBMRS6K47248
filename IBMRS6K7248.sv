@@ -443,16 +443,16 @@ always @(posedge clk_cpu) begin
 	if (trace_valid & trace_last) alive <= alive + 1'd1;
 end
 // the exceptions other than the external interrupt and the decrementer: a vector (100-400,
-// 600-800, F00-1F00) reached other than from the instruction before it, at 0 or at FFF00000,
+// 600-800, F00; not 1000 up, where code runs) reached other than from the instruction before it, at 0 or at FFF00000,
 // "Ppppppppp-xxx " ("Q" for FFF00000) with the PC retired before
 reg  [31:0] pc_prev = 0;
 reg  [31:0] pc_from;
 reg  [11:0] pc_to;
 reg         pc_rom;
 reg         pc_pend = 0;
-wire        vec_at = trace_pc[7:0] == 8'h00 && (trace_pc[31:13] == 19'd0 || trace_pc[31:13] == 19'h7FF80) &&
-                     trace_pc[12:8] != 5'h00 && trace_pc[12:8] != 5'h05 && trace_pc[12:8] != 5'h09 &&
-                     (trace_pc[12:8] <= 5'h08 || trace_pc[12:8] >= 5'h0F);
+wire        vec_at = trace_pc[7:0] == 8'h00 && (trace_pc[31:12] == 20'd0 || trace_pc[31:12] == 20'hFFF00) &&
+                     trace_pc[11:8] != 4'h0 && trace_pc[11:8] != 4'h5 && trace_pc[11:8] != 4'h9 &&
+                     (trace_pc[11:8] <= 4'h8 || trace_pc[11:8] == 4'hF);
 wire        pc_hit = trace_valid & trace_last & vec_at & (pc_prev != trace_pc - 32'd4);
 always @(posedge clk_cpu) begin
 	if (trace_valid & trace_last) pc_prev <= trace_pc;
