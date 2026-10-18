@@ -686,3 +686,16 @@ to be used until they say so. `scratch/work/stage.sh`, `capture_cd.sh` and
   `init` here is `ssh.c` (bosboot's simple shell: runs `/sbin/rc.boot 1`, then
   `2`, prints "INIT: ... failed"/"FATAL ERROR"/"EXITING" to /dev/console and
   exits), so the reboot comes from rc.boot or from the kernel when init exits.
+- **The kreboot capture did not fire either** (`kreboot1.raw`, 5.3 min, the
+  cycle recurred). But the exception log had the jump itself: at mark 283/285
+  (both captures) **`Q014288DC-100`: the ROM's reset vector FFF00100 entered
+  from PC 014288DC**, right after a PCI configuration scan of device 0
+  (`C8=00000080 cR=57100100` ...: the MPC105's ID) and the planar's registers.
+  Code at 0x0142xxxx is a kernel extension loaded above the kernel (empty in
+  `ram10.bin`: loaded later); it is the rspc machine-dependent reboot, which
+  disables the PCI devices and jumps to the firmware's reset entry; the
+  firmware then re-boots the CD (`7B 7B 2F`). `sys_reboot` 16AC50 is only the
+  kernel debugger's command; the `reboot` syscall is 3D830 (syscall table at
+  0x13CF10); `mdreboot` 148E24 is called from `sr_slih` (3D1F0) and `kreboot`
+  (CE2B0). Next bitstream: the capture fires at the first of 3D830, 148E24 and
+  `p_slih` 3587C (building: `quartus_reboot3.log`; `reboot3_run.sh` records).
