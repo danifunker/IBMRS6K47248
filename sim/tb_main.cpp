@@ -571,6 +571,16 @@ int main(int argc, char** argv) {
 				if (br && (prev_insn & 1)) printf("C %08X %08X %llu\n", pc, prev_pc, (unsigned long long)instr);
 				else if (op == 19 && xo == 16 && pc != prev_pc + 4) printf("R %08X\n", pc);
 			}
+			// an exception: a vector (100-F00, at 0 or FFF00000) reached other than by falling into it or a branch
+			if (exc_left && instr >= exc_from && (pc & 0xFFu) == 0 && (pc & 0xFFFFF000u) == (pc >= 0xFFF00000u ? 0xFFF00000u : 0u) &&
+			    (pc & 0xF00u) != 0 && pc != prev_pc + 4) {
+				uint32_t op = prev_insn >> 26;
+				bool br = op == 18 || op == 16 || op == 19;
+				if (!br || (pc & 0xF00u) == 0x300u || (pc & 0xF00u) == 0x400u || (pc & 0xF00u) == 0x700u) {
+					printf("X %03X from %08X  instr %llu  msr %08X\n", pc & 0xFFFu, prev_pc, (unsigned long long)instr, top->trace_msr);
+					exc_left--;
+				}
+			}
 			// the instruction word from the bench's memory (trace_insn is per retire group, not per instruction)
 			if (pc < MEM_BYTES - 4) prev_insn = rd32(pc);
 			else if (pc >= 0xFFF00000u) prev_insn = rd32((ROM_AT << 22) + (pc - 0xFFF00000u));
