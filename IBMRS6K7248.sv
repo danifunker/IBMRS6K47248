@@ -458,7 +458,7 @@ always @(posedge clk_cpu) begin
 	if (trace_valid & trace_last) pc_prev <= trace_pc;
 	if (pc_hit) begin pc_from <= pc_prev; pc_to <= trace_pc[11:0]; pc_rom <= trace_pc[31]; end
 end
-// the first ISI after the boot hand-off (progress 2F), once: LR, CTR and MSR as its vector
+// the first exception after the boot hand-off (progress 2F), once: LR, CTR and MSR as its vector
 // retires ("IL=... C=... M=..."), then that and the next 23 instructions retired,
 // "pppp=vvvvvvvv " (the PC's low half and the GPR each wrote, "--------" none)
 reg         isi_armed = 0, isi_done = 0;
@@ -468,7 +468,7 @@ reg  [31:0] isi_v [24];
 reg  [23:0] isi_vw = 0;
 reg  [31:0] isi_lr, isi_ctr, isi_msr;
 reg  [1:0]  isi_hdr = 0;                  // header parts left to send (3: all)
-wire        isi_go = pc_hit & isi_armed & ~isi_done & (trace_pc[11:0] == 12'h400);
+wire        isi_go = pc_hit & isi_armed & ~isi_done;                  // (any of the vectors logged)
 always @(posedge clk_cpu) begin
 	if (post_ev && io_wdata[31:24] == 8'h2F) isi_armed <= 1'b1;
 	if (trace_valid && trace_last && (isi_go || isi_n != 5'd0)) begin
