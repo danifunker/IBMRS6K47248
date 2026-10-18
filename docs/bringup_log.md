@@ -635,3 +635,35 @@ to be used until they say so. `scratch/work/stage.sh`, `capture_cd.sh` and
   7248 needs ~3-5 minutes to the console prompt, ours needs 12-20. A 30-minute
   COM1 recording (`scratch/work/com1_long.sh`: CFG byte 0 = 0x10, COM1 + 32 MB
   with the new menu) was started at 14:00.
+- **COM1 stayed silent for 30 minutes** (`com1_long.raw`: the one reset byte), and
+  a 10-minute debug-UART run with **112 MB** (`ram112.raw`, CFG byte 0 = 0x0A)
+  gave the same exception pattern as the 32 MB run, so it is not memory.
+- **AIX re-boots itself every ~3 minutes.** Counting the logged exceptions per
+  alive interval (`scratch/work/profile_raw.py`; an interval is 2^24
+  instructions, about 0.54 s on the board): bursts at intervals 112-200,
+  432-536, 768-841 with *identical* counts (first-page user ISIs 12-13, user
+  ISIs 40-41, FP traps ~2450, one program exception at 0x1278 = the CD's boot
+  program, four alignment traps at D013E598 / 0013F2A0 / 0013F284), each burst
+  containing `copypage`/`initramdisk` DSIs (0025616C, 00056ACC: the RAM-disk
+  fill, which only happens at kernel start) and the same 80 of 90 user text
+  pages; between the bursts ~55 s and ~47 s of no exceptions at all, with a
+  small identical burst (727/193 exceptions) in the middle. No firmware POST
+  codes recur, so the kernel re-runs the boot image from RAM (the kernel's
+  `mdreboot`/`kreboot`, or a panic: `panic` is the unnamed function at
+  0x3925C, which calls `panic_msg` 125E8; `reboot` 3D830, `sys_reboot` 16AC50).
+  The decrementer is right (~100 Hz on the bench), so the quiet minutes are
+  AIX's own waits (a panic's delay, or init's). The FP traps are a user
+  program's `stfd` sequence and lazy FP at D0140C0C in a kernel extension.
+- **Tools made**: the bench's `--daddr N [--daddr-from M]` (the physical data
+  addresses per instruction; build7 = build6's model plus it, so the snapshots
+  restore: `scratch/work/build7.sh` swaps in the 6451968 system file for the
+  build); `snap11_z.bin` at the first `getcode`. Beware: the snapshot's RAM
+  lags the CPU's write-back data cache (the TOC slots read stale). The kernel's
+  `getcode` is `compress`'s (LSB-first, 9-bit start, block mode); the RAM disk's
+  compressed blocks are packed byte-wise (one block's input: 1257 bytes at a
+  byte address in segment 4), which is why the fragment-aligned scan found none.
+- **Next**: a bitstream whose one-shot capture fires at the kernel's panic
+  (0x3925C: LR = the caller, r30 = the message pointer in its tenth instruction)
+  is building (`quartus_panic.log`); the bench runs from `snap10_user.bin` with
+  `--watch` on the panic and reboot entries and a snapshot at `panic_msg`
+  (`run17.sh`, ~3 hours), and `run16.sh` traces the D0140C0C FP trap.

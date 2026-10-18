@@ -79,44 +79,31 @@ otherwise"); the scratch/work board scripts point there.
   trace ports change the model's snapshot layout: build the bench from that
   file's 6451968 version to keep using these snapshots).
 
-### Open: AIX runs but never shows a console (the first problem now)
+### Open: AIX re-boots itself every ~3 minutes (the first problem now)
 
-**AIX is not hung.** With the alive mark carrying the PC (`.pppppppp` every
-2^24 instructions; `scratch/work/most1.raw`, 10 minutes on .143), the kernel
-keeps working for the whole run: early on mostly idle waiting for I/O
-(`waitproc_find_run_queue`, `devstrat_service`: disk/CD traffic), later path
-lookups and device-switch queries (`lookuppn`, `dnlc_lookup`, `devswqry`,
-`jfs_*`, `devcopen`, `rdevopen`, `openpnp`), with `z_decompress` (files from
-the RAM disk). Name the samples with `scratch/work/aix/kernel_syms.txt` (the
-snippet is in this session's log: bisect over the symbol starts). But the
-screen keeps the firmware's PowerPC logo the whole time and COM1 (OSD UART =
-COM1, 9600 baud; `scratch/work/com1_listen.sh OUT SECS BAUD CFG0`) stays
-silent over 10 minutes. (The "Most" RAM run was the same: RAM size is not it.)
-
-What to find next, in this order:
-1. **What the diagnostics' init is waiting for.** A real 7248 asks "define
-   the System Console" on the graphics display or on the serial port after a
-   few minutes of configuration (cfgmgr). Either AIX has no driver for our
-   display (the 7248's planar S3: check which PCI IDs and BARs AIX's config
-   methods read for device 14, and what our S3 answers: `docs/s3_design.md`),
-   or configuration is stuck on a device (the SCSI CD's reads: devstrat), or
-   it is just slow (bench time: 1.7 G instructions is ~75 s of board time).
-   The board's debug stream can log device accesses after user code starts
-   (the first 250: `rWWWW=` lines); widen that to a later window, or a ring
-   of the last accesses dumped on a key.
-2. The bench: `run10.sh` (from `snap8_pcopy.bin`, build6) took
-   `snap10_user.bin` at init's first instruction (instruction 1,324.0 M);
-   replay from there with `--io-range` for the S3 (PCI dev 14), the 53C810
-   and COM1, and `--exc`.
-   The bench run to 2.6 G instructions (`~/ibmrs6k/run10.txt`) ended with no
-   COM1 output and one stubbed line read: physical 100277C0-100277FC (beyond
-   the 32 MB), from the low-memory routine at A8C0 that the VMM calls: a
-   probe or a stray line fill; check what A8C0 is at run time
-   (`scratch/work/aix/ram8.bin`, RAM from `snap8_pcopy.bin`).
-3. The firmware's error icon (00016000, top left before AIX starts) is drawn
-   dark blue on black: probably the DAC palette (6-bit values scaled wrong?)
-   or a missing colour; and what 00016000 means (not found as a constant in
-   the RAM firmware or BOOT.6XE).
+Read the bringup log's "2026-10-18 afternoon" section. In short: after init
+starts, user space runs the same programs for about a minute (no device
+access at all: the bench's `--io` from `snap10_user.bin` shows none), then
+there are ~55 s and ~47 s of complete quiet, then the whole AIX boot repeats
+from the boot image in RAM (the CD's boot program at 0x1278 and the kernel's
+RAM-disk fill recur; no firmware POST codes). The exception counts of the
+three cycles in `most1.raw` are identical; 112 MB behaves the same; COM1 is
+silent for 30 minutes. The diagnostics CD has no driver for the planar S3
+(only IBM GXT adapters), so its console can only be COM1 (S1), per
+`/etc/consdef`, once configuration gets that far. So: find what panics or
+reboots. In flight at the end of the session:
+1. A bitstream whose one-shot debug capture fires when the kernel's `panic`
+   (0x3925C) retires: LR names the caller, r30 (written in its tenth
+   instruction) is the message pointer; read the string from
+   `scratch/work/aix_unz.bin` / `kernel.s` at that address (kernel data is
+   V=R). If the capture never fires, the reboot is init's (`sys_reboot`
+   16AC50 -> `kreboot` CE1D8 -> `mdreboot` 148E24): move the trigger there and
+   look at LR. The cycle takes ~3 minutes: record 5 minutes.
+2. The bench `run17.sh` (build7, from `snap10_user.bin`, ~3 hours): `--watch`
+   on those entries, `--save` at `panic_msg`; the RAM of that snapshot holds the
+   kernel's console log (search for "PANIC"/"panic" and the message).
+3. The user-space programs: `run12.sh`'s calls trace (`calls_user.py`), the
+   RAM disk's compressed JFS (see the log for its block format).
 
 **Lessons from this session (to save time):** the debug UART's queue is 4 KB
 and drops events when full, so a burst (page faults: thousands a second)
