@@ -699,3 +699,14 @@ to be used until they say so. `scratch/work/stage.sh`, `capture_cd.sh` and
   0x13CF10); `mdreboot` 148E24 is called from `sr_slih` (3D1F0) and `kreboot`
   (CE2B0). Next bitstream: the capture fires at the first of 3D830, 148E24 and
   `p_slih` 3587C (building: `quartus_reboot3.log`; `reboot3_run.sh` records).
+- **Found: a user program calls `reboot(0)`.** The three-way capture
+  (`reboot3.raw`) fired at mark 283 at **3D830, the `reboot` system call**
+  (CTR = 3D830, LR = 3A90 the syscall dispatcher, MSR 9032; its `ori r29,r3`
+  wrote 0: howto = 0, a plain reboot; the "ROC" and 2BFA76F6 magic words are
+  written for the firmware), two marks before the jump to FFF00100. So after
+  the ~55 s wait a boot program (in `rc.boot`, or `ssh` itself) decides to
+  reboot: the usual reason on a diagnostics boot is a missing console or boot
+  device. Next: the kernel's console buffer at that moment holds the "INIT:"
+  lines and the commands' messages: `run19.sh` (from `snap10_user.bin`,
+  build7) snapshots at 3D830 (`snap12_reboot.bin`, ~4 hours of bench time);
+  then search its RAM for "INIT: EXECUTING" / "rc.boot" / "console".
