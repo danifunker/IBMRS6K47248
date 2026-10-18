@@ -315,7 +315,7 @@ wire [255:0] b_wdata, b_rdata;
 wire         trace_valid, trace_last;
 wire        com1_txd;
 wire        io_ev, io_we;
-wire [31:0] io_addr, io_wdata;
+wire [31:0] io_addr, io_wdata, io_rdata;
 wire [3:0]  io_be;
 wire         vid_ce, vid_hs, vid_vs, vid_hblank, vid_vblank;
 wire   [7:0] vid_r, vid_g, vid_b;
@@ -354,7 +354,7 @@ IBMRS6K7248_system #(.CPU_HZ(CPU_MHZ * 1_000_000), .TB_HZ(TB_HZ)) system
 	.sd_buff_addr, .sd_buff_dout, .sd_buff_din, .sd_buff_wr,
 	.cd_change(|cd_change_s), .scsi_activity(scsi_act),
 
-	.io_ev, .io_we, .io_stub(), .io_addr, .io_be, .io_wdata, .io_rdata(),
+	.io_ev, .io_we, .io_stub(), .io_addr, .io_be, .io_wdata, .io_rdata,
 	.trace_valid, .trace_last, .trace_pc(), .trace_insn(), .trace_msr(),
 	.trace_dreq(), .trace_dwe(), .trace_daddr()
 );
