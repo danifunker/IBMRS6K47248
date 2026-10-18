@@ -49,6 +49,50 @@ The exact source of `modelcode` is still being traced in `cfgsys_rspc`
 this list: a real EEPROM with a 7248's VPD, and an NVRAM the firmware accepts
 (or pre-initialised with a 7248's contents).
 
+## What AIX needs, in boot order (the diagnostics CD)
+
+The CD's config methods (`/usr/lib/methods` on the ISO and in the RAM disk)
+and `rc.boot` give the order in which the core's gaps will be hit:
+
+1. **`cfgsys_rspc`, `bootinfo`**: the machine's identity from the residual
+   data, the IPL control block and the NVRAM (`modelcode`, `modelname`,
+   `systemid`, `fwversion`, the memory size). **Stops here today.** Hardware:
+   the VPD EEPROM (78-7C), the PReP NVRAM (74-76).
+2. **`cfgbus_pci`, `cfgbus_isa`, `cfgpal_rspc`**: PCI configuration space
+   (CF8/CFC: devices 0, 11, 14, 16 answer; the rest must read as absent) and
+   the planar PAL (`planar_pal_rspc`: LEDs and reboot through the system
+   registers 82A-83C and the ROM reset vector). Real/harmless today.
+3. **`cfgncr_scsi` (`ncr810dd`), `cfgsccd`**: the 53C810 under AIX's driver
+   (SCRIPTS, interrupts on IRQ15, DMA into kernel buffers, message phases),
+   then the CD as `cd0`; `rc.boot` mounts `/SPOT` from it (`mount -v cdrfs`,
+   retried every 5 s with LED A70 until it works). The firmware's boot already
+   uses the chip, so this is "more of the same" plus interrupts.
+4. **`cfgsio`, `cfgasync_rspc` (`rsdd_rspc`), `cfgtty`, `cfgcon`**: the
+   PC87312's serial ports and the tty on S1: COM1 is real; expect AIX to
+   program the 16550 more fully (FIFOs, modem status, interrupts) than the
+   firmware does.
+5. **`cfgkbd_std`, `cfgmouse_std` (`kbddd`, `mousedd`)**: the 8042 and PS/2
+   devices, real.
+6. **`cfgfda_isa`** (floppy): `process_diskette` returns at once without a
+   drive; keep the floppy absent for now.
+7. **`startlft`/`cfglft`**: no S3 driver on this CD: the display stays the
+   firmware's. AIX 4.3.3 proper would need the S15 (S3 864) driver's view of
+   the chip: the next big display item.
+8. **Audio, parallel, Ethernet**: later (the PCnet needs the Main_MiSTer branch).
+
+## Sizing the open jobs
+
+| Job | Size | What it takes |
+|---|---|---|
+| VPD EEPROM at 78-7C | medium, and blind on contents | a command/status register interface, not a bit-banged serial: `EEPROM_Send_Command` writes 79, then the command byte to 78, reads 7C and sets its bit 7; `EEPROM_Read_Size` reads 78 expecting 9 or 11 (a size code); `EEPROM_Use_Base_Ports`/`Alternate_Ports` toggle bit 3 of 7C; `talk_to_eeprom` CRC-checks bytes 0x29-0x3F against a stored CRC (`calc_non_lockable_crc`). No dump of a real 7248's EEPROM: the image must be made to satisfy the firmware's readers (`GetEEPROMSerialNumber`, the VPD, the passwords) |
+| PReP NVRAM image | small | the firmware never formats a bad NVRAM at boot (`nvraminit` is the resident monitor's command; `initfwNVRAM` only rewrites the firmware's own area), and the core's 4 KB array is reset on every load. So: preload an image the firmware accepts (`nvram_good`: byte 2 = 1, byte 3 = 4, the area table it reads at 0xC4/0xC8/0xD4/0xD8, the CRC-16 at bytes 4-5 over the header; `initfwNVRAM`'s contents for the firmware area; the boot list and console choice as SMS would set them), loaded like `boot.rom` or built into the RTL as `init_cmos`'s image is; later, persistence through the Main_MiSTer branch |
+| 8237 DMA | medium | the channel registers and a transfer engine for the floppy and audio; the ECP parallel port |
+| 53C810 under AIX | medium | interrupts (IRQ15 level), DMA to arbitrary kernel buffers, the message and status phases the driver uses; the firmware's boot path already covers reads |
+| 16550 under AIX | small | FIFO control, modem status, interrupts; already real for the firmware |
+| Floppy | large | a full 82077 with DMA; only if a configuration diskette is ever wanted |
+| S3 for AIX (S15 driver) | large | the accelerator and the driver's register expectations; see `s3_design.md` |
+| PCnet Ethernet | large | plus the Main_MiSTer branch (M7) |
+
 ## The inventory
 
 Ordered by when the boot needs them. "Needed by" names the first software
@@ -65,7 +109,7 @@ that cannot proceed without it.
 | 8237 DMA + 82378 extensions | `00`-`0F`, `80`-`8F`, `C0`-`DF`, `40A`/`40B`, `410`-`417`, `481`, `4D6` | **stub** (writes logged) | firmware floppy/audio; AIX floppy, audio, ECP | the firmware's `dma_setup` writes are dropped harmlessly today; a floppy or audio DMA needs the channel logic |
 | 8042 keyboard/mouse | `60`/`64` | **real** (PS/2 keyboard and mouse) | firmware SMS, AIX `kbddd`/`mousedd` | |
 | RTC/CMOS (MC146818) | `70`/`71` | **real**; starts with `init_cmos`'s image (valid CRCs, reset bit clear) | the firmware's "boot 0" (BOOT.6XE) | |
-| **PReP NVRAM 4 KB** | `74`/`75`/`76` | **partial**: the RAM is there, but blank; `nvram_good` fails (no header), NvramSize -1 | AIX: boot list, console choice, `modelcode`?; the firmware's SMS settings | **plan**: initialise it as the firmware's `init_nvram`/SMS would (header: size, version 1, revision 4, area table, CRC), or save/restore it like the CMOS |
+| **PReP NVRAM 4 KB** | `74`/`75`/`76` | **partial**: the RAM is there, but blank; `nvram_good` fails (no header), NvramSize -1 | AIX: boot list, console choice, `modelcode`?; the firmware's SMS settings | **plan**: preload a valid image (see "Sizing the open jobs"); the firmware does not format it at boot |
 | **VPD / security EEPROM** | `78`-`7C` (base and alternate ports) | **stub** (reads 0: the serial becomes `ffff...`) | the firmware's VPD (`build_vpd`, `GetEEPROMSerialNumber`), passwords; AIX's `modelcode`/`systemid` | **plan**: a serial command EEPROM (`EEPROM_Create_Command`/`Send_Command`: command, address, data bits through 78-7C) with a 7248-100's VPD image; first find the real layout from the firmware's reader |
 | Flash lock, system registers | `98`, `800`, `808`, `80C`/`80D`, `810`/`812`, `814`, `81C`, `82A`/`82B`, `838`/`83C`, `860`/`862`, `880`-`882` (SIMM presence), `8A0`, `8C0`/`8C1` | **partial**: planar ID `852`, the SIMM presence `880`-`882` and the L2 status bits the firmware reads are real; the rest stubbed | firmware (L2 init, power management, LEDs, security) | AIX's `planar_pal_rspc` touches `82A`-`83C` (power, LEDs) and the reboot path (`Q014288DC-100`: PCI scan then the ROM reset vector); harmless as stubs so far |
 | Checkpoint ports | `680` (32-bit), `3BC` (LPT data), `8C0` | **real as logs** (the bench prints `680`; the UART logs it) | debugging | |
