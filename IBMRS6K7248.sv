@@ -468,6 +468,13 @@ reg  [31:0] isi_v [40];
 reg  [39:0] isi_vw = 0;
 reg  [31:0] isi_lr, isi_ctr, isi_msr;
 reg  [1:0]  isi_hdr = 0;                  // header parts left to send (3: all)
+// once user code runs after the hand-off (a PC in segments 1-7): the next 250 device accesses,
+// "waaaa=dddddddd " ("r"/"w" for ISA I/O at 8000xxxx, "R"/"W" otherwise; the address's low half)
+reg         usr_on = 0;
+reg  [7:0]  usr_n = 8'd250;
+reg         usr_pend = 0, usr_we, usr_isa;
+reg  [15:0] usr_a;
+reg  [31:0] usr_d;
 wire        isi_go = pc_hit & isi_armed & ~isi_done & (pc_prev == 32'h0025616C);   // (the AIX kernel's page copy: DSI there over and over)
 always @(posedge clk_cpu) begin
 	if (post_ev && io_wdata[31:24] == 8'h2F) isi_armed <= 1'b1;
@@ -479,6 +486,7 @@ always @(posedge clk_cpu) begin
 		isi_n          <= isi_go ? 6'd39 : isi_n - 6'd1;
 	end
 	if (isi_go) begin isi_done <= 1'b1; isi_lr <= trace_lr; isi_ctr <= trace_ctr; isi_msr <= trace_msr; end
+	if (isi_armed && trace_valid && trace_last && trace_pc[31] == 1'b0 && trace_pc[30:28] != 3'd0) usr_on <= 1'b1;
 end
 
 // the memory port (the memory clock): the word accesses to 7FC, and the shadow of the
@@ -537,6 +545,10 @@ always @(posedge clk_cpu) begin
 	if (k92_ev) k92_d <= io_wdata[15:8];
 	k92_pend   <= k92_pend | k92_ev;
 	if (isi_go) isi_hdr <= 2'd3;
+	if (usr_on && usr_n != 8'd0 && io_ev && !post_ev && !usr_pend) begin
+		usr_pend <= 1'b1; usr_we <= io_we; usr_isa <= io_addr[31:16] == 16'h8000; usr_a <= io_addr[15:0];
+		usr_d <= io_we ? io_wdata : io_rdata; usr_n <= usr_n - 8'd1;
+	end
 	post_pend  <= post_pend  | post_ev;
 	reset_pend <= reset_pend | reset_ev;
 	alive_pend <= alive_pend | alive_ev;
@@ -582,6 +594,12 @@ always @(posedge clk_cpu) begin
 		stage   <= {hex(isi_pc[isi_r][15:12]), hex(isi_pc[isi_r][11:8]), hex(isi_pc[isi_r][7:4]), hex(isi_pc[isi_r][3:0]), 8'h3D,
 		            isi_vw[isi_r] ? hex8(isi_v[isi_r]) : {8{8'h2D}}, 8'h20};
 		isi_r   <= isi_r + 6'd1;
+	end
+	else if (usr_pend) begin
+		stage_n  <= 4'd14;
+		stage    <= {usr_isa ? (usr_we ? 8'h77 : 8'h72) : (usr_we ? 8'h57 : 8'h52), hex(usr_a[15:12]), hex(usr_a[11:8]),
+		             hex(usr_a[7:4]), hex(usr_a[3:0]), 8'h3D, hex8(usr_d), 8'h20};
+		usr_pend <= 1'b0;
 	end
 	else if (pc_pend) begin
 		pc_pend <= 1'b0;
