@@ -40,7 +40,7 @@ machine):
   (`support/ibmrs6k/`, reusing the disk write buffer, fast SCSI service loop
   and Ethernet mailbox of the user's other family branches): `docs/plan.md` M5/M7.
 
-## Where it stands (2026-10-17 late evening, the end of the second session)
+## Where it stands (2026-10-18 morning, the end of the third session)
 
 Read `docs/bringup_log.md`'s last six sections first: they are the day. The
 two open problems, in the order to take them:
@@ -62,31 +62,60 @@ applied there; tell the user). Board tools: `scratch/work/stage.sh`, then
 into `scratch/work/OUT`); `scratch/work/ppcdis.py A B` disassembles the ROM.
 The debug UART also logs the RAM test's PCs (`Ppppppppp-xxx`).
 
-### B. The firmware boots to a screen and waits (now the first problem, board and bench)
+### B. The firmware boots to a screen and waits (the first problem now, board and bench)
 
-- With the CD at ID 3 the scan's INQUIRY is good (progress 98), LUN 1 too.
-- After 00017006 the firmware sleeps 3 s on the timebase (`sleep(3,1)` in
-  `text_errormsg_tr`; the "idle at 7B" of every earlier run), then
-  `cold_boot_path` goes on: D2, D4, DE, FE (word FF007BFE), a boot screen (a
-  drive icon and the "System Management Services" diskette,
-  `docs/images/boot_screen_sms_diskette.png`) and **a wait**: `rxchar`
-  (1A204) polls COM1's LSR, and the hot loop is loaded code at 0x20D9F4-
-  0x20DA08 (a countdown calling a service through 0x208D74, with an `out16`
-  each time: which port was being logged at the end, `run_wait_io.txt`,
-  `scratch/work/run_wait_io.sh`). Enter, F1, F4, F5, F6, ESC (PS/2) with
-  CR/"1"/"4"/"5"/"6"/ESC on COM1 changed nothing (`scratch/work/run_key2.sh`,
-  `run_key_*.txt`, `frame_key_*.ppm`). No SCSI command after the scan.
-  Next: find what the loop waits for (the port; a diskette? a timeout on the
-  timebase: a `TB_FAST` knob like `RTC_FAST` would shorten it); then the boot
-  list (diskette first by default: the empty drive; then "SCSI CDROM").
-- Bench tools made today: `RTC_FAST` (the RTC's seconds 64 x faster, on by
-  default), `--key-at CLOCK:CODE[:e]`, `--com1-at CLOCK:BYTE`, `--pcs-from`,
-  `--cpu-mhz/--mem-mhz`, `make machine_sd`; `scratch/work/pcs_path.py` maps a
-  `--pcs` trace to the firmware's symbols; `sizing_path.py` to the sizing's
-  blocks. Snapshots (`~/ibmrs6k/` in WSL, the `build3` binary = RTC_FAST):
-  `snap3_mc.bin` (main_control, clock 520,051,476), `snap3_cbp.bin`
-  (cold_boot_path with the CD, clock 1,232,285,474); the wait begins about
-  322 M clocks after it.
+**What the screen is** (decoded 2026-10-18 from `main_control`, RAM 0x8930-0x8DF0
+in `firmware/disasm/v1.12_ram_image_00000000.annotated.s`; strings from the
+block at TOC[52] = 0xF8258, r2 = 0x105980):
+- After checkpoint D0, `main_control` spawns **"boot 0"** (the boot attempt),
+  then `get_sys_boot_req`, D2, D4, and at 0x89F4 (FE) looks for
+  **`diags.6xe`** with `ffind_first`. Not found, so it shows the
+  "no bootable media" prompt: `drv_dsk.pic` (the drive and SMS diskette
+  icons; message "Insert the Systems Management Services diskette or
+  CD-ROM, and then press Enter"), animated by `AnimateDisk`.
+- The wait is the loop at 0x8C50: `Getchar` (COM1 via `rxchar`, and the
+  loaded keyboard driver at 0x21B300-0x21B4xx), then `timeout` (the RTC).
+  **Enter** goes back to 0x89F4: it only looks for `diags.6xe` again, it
+  does not rerun "boot 0", so the screen comes back. That explains why the
+  earlier key runs "changed nothing". An overall timeout calls `reboot_cmd`.
+  Typing **"eatabug"** there sets r14 and leads to the resident monitor
+  (`resident_monitor`, a command prompt): useful for bring-up.
+- The loaded code at 0x20D9F4, taken for the wait before, is **the icon
+  painter** (pixels through a nibble table, 16 bits at a time), not the wait.
+- **So the real question: why does "boot 0" fail without a SCSI command
+  after the scan?** It is not `boot_cmd` (0x133A0, "boot %c" with a drive
+  letter). Candidates: the boot list in NVRAM (`build_boot_table` 1DBB8,
+  `get_boot_seq`, `setboot`; the NVRAM starts as zeros, the firmware
+  initializes it), the stubbed EEPROM at 78-7C (`EEPROM_*` 38B98-39668,
+  `check_EE_serial`, read 2135 times as FF), or the SCSI driver's boot path.
+- **In flight when the session stopped**: `scratch/work/run_bootpcs.sh`
+  (from `snap3_wait.bin`, PCs for instructions 499,960,000-500,490,000, the
+  window between the last 7B and D2 that holds "boot 0", and every I/O
+  access) into `~/ibmrs6k/run_bootpcs.txt`. Read it with
+  `scratch/work/pcsum.py TRACE firmware/disasm/symbols_v1.12_ram.txt`
+  (per-function counts and the call order; loaded modules show as
+  `mod_xxxxxx`). If it did not finish, rerun it (about 15 minutes).
+- Then: fix what "boot 0" needs (boot list, EEPROM, or the CD path), check
+  on the bench (the CD should get READs), then build and check on .92.
+
+Tools made 2026-10-18 (all in `scratch/work/`): `snapram.py SNAP OUT [MB]`
+pulls RAM out of a bench snapshot (RAM byte A at file offset size-132 MB-8+A);
+`ramdis.py RAM A B` disassembles it; `pcsum.py`; `uniqpcs.sh`;
+`run_snapwait.sh` made `~/ibmrs6k/snap3_wait.bin` (build3, at the first
+retire of 0x20D9F4, clock 1,232,908,651, instruction 372,470,699, about
+0.6 M clocks after `snap3_cbp.bin`); `run_waitpcs.sh` traced the wait itself
+(`~/ibmrs6k/run_waitpcs.txt`). A run from a snapshot needs both `--cycles`
+and `--instr` limits, or it stops at once. Inline `$` in `wsl ... bash -lc`
+strings is eaten: put commands in script files.
+
+Earlier bench tools: `RTC_FAST` (the RTC's seconds 64 x faster, on by
+default), `--key-at CLOCK:CODE[:e]`, `--com1-at CLOCK:BYTE`, `--pcs-from`,
+`--cpu-mhz/--mem-mhz`, `make machine_sd`; `pcs_path.py`, `sizing_path.py`.
+Snapshots (`~/ibmrs6k/` in WSL, the `build3` binary): `snap3_mc.bin`
+(main_control, clock 520,051,476), `snap3_cbp.bin` (cold_boot_path with the
+CD, clock 1,232,285,474), `snap3_wait.bin`. The SDRAM benches with the
+board's DQM wiring: `~/ibmrs6k/build_dqm_sd/machine_sd` (fixed controller)
+and `build_old_sd` (the old one, reproduces the sizing halt).
 
 ### The rest
 
