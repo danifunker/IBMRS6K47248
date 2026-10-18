@@ -417,104 +417,110 @@ sdramclk_ddr
 
 // The MiSTer's UART carries either COM1 (the firmware's serial console) or, for
 // bring-up (OSD "UART", the default), a debug stream at 115200 baud, in the
-// memory clock: "R" when the CPU leaves reset; every write of a word to port
+// CPU's clock: "R" when the CPU leaves reset; every write of a word to port
 // 680 (the firmware's progress codes, the code in the first byte, as the bench
 // prints them) as two hex digits and a space; "." every 2^24 instructions
-// retired (the CPU is alive); and the CPU's word accesses to RAM 0 and 7FC
-// (the firmware's memory probe writes patterns from 0 to 7FC and reads them
-// back) as "W0=xxxxxxxx ", "R7=xxxxxxxx " (the data as the CPU sees it, the
-// low word of the port). A 1 KB queue in a RAM.
+// retired (the CPU is alive); the PCI configuration accesses ("C8=xxxxxxxx "
+// a write of CF8, "cW=" and "cR=" a write and a read of CFC, the data as the
+// CPU's); and, from the memory clock, the CPU's word accesses to RAM 7FC
+// ("W7=xxxxxxxx ", "R7=xxxxxxxx ") and any word read of RAM 0-7FC that differs
+// from the CPU's own last write there ("!aaa=expected/got "). A 4 KB queue in RAM.
 wire        post_ev = io_ev & io_we & (io_addr == 32'h8000_0680) & (io_be == 4'hF);
-// the events of the CPU's clock, carried by toggles (their data stands still long enough)
-reg         post_tog = 0, alive_tog = 0, reset_tog = 0;
-reg  [7:0]  post_code = 0;
+wire        cf8_ev  = io_ev & io_we & (io_addr == 32'h8000_0CF8);
+wire        cfc_ev  = io_ev & (io_addr == 32'h8000_0CFC);
+wire [31:0] io_d    = io_we ? io_wdata : io_rdata;
 reg         cpu_reset_q = 1;
 reg  [23:0] alive = 0;
+wire        reset_ev = cpu_reset_q & ~cpu_reset;
+wire        alive_ev = trace_valid & trace_last & (&alive);
 always @(posedge clk_cpu) begin
 	cpu_reset_q <= cpu_reset;
-	if (post_ev) begin post_tog <= ~post_tog; post_code <= io_wdata[31:24]; end
-	if (cpu_reset_q & ~cpu_reset) reset_tog <= ~reset_tog;
-	if (trace_valid & trace_last) begin
-		alive <= alive + 1'd1;
-		if (&alive) alive_tog <= ~alive_tog;
-	end
+	if (trace_valid & trace_last) alive <= alive + 1'd1;
 end
-reg  [2:0]  post_s = 0, alive_s = 0, reset_s = 0;
-always @(posedge clk_mem) begin
-	post_s  <= {post_s[1:0], post_tog};
-	alive_s <= {alive_s[1:0], alive_tog};
-	reset_s <= {reset_s[1:0], reset_tog};
-end
-wire post_m  = post_s[2] ^ post_s[1];
-wire alive_m = alive_s[2] ^ alive_s[1];
-wire reset_m = reset_s[2] ^ reset_s[1];
-// the memory port's word accesses to 7FC, at their acknowledgement; and a shadow of the
-// CPU's word writes to 0-7FC (512 words), every word read there compared with it:
-// a mismatch is reported as "!aaa=expected/got " (the probe writes 0-7FC, reads it back)
+
+// the memory port (the memory clock): the word accesses to 7FC, and the shadow of the
+// CPU's word writes to 0-7FC compared with every word read there
 wire        mem_ev = b_req & b_ack & ~b_line & (b_addr[31:2] == 30'h1FF);
-wire [31:0] mem_d  = b_we ? b_wdata[31:0] : b_rdata[31:0];
 wire        low_w  = b_req & b_ack & ~b_line & b_we & (b_addr[31:11] == 21'd0);
 wire        low_r  = b_req & b_ack & ~b_line & ~b_we & (b_addr[31:11] == 21'd0);
 reg  [31:0] shadow [512];
 reg  [31:0] shadow_q;
-reg  [8:0]  shadow_a;
-reg         cmp_pend = 0;                 // a read's data to compare next clock (the RAM's read is registered)
+reg         cmp_pend = 0;
 reg  [31:0] cmp_got;
 reg  [10:2] cmp_addr;
+reg         m_tog = 0;                    // flips with every event carried over
+reg         m_mis = 0, m_we = 0;          // the event: a mismatch, else an access to 7FC (write or read)
+reg  [31:0] m_d, m_exp;
+reg  [10:2] m_addr;
 always @(posedge clk_mem) begin
 	if (low_w) shadow[b_addr[10:2]] <= b_wdata[31:0];
 	shadow_q <= shadow[b_addr[10:2]];
 	cmp_pend <= low_r;
 	cmp_got  <= b_rdata[31:0];
 	cmp_addr <= b_addr[10:2];
+	if (cmp_pend && cmp_got != shadow_q) begin
+		m_tog <= ~m_tog; m_mis <= 1'b1; m_d <= cmp_got; m_exp <= shadow_q; m_addr <= cmp_addr;
+	end
+	else if (mem_ev) begin
+		m_tog <= ~m_tog; m_mis <= 1'b0; m_we <= b_we; m_d <= b_we ? b_wdata[31:0] : b_rdata[31:0];
+	end
 end
-wire        mis_ev = cmp_pend & (cmp_got != shadow_q);
+reg  [2:0]  m_s = 0;
+always @(posedge clk_cpu) m_s <= {m_s[1:0], m_tog};
+wire        m_ev = m_s[2] ^ m_s[1];       // (the latched data stands still long enough: one event in 512)
 
 function automatic [7:0] hex(input [3:0] n);
 	hex = n < 4'd10 ? 8'h30 + {4'd0, n} : 8'h37 + {4'd0, n};
 endfunction
+function automatic [63:0] hex8(input [31:0] v);
+	hex8 = {hex(v[31:28]), hex(v[27:24]), hex(v[23:20]), hex(v[19:16]), hex(v[15:12]), hex(v[11:8]), hex(v[7:4]), hex(v[3:0])};
+endfunction
 
-localparam logic [15:0] UART_DIV1 = 16'(100_000_000 / 115_200 - 1);   // memory clocks per bit, less one
-reg  [7:0]  dq [1024];                    // the byte queue (a RAM: one byte in a clock)
-reg  [9:0]  dq_w = 0, dq_r = 0;
+localparam logic [15:0] UART_DIV1 = 16'(CPU_MHZ * 1_000_000 / 115_200 - 1);   // clocks per bit, less one
+reg  [7:0]   dq [4096];                   // the byte queue (a RAM: one byte in a clock)
+reg  [11:0]  dq_w = 0, dq_r = 0;
 reg  [111:0] stage;                       // the bytes being queued, the first in the top byte
-reg  [3:0]  stage_n = 0;                  // ... how many are left
-reg  [31:0] mis_got;                      // a mismatch's second half, queued after its first
-reg         mis_half = 0;
-reg         post_pend = 0, reset_pend = 0, alive_pend = 0;   // events seen while the stage was busy
-always @(posedge clk_mem) begin
-	post_pend  <= post_pend  | post_m;
-	reset_pend <= reset_pend | reset_m;
-	alive_pend <= alive_pend | alive_m;
+reg  [3:0]   stage_n = 0;                 // ... how many are left
+reg  [31:0]  mis_got;                     // a mismatch's second half, queued after its first
+reg          mis_half = 0;
+reg          post_pend = 0, reset_pend = 0, alive_pend = 0, m_pend = 0;   // events seen while the stage was busy
+reg  [7:0]   post_code;
+always @(posedge clk_cpu) begin
+	if (post_ev) post_code <= io_wdata[31:24];
+	post_pend  <= post_pend  | post_ev;
+	reset_pend <= reset_pend | reset_ev;
+	alive_pend <= alive_pend | alive_ev;
+	m_pend     <= m_pend     | m_ev;
 	if (stage_n != 4'd0) begin
 		dq[dq_w] <= stage[111:104];
-		dq_w     <= dq_w + 10'd1;
+		dq_w     <= dq_w + 12'd1;
 		stage    <= {stage[103:0], 8'h00};
 		stage_n  <= stage_n - 4'd1;
 	end
 	else if (mis_half) begin
 		stage_n  <= 4'd9;
-		stage    <= {hex(mis_got[31:28]), hex(mis_got[27:24]), hex(mis_got[23:20]), hex(mis_got[19:16]),
-		             hex(mis_got[15:12]), hex(mis_got[11:8]), hex(mis_got[7:4]), hex(mis_got[3:0]), 8'h20, 40'h0};
+		stage    <= {hex8(mis_got), 8'h20, 40'h0};
 		mis_half <= 1'b0;
 	end
-	else if (mis_ev) begin
-		stage_n <= 4'd14;
-		stage   <= {8'h21, hex({1'b0, cmp_addr[10:8]}), hex(cmp_addr[7:4]), hex({cmp_addr[3:2], 2'b00}), 8'h3D,
-		            hex(shadow_q[31:28]), hex(shadow_q[27:24]), hex(shadow_q[23:20]), hex(shadow_q[19:16]),
-		            hex(shadow_q[15:12]), hex(shadow_q[11:8]), hex(shadow_q[7:4]), hex(shadow_q[3:0]), 8'h2F};
-		mis_got <= cmp_got;
-		mis_half <= 1'b1;
-	end
-	else if (mem_ev) begin                 // (a memory event during a drain is lost)
+	else if (cf8_ev | cfc_ev) begin        // (a configuration access during a drain is lost)
 		stage_n <= 4'd12;
-		stage   <= {b_we ? 8'h57 : 8'h52, b_addr[2] ? 8'h37 : 8'h30, 8'h3D,
-		            hex(mem_d[31:28]), hex(mem_d[27:24]), hex(mem_d[23:20]), hex(mem_d[19:16]),
-		            hex(mem_d[15:12]), hex(mem_d[11:8]), hex(mem_d[7:4]), hex(mem_d[3:0]), 8'h20, 16'h0};
+		stage   <= {cf8_ev ? 8'h43 : 8'h63, cf8_ev ? 8'h38 : io_we ? 8'h57 : 8'h52, 8'h3D, hex8(io_d), 8'h20, 16'h0};
 	end
-	else if (post_pend | post_m)   begin stage_n <= 4'd3; stage <= {hex(post_code[7:4]), hex(post_code[3:0]), 8'h20, 88'h0}; post_pend <= 1'b0; end
-	else if (reset_pend | reset_m) begin stage_n <= 4'd3; stage <= {8'h0D, 8'h0A, 8'h52, 88'h0}; reset_pend <= 1'b0; end
-	else if (alive_pend | alive_m) begin stage_n <= 4'd1; stage <= {8'h2E, 104'h0}; alive_pend <= 1'b0; end
+	else if (m_pend | m_ev) begin
+		m_pend <= 1'b0;
+		if (m_mis) begin
+			stage_n  <= 4'd14;
+			stage    <= {8'h21, hex({1'b0, m_addr[10:8]}), hex(m_addr[7:4]), hex({m_addr[3:2], 2'b00}), 8'h3D, hex8(m_exp), 8'h2F};
+			mis_got  <= m_d;
+			mis_half <= 1'b1;
+		end else begin
+			stage_n <= 4'd12;
+			stage   <= {m_we ? 8'h57 : 8'h52, 8'h37, 8'h3D, hex8(m_d), 8'h20, 16'h0};
+		end
+	end
+	else if (post_pend | post_ev)   begin stage_n <= 4'd3; stage <= {hex(post_code[7:4]), hex(post_code[3:0]), 8'h20, 88'h0}; post_pend <= 1'b0; end
+	else if (reset_pend | reset_ev) begin stage_n <= 4'd3; stage <= {8'h0D, 8'h0A, 8'h52, 88'h0}; reset_pend <= 1'b0; end
+	else if (alive_pend | alive_ev) begin stage_n <= 4'd1; stage <= {8'h2E, 104'h0}; alive_pend <= 1'b0; end
 end
 // the transmitter: a byte fetched from the RAM a clock ahead
 reg  [9:0]  tx_sh = 10'h3FF;              // start, 8 data, stop
@@ -523,8 +529,8 @@ reg  [15:0] tx_div = 0;
 reg  [7:0]  tx_byte;
 reg         tx_have = 0;
 reg         post_txd = 1;
-always @(posedge clk_mem) begin
-	if (!tx_have && dq_r != dq_w) begin tx_byte <= dq[dq_r]; dq_r <= dq_r + 10'd1; tx_have <= 1'b1; end
+always @(posedge clk_cpu) begin
+	if (!tx_have && dq_r != dq_w) begin tx_byte <= dq[dq_r]; dq_r <= dq_r + 12'd1; tx_have <= 1'b1; end
 	if (tx_n == 4'd0) begin
 		post_txd <= 1'b1;
 		if (tx_have) begin
