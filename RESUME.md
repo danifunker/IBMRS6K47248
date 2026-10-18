@@ -40,82 +40,53 @@ machine):
   (`support/ibmrs6k/`, reusing the disk write buffer, fast SCSI service loop
   and Ethernet mailbox of the user's other family branches): `docs/plan.md` M5/M7.
 
-## Where it stands (2026-10-18 morning, the end of the third session)
+## Where it stands (2026-10-18 afternoon, the fourth session)
 
-Read `docs/bringup_log.md`'s last six sections first: they are the day. The
-two open problems, in the order to take them:
+Read `docs/bringup_log.md`'s last four sections first. **The board is now
+.143** (the user, 2026-10-18: "use .143 now, do not use .92 until I tell you
+otherwise"); the scratch/work board scripts point there.
 
-### A. The board's sizing halt: SOLVED (2026-10-17 late night)
+### Done today
+- **The CMOS**: a blank CMOS fails its CRCs, `init_cmos` sets the
+  "CMOS was reset" bit (1F bit 5), and with it BOOT.6XE (the VDISK's boot
+  program, run by `main_control` as "boot 0") gives up: the no-bootable-media
+  screen. The RTC now starts with `init_cmos`'s image, bit clear
+  (`firmware/tools/cmos_image.py`). **The firmware then boots the CD** (board
+  and bench): the PReP partition loads, `2F AD` (the hand-off), the AIX boot
+  program decompresses the kernel (`firmware/tools/unz.py`), the kernel runs,
+  fills its RAM disk (each `copypage` takes a demand fault: normal), loads
+  kernel extensions and **starts init in user space** (faults at 10000188 /
+  2009464C on the board).
+- **The AIX kernel's full disassembly**: `scratch/work/aix/kernel.s` (3,692
+  functions named from traceback tables; not in git). `scratch/work/aix_unz.bin`
+  is the decompressed kernel XCOFF; `prep_boot.bin` the CD's boot partition.
+- **Board tools**: `scratch/work/capture_cd.sh OUT SECS` loads the core with
+  the ISO on S2 (through `scratch/work/ibm_cd.mgl`) and records the debug
+  UART; `listen.sh` records without reloading; `com1_listen.sh` sets the OSD
+  UART to COM1 (`/media/fat/config/IBMRS6K7248.CFG` byte 0 = 0x14; 0x04 =
+  debug UART with 32 MB) and records COM1. The debug UART now logs the
+  exceptions (`Pfrom-vec`, vectors 100-800 and F00), progress codes written
+  from outside `out32le` with their PC, port 92, a one-shot capture (LR, CTR,
+  MSR and 40 instructions with their GPR writes) at a chosen exception, the
+  first 250 device accesses after user code starts, and `.pppppppp` (the PC)
+  every 2^24 instructions.
+- **Bench**: `--calls`, `--exc`, the SCSI image reads logged. Snapshots
+  (32 MB, the CD, the CMOS fix; `build5` and `build6` restore them):
+  `snap5_mc32.bin` (main_control), `snap7_lzw.bin` (the decompressor, instr
+  809.7 M), `snap8_pcopy.bin` (copypage's first call, 1,178.76 M),
+  `snap10_user.bin` (init's first instruction, 1,324.0 M). build6 is built
+  with the build5-era `rtl/machine/IBMRS6K7248_system.sv` (the board's extra
+  trace ports change the model's snapshot layout: build the bench from that
+  file's 6451968 version to keep using these snapshots).
 
-The MiSTer SDRAM boards wire the chip's DQMH/DQML to A12/A11; the
-controller put zeros there in WRITEs, so every word write stored all four
-bytes and the main block's byte-store test (FFF15630, run from RAM 0 by the
-sizing FFF15490) failed on every bank. Fixed in `IBMRS6K7248_sdram.sv`
-(commit "sdram: the write byte masks on A12-A11"); the SDRAM bench now takes
-DQM from A12-A11 and reproduces the old halt. **The board now reaches the
-same boot screen as the bench** (the drive icon and the SMS diskette). The
-codes 23/24/22 mean "slot empty" / "error: switch off the lowest bank" /
-"no bank left" (`docs/bringup_log.md`, the last two sections). MacPPC7300
-has the same omission: `docs/cpu_patches/sdram_dqm_on_a12_a11.patch` (not
-applied there; tell the user). Board tools: `scratch/work/stage.sh`, then
-`scratch/work/capture.sh OUT SECS` (loads the core, captures the debug UART
-into `scratch/work/OUT`); `scratch/work/ppcdis.py A B` disassembles the ROM.
-The debug UART also logs the RAM test's PCs (`Ppppppppp-xxx`).
-
-### B. The firmware boots to a screen and waits (the first problem now, board and bench)
-
-**What the screen is** (decoded 2026-10-18 from `main_control`, RAM 0x8930-0x8DF0
-in `firmware/disasm/v1.12_ram_image_00000000.annotated.s`; strings from the
-block at TOC[52] = 0xF8258, r2 = 0x105980):
-- After checkpoint D0, `main_control` spawns **"boot 0"** (the boot attempt),
-  then `get_sys_boot_req`, D2, D4, and at 0x89F4 (FE) looks for
-  **`diags.6xe`** with `ffind_first`. Not found, so it shows the
-  "no bootable media" prompt: `drv_dsk.pic` (the drive and SMS diskette
-  icons; message "Insert the Systems Management Services diskette or
-  CD-ROM, and then press Enter"), animated by `AnimateDisk`.
-- The wait is the loop at 0x8C50: `Getchar` (COM1 via `rxchar`, and the
-  loaded keyboard driver at 0x21B300-0x21B4xx), then `timeout` (the RTC).
-  **Enter** goes back to 0x89F4: it only looks for `diags.6xe` again, it
-  does not rerun "boot 0", so the screen comes back. That explains why the
-  earlier key runs "changed nothing". An overall timeout calls `reboot_cmd`.
-  Typing **"eatabug"** there sets r14 and leads to the resident monitor
-  (`resident_monitor`, a command prompt): useful for bring-up.
-- The loaded code at 0x20D9F4, taken for the wait before, is **the icon
-  painter** (pixels through a nibble table, 16 bits at a time), not the wait.
-- **So the real question: why does "boot 0" fail without a SCSI command
-  after the scan?** It is not `boot_cmd` (0x133A0, "boot %c" with a drive
-  letter). Candidates: the boot list in NVRAM (`build_boot_table` 1DBB8,
-  `get_boot_seq`, `setboot`; the NVRAM starts as zeros, the firmware
-  initializes it), the stubbed EEPROM at 78-7C (`EEPROM_*` 38B98-39668,
-  `check_EE_serial`, read 2135 times as FF), or the SCSI driver's boot path.
-- **In flight when the session stopped**: `scratch/work/run_bootpcs.sh`
-  (from `snap3_wait.bin`, PCs for instructions 499,960,000-500,490,000, the
-  window between the last 7B and D2 that holds "boot 0", and every I/O
-  access) into `~/ibmrs6k/run_bootpcs.txt`. Read it with
-  `scratch/work/pcsum.py TRACE firmware/disasm/symbols_v1.12_ram.txt`
-  (per-function counts and the call order; loaded modules show as
-  `mod_xxxxxx`). If it did not finish, rerun it (about 15 minutes).
-- Then: fix what "boot 0" needs (boot list, EEPROM, or the CD path), check
-  on the bench (the CD should get READs), then build and check on .92.
-
-Tools made 2026-10-18 (all in `scratch/work/`): `snapram.py SNAP OUT [MB]`
-pulls RAM out of a bench snapshot (RAM byte A at file offset size-132 MB-8+A);
-`ramdis.py RAM A B` disassembles it; `pcsum.py`; `uniqpcs.sh`;
-`run_snapwait.sh` made `~/ibmrs6k/snap3_wait.bin` (build3, at the first
-retire of 0x20D9F4, clock 1,232,908,651, instruction 372,470,699, about
-0.6 M clocks after `snap3_cbp.bin`); `run_waitpcs.sh` traced the wait itself
-(`~/ibmrs6k/run_waitpcs.txt`). A run from a snapshot needs both `--cycles`
-and `--instr` limits, or it stops at once. Inline `$` in `wsl ... bash -lc`
-strings is eaten: put commands in script files.
-
-Earlier bench tools: `RTC_FAST` (the RTC's seconds 64 x faster, on by
-default), `--key-at CLOCK:CODE[:e]`, `--com1-at CLOCK:BYTE`, `--pcs-from`,
-`--cpu-mhz/--mem-mhz`, `make machine_sd`; `pcs_path.py`, `sizing_path.py`.
-Snapshots (`~/ibmrs6k/` in WSL, the `build3` binary): `snap3_mc.bin`
-(main_control, clock 520,051,476), `snap3_cbp.bin` (cold_boot_path with the
-CD, clock 1,232,285,474), `snap3_wait.bin`. The SDRAM benches with the
-board's DQM wiring: `~/ibmrs6k/build_dqm_sd/machine_sd` (fixed controller)
-and `build_old_sd` (the old one, reproduces the sizing halt).
+### Open: what AIX waits on after init starts
+On the board, after init's first page faults: no exceptions, no device
+accesses, nothing on COM1, the firmware's PowerPC logo still on the screen.
+The bench (`run10.sh`, from snap8) is behind the board in time; at 1.7 G
+instructions it was taking FP-unavailable exceptions at D0140C0C and DSIs at
+D013E50C (kernel extensions). A bitstream printing the PC every 2^24
+instructions is the next look at the board's quiet state. Also: the
+firmware's error icon (00016000) is drawn dark blue on black (palette?).
 
 ### The rest
 
