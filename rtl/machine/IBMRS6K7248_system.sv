@@ -116,6 +116,11 @@ module IBMRS6K7248_system
 	output logic [31:0]  trace_pc,
 	output logic [31:0]  trace_insn,
 	output logic [31:0]  trace_msr,
+	output logic [31:0]  trace_lr,
+	output logic [31:0]  trace_ctr,
+	output logic         trace_reg_we,
+	output logic [6:0]   trace_reg_idx,
+	output logic [63:0]  trace_reg_val,
 	output logic         trace_dreq,
 	output logic         trace_dwe,
 	output logic [31:2]  trace_daddr
@@ -148,8 +153,8 @@ DSPPC604 #(.PERF(PERF), .LE_MODE(LE_MODE)) cpu (
 	.mem_wdata(c_wdata), .mem_ack(c_ack), .mem_rdata(c_rdata),
 	.snoop_req, .snoop_we, .snoop_addr, .snoop_ack,
 	.trace_valid, .trace_last, .trace_pc, .trace_insn, .trace_fold(), .trace_fold_insn(),
-	.trace_reg2_we(), .trace_reg2_idx(), .trace_reg2_val(), .trace_reg_we(), .trace_reg_idx(), .trace_reg_val(),
-	.trace_cr(), .trace_xer(), .trace_lr(), .trace_ctr(), .trace_fpscr(), .trace_msr,
+	.trace_reg2_we(), .trace_reg2_idx(), .trace_reg2_val(), .trace_reg_we, .trace_reg_idx, .trace_reg_val,
+	.trace_cr(), .trace_xer(), .trace_lr, .trace_ctr, .trace_fpscr(), .trace_msr,
 	.trace_dreq, .trace_dwe, .trace_dkind(), .trace_daddr, .trace_dbe(), .trace_dwdata(),
 	.perf_cnt(), .dbg_ev(), .dbg_rec()
 );
