@@ -76,14 +76,22 @@ What is established:
   bench that check always passes; on the board the CPU must read something
   else back from CFC (the config address not matching dev 0? the stub's
   FFFFFFFF?).
-- **In flight at the end**: a build whose debug UART also traces the PCI
-  configuration accesses ("C8=" a CF8 write, "cW="/"cR=" CFC, the data as
-  the CPU's; a 4 KB queue; commit "io_rdata wired", `scratch/work/quartus_cfg.log`,
-  then `output_files/IBMRS6K7248.rbf`). **First thing**: when it is done,
-  stage and load it (`scratch/work/stage.sh` with `MISTER=192.168.99.92`,
-  then the ssh recipe below) and read the CF8/CFC pairs around the "19 23
-  23 24": which register the firmware reads before each "24" and what it
-  gets. Expected on the bench: CF8=800000C0 then cR=0000xxxx with byte 1 = 0.
+- **The configuration-trace build ran on the board** (`scratch/work/cfg.raw`):
+  the recovery block's accesses are all there and sane (the MPC105's
+  registers written, C0 read 00000000, written 00040000 (the W1C clear), the
+  probe's 7FC writes and reads matching for all five patterns), then "11 33
+  04" and at once the 22 flood: **the main block's events were overwritten in
+  the queue** by the halt loop's flood before the UART sent them (the
+  recovery block's survived because the CRC phase let the queue drain).
+  **In flight at the end**: the fix (the queue keeps its first 4 KB and drops
+  later bytes; commit "the debug queue keeps its first 4 KB",
+  `scratch/work/quartus_cfg2.log`, then `output_files/IBMRS6K7248.rbf`).
+  **First thing**: when it is done, stage and load it (`scratch/work/stage.sh`
+  with `MISTER=192.168.99.92`, then the ssh recipe below; fetch `/tmp/x.raw`
+  with scp and read it with Python, not `grep -o`) and read the main block's
+  "19 ... 23 23 24" with its "C8=/cR=/cW=" pairs: which register the firmware
+  reads before each "24" and what it gets. On the bench the check reads C0
+  (CF8 = C0000080 as the CPU writes it) and gets byte 1 = 0.
 - The debug UART's text is in `IBMRS6K7248.sv` "THE DEBUG UART" (events in
   the CPU's clock, the memory-port events by toggle from the memory clock).
 
