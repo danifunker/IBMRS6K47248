@@ -796,3 +796,14 @@ to be used until they say so. `scratch/work/stage.sh`, `capture_cd.sh` and
   read the LED code variable; and the `rc.boot` text in `ramfs_vol1.img`
   (0x157000-0x160000) for the step order (restbase, cfgmgr -f, bootinfo -b,
   the ipldevice, mount of the CD's /SPOT).
+- **COM1 is not silent on the install CD**: `aix433_com1.raw` (15 min at 9600)
+  holds 202 bytes in repeating pairs (`14 FD`, `70 FD`, `29 FE` ...): text at
+  the wrong rate. A bit-level search over TX/RX rate ratios fits best at
+  1.43-1.44 (139 of 202 bytes explained; the pairs `FD`/`FE` are the upper
+  and lower-case letters), i.e. the core transmits at about 9600/1.43 = 6700
+  baud, or the receiver is 1.43 x too fast. The UART's CLK_HZ chain is right
+  (70 MHz from the top to `com1`). To settle on the bench: boot the install
+  CD with `--com1` (exact bytes) and `--io-range 800003F8:800003FF` (the
+  divisor AIX programs); then the board at the matching rate. So something
+  *is* written to the console: AIX's boot messages or the kernel's, 100-odd
+  characters in 15 minutes, before `rc.boot` spins in `loopled`.

@@ -69,11 +69,17 @@ bringup log's four "2026-10-18" sections from "afternoon" on.
 - **The install CD on the board** (bitstream `ba84bca`): the kernel and user
   space run, no re-boot, but about a minute in, `rc.boot`'s shell sits in
   `loopled`'s `while :` forever (a step failed before any device was
-  touched: no device access after user start at all), and COM1 stays silent
-  (`aix433_com1.raw`). **This is the first problem now.**
+  touched: no device access after user start at all). COM1 is **not silent**:
+  202 bytes in 15 minutes, garbled by a rate mismatch of ~1.43 (`aix433_com1.raw`;
+  the UART's clock parameters are right): AIX does write something, 100-odd
+  characters, before the loop. **These two are the first problems now.**
 
 ### What to do first (before the priorities)
 
+0. Read COM1: on the bench boot the install CD from `snap20_mc.bin` with
+   `--com1` (exact bytes, any rate) and `--io-range 800003F8:800003FF`
+   (the divisor AIX programs); then record the board at the matching rate
+   (`com1_listen433.sh OUT SECS BAUD 10`). The text may name the failed step.
 1. Find the failed `rc.boot` step. The script is at `ramfs_vol1.img`
    0x157000-0x160000 (`ramfs_boot.py` inflates a boot image's RAM disk; the
    install RAM disk has 1171 pages). The order: restbase, `cfgmgr -f`,
