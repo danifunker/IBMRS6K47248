@@ -772,3 +772,27 @@ to be used until they say so. `scratch/work/stage.sh`, `capture_cd.sh` and
   here: `scratch/work/ibm_cd433.mgl`, `capture_cd433.sh`, `com1_listen433.sh`;
   `board433.sh` chains the new bitstream, the ISO copy, a debug-UART capture
   and a COM1 recording.
+
+## 2026-10-18 late evening: the install CD on the board (NVRAM image, EEPROM, IDE FF)
+
+- Bitstream `ba84bca` (86 % of the ALMs; the 70 MHz CPU clock misses by
+  3.1 ns in this fit, as the board has tolerated all along). The AIX 4.3.3
+  install CD boots (`aix433_dbg.raw`, 5.3 min): the firmware's path as before
+  (`7B`, `2F`), the kernel, user space at mark 67, **no re-boot cycle** (the
+  diagnostics-CD verdict holds). About a minute into user space the system
+  settles into **a CPU-bound user process forever**: `.10020638` in three
+  quarters of the alive samples, one FP-unavailable trap per clock tick at
+  `100203E8` (lazy FP re-enabled for it each tick), nothing else, and **no
+  device access at all after user start** (the bitstream's 250-access log is
+  empty). The program is the shell (the 205 KB XCOFF at `ramfs_vol1.img`
+  0x160000, `b_*` builtins) running `rc.boot`, whose `loopled` is `while :`
+  forever after an LED code: a boot step failed before any hardware was
+  needed. Which step: unknown yet; `showled` wrote nothing the core saw (the
+  LED path on rspc may be the NVRAM through the kernel's driver: no port
+  74/76 writes were logged, or the log's `usr_on` never armed).
+- Next: on the bench from `snap20_mc.bin` (build8) with `--cd` the install
+  ISO and `--calls`/`--daddr` around the first user-space exec, or on the
+  board a capture triggered at the shell's loop (PC 10020638 -> LR, GPRs) to
+  read the LED code variable; and the `rc.boot` text in `ramfs_vol1.img`
+  (0x157000-0x160000) for the step order (restbase, cfgmgr -f, bootinfo -b,
+  the ipldevice, mount of the CD's /SPOT).

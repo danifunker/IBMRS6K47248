@@ -15,6 +15,25 @@ How each milestone is proven: the Verilator bench (`sim/`) on the real
 v1.12 ROM first (its progress codes at 8C0, COM1's output, the stub
 list), then the board.
 
+## Priorities (the user's order, 2026-10-18)
+
+1. **SCSI** (M5): the Main_MiSTer branch (`support/ibmrs6k/`: the disk write
+   buffer, the fast service loop, the CD layer, NVRAM/CMOS persistence) and
+   the 53C810 as AIX's `ncr810dd` drives it (interrupts on IRQ15, DMA into
+   kernel buffers, the message and status phases), so that AIX can mount the
+   install CD and install onto a SCSI disk image.
+2. **Video** (M4 under AIX): the S3 Vision864 as AIX's S15 driver sees it
+   (modes, the accelerator, the SDAC), and the firmware's error-icon palette.
+3. **The rest**, in this order: what `docs/stubbed-hardware.md` lists as the
+   boot hits it (the 16550 under AIX, 8237 DMA, the EEPROM image's details),
+   Ethernet (M7, with the branch), audio, floppy; then speed (the CPU clock
+   misses 70 MHz by ~3 ns in the current fit).
+
+Where AIX stands at the hand-over: the install CD boots to user space, no
+device is touched, and `rc.boot` ends in its `loopled` forever-loop (a step
+failed before any hardware was needed: see `bringup_log.md` 2026-10-18 late
+evening). That failure is found first, then 1-3 above.
+
 ## Milestones
 
 ### M0 Skeleton (done, 2026-10-17)
@@ -108,9 +127,13 @@ linear frame buffer, the hardware cursor; 2 MB VRAM in the HPS's DDR3
 
 ### M6 AIX
 
-AIX 4.3.3.3 standalone diagnostics CD, then the AIX 4.3.3 install
-(volume 1), then AIX 5.1. Residual data and the time base frequency as
-the firmware reports them.
+The AIX 4.3.3 install CD (volume 1) first, then AIX 5.1. **Not the 4.3.3.3
+standalone diagnostics CD**: its `rc.boot` requires `bootinfo -M` = 101/103,
+which a real 7248 with firmware 1.12 does not give either (the model code
+0x0803004C from "IBM PPS Model 7248 (E)"); it ejects and reboots on the
+7248 by design (2026-10-18). Residual data and the time base frequency as
+the firmware reports them; the NVRAM and the VPD EEPROM as the core now
+supplies them (`docs/stubbed-hardware.md`).
 
 ### M7 The rest of the board
 
