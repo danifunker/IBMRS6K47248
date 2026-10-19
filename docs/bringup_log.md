@@ -807,3 +807,11 @@ to be used until they say so. `scratch/work/stage.sh`, `capture_cd.sh` and
   divisor AIX programs); then the board at the matching rate. So something
   *is* written to the console: AIX's boot messages or the kernel's, 100-odd
   characters in 15 minutes, before `rc.boot` spins in `loopled`.
+- **The NVRAM image is accepted** (`run20.sh`, build8, `ram20.bin`: the
+  residual data at 1FF6974 has NvramSize = 0x1000, FirmwareSupports 0xFC5,
+  6 SIMM slots; it was -1 before), and the firmware's whole boot runs through
+  with the EEPROM model (no password or lock path; the CD boots, the kernel
+  runs). The Serial still read `ffffffffffffffff`: `build_vpd` copies it from
+  the NVRAM *header* (NVRAMAccess(3,3)), which the firmware fills from the
+  EEPROM only when it formats the NVRAM; so the image now carries the EEPROM
+  image's serial (`bf5f755`), to be seen in the next bench or board run.

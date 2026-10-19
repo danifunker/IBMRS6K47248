@@ -3,8 +3,8 @@
 # firmware's nvram_good accepts, an empty Global Environment area, an empty
 # configuration area and an empty OS area, with the two CRCs. The firmware never
 # formats a bad NVRAM at boot (nvraminit is the resident monitor's command), so
-# the core starts with this image; the serial is the formatter's placeholder
-# (the EEPROM image's serial: build_vpd takes the residual's Serial from here).
+# the core starts with this image. Its Serial is the EEPROM image's (build_vpd copies
+# the residual data's Serial from this header, not from the EEPROM).
 # Persistence (the firmware's and AIX's writes surviving a core load) is the
 # Main_MiSTer branch's job, like the CMOS.
 #

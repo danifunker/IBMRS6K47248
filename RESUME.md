@@ -93,7 +93,7 @@ bringup log's four "2026-10-18" sections from "afternoon" on.
    path, to read the LED code (the capture logs LR, CTR, MSR and 40
    instructions with their GPR writes); (c) `showled` on rspc may write the
    code through the kernel's NVRAM driver: watch ports 74/76.
-2. Verify the NVRAM and EEPROM in the residual data: `run20.sh` (bench,
+2. (NvramSize = 0x1000 is verified: the NVRAM image works.) Verify the Serial and the EEPROM path in the residual data: `run20.sh` (bench,
    build8) snapshots at the decompressor (`snap20_lzw.bin` -> `ram20.bin`);
    the residual at 0x1FF6974: NvramSize at +0x78 (4096, not -1), Serial at
    +0x28 (the image's digits, not "ffff..."), and no password/lock prompt in
