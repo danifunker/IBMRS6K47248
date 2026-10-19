@@ -79,32 +79,39 @@ otherwise"); the scratch/work board scripts point there.
   trace ports change the model's snapshot layout: build the bench from that
   file's 6451968 version to keep using these snapshots).
 
-### Open: the diagnostics CD rejects the machine (the first problem now)
+### Where it stands (2026-10-18 evening): the diag CD was the wrong medium; AIX 4.3.3 install CD next
 
-Read the bringup log's "2026-10-18 afternoon" section and
-`docs/stubbed-hardware.md` ("The blocker today"). In short: AIX boots, runs
-`cfgmgr -f`, then `rc.boot` (the CD's own script, `scratch/work/aix/rc.boot.sh`)
-runs `bootinfo -M`; it must return 101 or 103 ("supports diagnostics") and
-returns 100 because `sys0`'s `modelcode` has bits 2-3 clear; so the script
-ejects the CD and calls `reboot(0)`, the firmware re-boots the CD, every ~3
-minutes. Nothing touches a device in user space before that; COM1 would be
-the console (the CD has no S3 driver) once the check passes. To do, in order:
-1. Pin the source of `modelcode`: `cfgsys_rspc` (`ramfs.img` 0x63C000) fills a
-   global system-info structure (TOC[0xd0]) in its routine at 0x10001118 from
-   `/dev/nvram` ioctls; field +0x34 is the code. Candidates: the IPL control
-   block's system-info area (built by the CD's boot program, `prep_boot.bin`
-   XCOFF at 0x12C00, from the residual data: the PrintableModel string, the
-   planar PnP ID IBM0005, or the VPD), or the NVRAM. Then make the core supply
-   it: a real VPD EEPROM at 78-7C with a 7248-100 image and/or an NVRAM with a
-   valid PReP header (the firmware's `nvram_good`: byte 2 = 1, byte 3 = 4).
-2. Then the SCSI CD under AIX's `ncr810dd`, the tty on S1, `cfgcon`, and the
-   diagnostics' console prompt on COM1 (`com1_listen.sh`).
-3. Keep `docs/stubbed-hardware.md` current with every stub a run finds.
+Read the bringup log's two "2026-10-18 evening" sections and `docs/stubbed-hardware.md`.
+In short: the 3-minute re-boot cycle was the diagnostics CD's own `rc.boot`
+rejecting the machine: `bootinfo -M` must return 101/103, and it returns 100
+on a real 7248 with firmware 1.12 too (the model code 0x0803004C comes from
+the firmware's fixed string "IBM PPS Model 7248 (E)" through the CD's PReP
+loader; only an 'A' or 'D' in the parentheses passes). The core reproduced a
+real machine. The AIX 4.3.3 install CD's `rc.boot` has no such check, so it
+is the medium now (`scratch/downloads/fsck.technology/aix433/LCD4_0286_07_VOLUME1.ISO`,
+on the board as `/media/fat/games/IBMRS6K7248/`, MGL `scratch/work/ibm_cd433.mgl`,
+scripts `capture_cd433.sh` / `com1_listen433.sh`).
 
-In flight at the end of the session: `run19.sh` (build7, from
-`snap10_user.bin`, ~8 hours): `--watch` on the kernel's reboot entries and a
-snapshot at the `reboot` syscall 3D830 (`snap12_reboot.bin`); its RAM would
-hold the console messages ("INIT: ...", the commands' errors) and the ODM.
+Hardware added tonight (commits d183558..ba84bca): the NVRAM starts with the
+firmware's own formatted image (`firmware/tools/nvram_image.py` writes it into
+`IBMRS6K7248_rtc.sv` between markers); the VPD EEPROM's controller at 78-7C
+(`IBMRS6K7248_eeprom.sv`, image by `firmware/tools/eeprom_image.py`: CRC
+word, a 16-digit serial, no passwords); the IDE ports answer FF. To verify:
+the residual data's NvramSize (4096, not -1) and Serial (the image's) in a
+snapshot after the `2F` hand-off (`run20.sh` on build8: `snap20_lzw.bin` ->
+`ram20.bin`, residual at 0x1FF6974: NvramSize at +0x78, Serial at +0x28), and
+that the firmware's EEPROM path raises no password/lock prompt.
+
+In flight at the end of the session: `run20.sh` (bench, hours), the Quartus
+build of ba84bca (`quartus_hw.log`) and `board433.sh`, which then boots the
+install CD on the board with a 5-minute debug-UART capture (`aix433_dbg.raw`)
+and a 15-minute COM1 recording (`aix433_com1.raw`): the hoped-for result is
+the "define the System Console" prompt on COM1. If user space runs but COM1
+stays silent, the next suspects are the SCSI CD under AIX's `ncr810dd` (the
+`/SPOT`... no: on the install CD the RAM disk's `cfgmgr -f` configures the
+CD and the tty on S1), then `cfgcon`; use the exception/alive profile
+(`profile_raw.py`) and the device-access log after user code starts.
+Persistence of NVRAM/CMOS across core loads: the Main_MiSTer branch (M5).
 
 **Lessons from this session (to save time):** the debug UART's queue is 4 KB
 and drops events when full, so a burst (page faults: thousands a second)
