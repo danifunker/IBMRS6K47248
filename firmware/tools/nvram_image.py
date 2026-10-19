@@ -4,7 +4,7 @@
 # configuration area and an empty OS area, with the two CRCs. The firmware never
 # formats a bad NVRAM at boot (nvraminit is the resident monitor's command), so
 # the core starts with this image; the serial is the formatter's placeholder
-# ('f' x 16: the firmware overwrites it from the EEPROM when that answers).
+# (the EEPROM image's serial: build_vpd takes the residual's Serial from here).
 # Persistence (the firmware's and AIX's writes surviving a core load) is the
 # Main_MiSTer branch's job, like the CMOS.
 #
@@ -31,7 +31,9 @@ def calc_crc(img, lo, hi):               # NVRAMCalcCRC: init FFFF, bytes lo..hi
         v = crcgen(v, img[a]) & 0xFFFF
     return v
 
-def image(time=0, date=0):
+def image(time=0, date=0, serial=None):
+    if serial is None:
+        from eeprom_image import SERIAL as serial   # the same serial as the EEPROM's image
     n = bytearray(SIZE)
     def w32(o, v): n[o:o+4] = struct.pack('>I', v & M)
     def w16(o, v): n[o:o+2] = struct.pack('>H', v & 0xFFFF)
@@ -42,7 +44,8 @@ def image(time=0, date=0):
     n[0x09] = ord('B')                   # Endian
     for o in (0x34, 0x3C, 0x44, 0x4C, 0x54, 0x5C): w32(o, time)     # the error logs' times
     for o in (0x38, 0x40, 0x48, 0x50, 0x58, 0x60): w32(o, date)
-    n[0x64:0x74] = b'f' * 16             # Serial, the placeholder
+    n[0x64:0x74] = serial                # Serial: build_vpd copies this field into the residual data, and the
+                                         # firmware fills it from the EEPROM only when it formats the NVRAM
     ge_addr, ge_len = 0xF8, SIZE - 0x6F8                 # the Global Environment area: F8-9FF
     w32(0xC4, ge_addr); w32(0xC8, ge_len); w32(0xCC, time); w32(0xD0, date)
     w32(0xD4, SIZE); w32(0xD8, 0); w32(0xDC, time); w32(0xE0, date); w32(0xE4, 0)   # the configuration area: empty
