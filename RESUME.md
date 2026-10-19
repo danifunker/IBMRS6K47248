@@ -1,6 +1,6 @@
 # Resume prompt: IBMRS6K7248 (IBM RS/6000 43P 7248) MiSTer core
 
-(Written 2026-10-17 by the first development session, on the Linux machine
+(Written 2026-10-17 by the first development session, last updated 2026-10-18 night by the fifth, on the Linux machine
 `m900` (15 GB, 6 cores), for continuing here or on another computer. It is
 the only resume prompt for this core; everything it needs is here or in
 the files it names. MacPPC7300 has its own, `RESUME_le_mode.md`, for the
@@ -40,78 +40,77 @@ machine):
   (`support/ibmrs6k/`, reusing the disk write buffer, fast SCSI service loop
   and Ethernet mailbox of the user's other family branches): `docs/plan.md` M5/M7.
 
-## Where it stands (2026-10-18 afternoon, the end of the fourth session)
+## Where it stands (2026-10-18 night, the end of the fifth session)
 
-Read `docs/bringup_log.md`'s last four sections first. **The board is now
-.143** (the user, 2026-10-18: "use .143 now, do not use .92 until I tell you
-otherwise"); the scratch/work board scripts point there.
+Read first: `docs/plan.md` ("Priorities": SCSI, then video, then the rest),
+`docs/stubbed-hardware.md` (every device, the core's state of each, the
+plan per device: keep it current with every stub a run finds), and the
+bringup log's four "2026-10-18" sections from "afternoon" on.
 
-### Done today
-- **The CMOS**: a blank CMOS fails its CRCs, `init_cmos` sets the
-  "CMOS was reset" bit (1F bit 5), and with it BOOT.6XE (the VDISK's boot
-  program, run by `main_control` as "boot 0") gives up: the no-bootable-media
-  screen. The RTC now starts with `init_cmos`'s image, bit clear
-  (`firmware/tools/cmos_image.py`). **The firmware then boots the CD** (board
-  and bench): the PReP partition loads, `2F AD` (the hand-off), the AIX boot
-  program decompresses the kernel (`firmware/tools/unz.py`), the kernel runs,
-  fills its RAM disk (each `copypage` takes a demand fault: normal), loads
-  kernel extensions and **starts init in user space** (faults at 10000188 /
-  2009464C on the board).
-- **The AIX kernel's full disassembly**: `scratch/work/aix/kernel.s` (3,692
-  functions named from traceback tables; not in git). `scratch/work/aix_unz.bin`
-  is the decompressed kernel XCOFF; `prep_boot.bin` the CD's boot partition.
-- **Board tools**: `scratch/work/capture_cd.sh OUT SECS` loads the core with
-  the ISO on S2 (through `scratch/work/ibm_cd.mgl`) and records the debug
-  UART; `listen.sh` records without reloading; `com1_listen.sh` sets the OSD
-  UART to COM1 (`/media/fat/config/IBMRS6K7248.CFG` byte 0 = 0x14; 0x04 =
-  debug UART with 32 MB) and records COM1. The debug UART now logs the
-  exceptions (`Pfrom-vec`, vectors 100-800 and F00), progress codes written
-  from outside `out32le` with their PC, port 92, a one-shot capture (LR, CTR,
-  MSR and 40 instructions with their GPR writes) at a chosen exception, the
-  first 250 device accesses after user code starts, and `.pppppppp` (the PC)
-  every 2^24 instructions.
-- **Bench**: `--calls`, `--exc`, the SCSI image reads logged. Snapshots
-  (32 MB, the CD, the CMOS fix; `build5` and `build6` restore them):
-  `snap5_mc32.bin` (main_control), `snap7_lzw.bin` (the decompressor, instr
-  809.7 M), `snap8_pcopy.bin` (copypage's first call, 1,178.76 M),
-  `snap10_user.bin` (init's first instruction, 1,324.0 M). build6 is built
-  with the build5-era `rtl/machine/IBMRS6K7248_system.sv` (the board's extra
-  trace ports change the model's snapshot layout: build the bench from that
-  file's 6451968 version to keep using these snapshots).
+### What was settled today
 
-### Where it stands (2026-10-18 evening): the diag CD was the wrong medium; AIX 4.3.3 install CD next
+- **The diagnostics CD rejects the 7248 by design.** The 3-minute re-boot
+  cycle was its own `rc.boot`: `bootinfo -M` must return 101/103 and returns
+  100 on a real 7248 with firmware 1.12 as well (the model code 0x0803004C
+  comes from the firmware's fixed "IBM PPS Model 7248 (E)" through the CD's
+  PReP loader; only an 'A' or 'D' machine passes). The core reproduced a real
+  machine. **The medium is the AIX 4.3.3 install CD (volume 1)**:
+  `scratch/downloads/fsck.technology/aix433/LCD4_0286_07_VOLUME1.ISO` (MD5
+  verified), on the board as `/media/fat/games/IBMRS6K7248/`, MGL
+  `scratch/work/ibm_cd433.mgl`, scripts `capture_cd433.sh` /
+  `com1_listen433.sh` (OUT SECS BAUD CFG0), `board433.sh`.
+- **Hardware added**: the NVRAM starts with the firmware's own formatted image
+  (`firmware/tools/nvram_image.py` -> the marked block in `IBMRS6K7248_rtc.sv`);
+  the VPD EEPROM's controller at 78-7C (`IBMRS6K7248_eeprom.sv`, image by
+  `firmware/tools/eeprom_image.py`: the CRC word, a 16-digit serial, no
+  passwords: inferred, no real dump exists); the IDE ports answer FF. The
+  RTC's time comes from Main (hps_io); NVRAM/CMOS persistence across core
+  loads belongs to the Main_MiSTer branch.
+- **The install CD on the board** (bitstream `ba84bca`): the kernel and user
+  space run, no re-boot, but about a minute in, `rc.boot`'s shell sits in
+  `loopled`'s `while :` forever (a step failed before any device was
+  touched: no device access after user start at all), and COM1 stays silent
+  (`aix433_com1.raw`). **This is the first problem now.**
 
-Read the bringup log's two "2026-10-18 evening" sections and `docs/stubbed-hardware.md`.
-In short: the 3-minute re-boot cycle was the diagnostics CD's own `rc.boot`
-rejecting the machine: `bootinfo -M` must return 101/103, and it returns 100
-on a real 7248 with firmware 1.12 too (the model code 0x0803004C comes from
-the firmware's fixed string "IBM PPS Model 7248 (E)" through the CD's PReP
-loader; only an 'A' or 'D' in the parentheses passes). The core reproduced a
-real machine. The AIX 4.3.3 install CD's `rc.boot` has no such check, so it
-is the medium now (`scratch/downloads/fsck.technology/aix433/LCD4_0286_07_VOLUME1.ISO`,
-on the board as `/media/fat/games/IBMRS6K7248/`, MGL `scratch/work/ibm_cd433.mgl`,
-scripts `capture_cd433.sh` / `com1_listen433.sh`).
+### What to do first (before the priorities)
 
-Hardware added tonight (commits d183558..ba84bca): the NVRAM starts with the
-firmware's own formatted image (`firmware/tools/nvram_image.py` writes it into
-`IBMRS6K7248_rtc.sv` between markers); the VPD EEPROM's controller at 78-7C
-(`IBMRS6K7248_eeprom.sv`, image by `firmware/tools/eeprom_image.py`: CRC
-word, a 16-digit serial, no passwords); the IDE ports answer FF. To verify:
-the residual data's NvramSize (4096, not -1) and Serial (the image's) in a
-snapshot after the `2F` hand-off (`run20.sh` on build8: `snap20_lzw.bin` ->
-`ram20.bin`, residual at 0x1FF6974: NvramSize at +0x78, Serial at +0x28), and
-that the firmware's EEPROM path raises no password/lock prompt.
+1. Find the failed `rc.boot` step. The script is at `ramfs_vol1.img`
+   0x157000-0x160000 (`ramfs_boot.py` inflates a boot image's RAM disk; the
+   install RAM disk has 1171 pages). The order: restbase, `cfgmgr -f`,
+   `bootinfo -b`/`-t`, the ipldevice, the `/SPOT` mount. Ways in: (a) the
+   bench: from `snap20_mc.bin` (build8, RTC_FAST) with `--cd` the install
+   ISO, `--calls` from the first user exec and `--daddr` to see which
+   programs run and what they open (`scratch/work/calls_user.py` names the
+   kernel calls; the snapshot's RAM lags the write-back cache); (b) the
+   board: the debug UART's one-shot capture retargeted (IBMRS6K7248.sv,
+   `isi_go`) to the shell's loop PC 10020638 or to `loopled`'s `showled`
+   path, to read the LED code (the capture logs LR, CTR, MSR and 40
+   instructions with their GPR writes); (c) `showled` on rspc may write the
+   code through the kernel's NVRAM driver: watch ports 74/76.
+2. Verify the NVRAM and EEPROM in the residual data: `run20.sh` (bench,
+   build8) snapshots at the decompressor (`snap20_lzw.bin` -> `ram20.bin`);
+   the residual at 0x1FF6974: NvramSize at +0x78 (4096, not -1), Serial at
+   +0x28 (the image's digits, not "ffff..."), and no password/lock prompt in
+   the firmware's progress codes. Adjust `eeprom_image.py` to what the
+   firmware's readers want.
+3. Then the priorities: SCSI (M5), video (M4 under AIX), the rest.
 
-In flight at the end of the session: `run20.sh` (bench, hours), the Quartus
-build of ba84bca (`quartus_hw.log`) and `board433.sh`, which then boots the
-install CD on the board with a 5-minute debug-UART capture (`aix433_dbg.raw`)
-and a 15-minute COM1 recording (`aix433_com1.raw`): the hoped-for result is
-the "define the System Console" prompt on COM1. If user space runs but COM1
-stays silent, the next suspects are the SCSI CD under AIX's `ncr810dd` (the
-`/SPOT`... no: on the install CD the RAM disk's `cfgmgr -f` configures the
-CD and the tty on S1), then `cfgcon`; use the exception/alive profile
-(`profile_raw.py`) and the device-access log after user code starts.
-Persistence of NVRAM/CMOS across core loads: the Main_MiSTer branch (M5).
+### Lessons of the day (to save time)
+
+- `pkill -f PATTERN` from a `wsl -- bash -lc '...'` whose command line
+  contains PATTERN kills the caller first: put kills in a script file whose
+  name does not match (`restart8.sh` style).
+- A generator that rewrites an RTL file must find its markers or fail; one
+  overwrote `_rtc.sv` and the clobbered file got committed (`d183558`): check
+  `wc -l` before committing generated edits.
+- The bench's `--io-range` only filters; `--io` enables the printing.
+- The debug UART's one-shot capture is a PC trigger now (`isi_go`): one build
+  per question, 36 minutes; choose the PC with the LR in mind.
+- The model-code chase: `cfgsys_rspc` <- `/dev/nvram` ioctl 0xE (the IPL
+  control block's system-info area, +0x34) <- the CD's PReP loader
+  (`aixmon`, `prep_boot.bin` file 0x430, runtime +0x4BD0, TOC 0xFD7C) <- the
+  residual's PrintableModel. Tools: `scratch/work/aix/` (the diag RAM disk
+  `ramfs.img`, `ramfs_vol1.img`, `bootinfo_rspc.xcoff`, `rc.boot.sh`).
 
 **Lessons from this session (to save time):** the debug UART's queue is 4 KB
 and drops events when full, so a burst (page faults: thousands a second)
