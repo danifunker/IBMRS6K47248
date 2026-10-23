@@ -76,6 +76,10 @@ bringup log's four "2026-10-18" sections from "afternoon" on.
 
 ### What to do first (before the priorities)
 
+The user confirmed this order on 2026-10-22 (`docs/plan.md` "Priorities",
+item 0): the three install-CD blockers below (COM1's rate, the failing
+`rc.boot` step, the Serial check), then SCSI, video, the rest.
+
 0. Read COM1: on the bench boot the install CD from `snap20_mc.bin` with
    `--com1` (exact bytes, any rate) and `--io-range 800003F8:800003FF`
    (the divisor AIX programs); then record the board at the matching rate
@@ -93,8 +97,11 @@ bringup log's four "2026-10-18" sections from "afternoon" on.
    path, to read the LED code (the capture logs LR, CTR, MSR and 40
    instructions with their GPR writes); (c) `showled` on rspc may write the
    code through the kernel's NVRAM driver: watch ports 74/76.
-2. (NvramSize = 0x1000 is verified: the NVRAM image works.) Verify the Serial and the EEPROM path in the residual data: `run20.sh` (bench,
-   build8) snapshots at the decompressor (`snap20_lzw.bin` -> `ram20.bin`);
+2. (NvramSize = 0x1000 is verified: the NVRAM image works; the firmware
+   boots through the EEPROM model with no lock path.) Verify the Serial: the
+   NVRAM image's header carries the EEPROM image's serial since `bf5f755`,
+   which build8 predates, so this needs a new bench build (and a new
+   `main_control` snapshot) or a board run. `run20.sh` (bench) snapshots at the decompressor (`snap20_lzw.bin` -> `ram20.bin`);
    the residual at 0x1FF6974: NvramSize at +0x78 (4096, not -1), Serial at
    +0x28 (the image's digits, not "ffff..."), and no password/lock prompt in
    the firmware's progress codes. Adjust `eeprom_image.py` to what the
@@ -157,7 +164,9 @@ session. The core's options on .143 are in `/media/fat/config/IBMRS6K7248.CFG`
   from the repo (16-17 minutes; the first error list is in the bringup log:
   Quartus 17 misreads `N'(int)` casts as signed, needs `genvar` declared
   before `generate`, cannot slice a concatenation).
-- The board: `ssh -i ~/mister_key root@192.168.99.92` from WSL;
+- The board: **use 192.168.99.143** (not .92, until the user says
+  otherwise; the commands below name .92 from older sessions: substitute
+  .143), `ssh -i ~/mister_key root@192.168.99.143` from WSL;
   `scratch/work/stage.sh` copies the rbf, boot.rom and the ISO; `echo
   load_core /media/fat/_Computer/IBMRS6K7248.rbf > /dev/MiSTer_cmd`; the
   screen through the MiSTerKVMS capture server on this PC

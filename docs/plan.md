@@ -15,8 +15,17 @@ How each milestone is proven: the Verilator bench (`sim/`) on the real
 v1.12 ROM first (its progress codes at 8C0, COM1's output, the stub
 list), then the board.
 
-## Priorities (the user's order, 2026-10-18)
+## Priorities (the user's order, 2026-10-18; confirmed 2026-10-22)
 
+0. **The install CD's blockers**, before anything else, in this order:
+   1. **COM1's rate**: AIX's console text arrives ~1.43x off rate on the
+      board; read it exactly on the bench (`--com1`, the divisor AIX programs
+      at 3F8-3FF), find why the board's rate differs, then read the text
+      (it may name the failed step).
+   2. **The failing `rc.boot` step** that ends in `loopled` (restbase,
+      `cfgmgr -f`, `bootinfo -b`/`-t`, the ipldevice, the `/SPOT` mount).
+   3. **The Serial check**: the residual's Serial carries the EEPROM image's
+      digits now that the NVRAM header holds them (`bf5f755`).
 1. **SCSI** (M5): the Main_MiSTer branch (`support/ibmrs6k/`: the disk write
    buffer, the fast service loop, the CD layer, NVRAM/CMOS persistence) and
    the 53C810 as AIX's `ncr810dd` drives it (interrupts on IRQ15, DMA into
@@ -32,7 +41,7 @@ list), then the board.
 Where AIX stands at the hand-over: the install CD boots to user space, no
 device is touched, and `rc.boot` ends in its `loopled` forever-loop (a step
 failed before any hardware was needed: see `bringup_log.md` 2026-10-18 late
-evening). That failure is found first, then 1-3 above.
+evening). Item 0 is found first, then 1-3 above.
 
 ## Milestones
 
