@@ -850,3 +850,19 @@ Findings (details in `scratch/work/com1_findings.md`):
 - Board handling learnt: driving the OSD with misterkvms-cli from this PC is unreliable
   (key presses land 10-40 s late, screenshots lag; a late Enter restarted the Pippin once);
   ask before replacing a running core, shut Mac OS down first.
+
+## 2026-10-23: the Serial reaches the residual data (A3 done)
+
+- `run22.sh` (build9: the NVRAM header carries the EEPROM image's serial, `bf5f755`),
+  from reset to the CD's decompressor (`snap22_lzw.bin` -> `scratch/work/aix/ram22.bin`):
+  the residual data's VPD Serial reads **`0000000000012345`** (the EEPROM image's
+  `SERIAL`; `ffffffffffffffff` in `ram20.bin`), NvramSize stays 0x1000, PrintableModel
+  "IBM PPS Model 7248 (E)". New snapshots for build9: `snap22_mc.bin` (main_control),
+  `snap22_lzw.bin` (the decompressor).
+- With A1 (COM1: no text, see the section above) and A3 closed, the install CD's one
+  open blocker is the failing `rc.boot` step (A2). Starting point: `snap21_user.bin`
+  (build8, the install CD, init's first instruction at clock 2,645,097,941). The main
+  suspect from the RAM disk's `rc.boot`: `bootinfo -t` (one byte at +0x4A of the IPL
+  control block's info area, written by the CD's loader `aixmon`), whose failure or a
+  type outside 1-5 gives `loopled 0xA06` before any device is touched; the
+  diagnostics CD hard-codes `BOOTYPE=3`, so this path never ran before.
