@@ -691,6 +691,15 @@ always_ff @(posedge clk) begin
 				sist0_st <= sist0_st | set_s0; sist1_st <= sist1_st | set_s1; dstat_st <= dstat_st | set_ds[6:0];
 			end
 		end
+`ifdef VERILATOR
+		// the bench's trace of the SCRIPTS processor (never in the bitstream; no state of its own,
+		// so the bench's snapshots stay valid): each instruction as decoded, the interrupt status as set
+		if (est == E_DECODE)
+			$display("ncr %08X: %08X %08X", dsp - (ins0[31:30] == 2'b11 ? 32'd12 : 32'd8), ins0, dsps);
+		if (set_s0 != 8'd0 || set_s1 != 3'd0 || set_ds != 8'd0)
+			$display("ncr set dstat %02X sist0 %02X sist1 %01X  (irq %0d istat %02X dien %02X dcntl %02X)",
+			         set_ds, set_s0, set_s1, irq, istat, dien, dcntl);
+`endif
 	end
 end
 
