@@ -815,3 +815,38 @@ to be used until they say so. `scratch/work/stage.sh`, `capture_cd.sh` and
   the NVRAM *header* (NVRAMAccess(3,3)), which the firmware fills from the
   EEPROM only when it formats the NVRAM; so the image now carries the EEPROM
   image's serial (`bf5f755`), to be seen in the next bench or board run.
+
+## 2026-10-23: COM1's rate (the "1.43") is not the core's; AIX never transmits on COM1
+
+Question: the install CD's COM1 output recorded on the board on 2026-10-18 at 9600
+(`aix433_com1.raw`, pairs `14 FD`, `70 FD`, `29 FE`) looked like text 1.43 x slow.
+Findings (details in `scratch/work/com1_findings.md`):
+
+- **AIX programs 9600 8N1.** On the bench (run21, build8 from `snap20_mc.bin`, the
+  install CD, `--io-range 800003F8:800003FF`) the kernel's first COM1 accesses, 0.5 G
+  clocks after the hand-off: SCR test 55/00, LCR 03, IER 00, FCR 01/07/01, DLAB, DLL 0C,
+  DLM 00, LCR 03, MCR 03, LSR read 60. Divisor 12 = 9600; the firmware's init is the
+  same (DLL 0C, LCR 03, PC 7320). **No THR write in 13.3 G clocks** (5.6 G instructions):
+  `com1_run21.raw` is empty.
+- **The core's rate is right.** A Verilator unit test of `IBMRS6K7248_uart` at CLK_HZ 70e6,
+  FAST 0 gives 7291.67 clocks a bit = 9600.0 baud at divisor 12 (`scratch/work/uart_ut/`).
+  Quartus 17.0 computes the `32'((64'd1_843_200 << 32) / 64'(CLK_HZ))` constant exactly
+  (a probe project, `scratch/work/qconst/`, read back from the VQM: UART 113092624, PIT
+  73209680, RTC 2010535, all equal to Python's), so the PIT and RTC are right too. The
+  MiSTer's ttyS1 is a plain 9600 8N1 (no uartmode script, no midilink).
+- **On the board AIX transmits nothing.** A diagnostic top (commit 7ad7d35: COM1 register
+  writes from the hand-off on, and the shortest low/high pulse of `com1_txd` in clocks, on the
+  debug UART) ran 16 minutes on the .92 board (MiSTer-SS1, the user's board for this
+  core again; loaded through the mgl after the user shut the Pippin down; default options):
+  the hand-off, the kernel's COM1 init (SCR 55, FCR 07 seen; the logger keeps one entry per
+  1.2 ms), user space and the shell loop (36 G instructions, several reboot cycles), and
+  **not one low pulse on com1_txd** (`scratch/work/com1diag92*.raw`, `com1diag_decode.py`).
+- The 2026-10-18 bytes therefore are not AIX's text at a wrong rate; no TX/RX ratio from
+  0.8 to 4.6 and no framing reproduces the pairs as characters (`com1_fit.py`,
+  `com1_pairs.py`, `com1_sim.py`), and the FD/FE tails are one-or-two-bit glitches.
+  Their source on .143 is unverified (noise or another device on that ttyS1).
+- Consequence for the rc.boot hunt: **COM1 cannot name the failing step**; AIX sets the
+  port up and never writes to it. No RTL change is needed.
+- Board handling learnt: driving the OSD with misterkvms-cli from this PC is unreliable
+  (key presses land 10-40 s late, screenshots lag; a late Enter restarted the Pippin once);
+  ask before replacing a running core, shut Mac OS down first.
