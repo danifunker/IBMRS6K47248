@@ -247,6 +247,15 @@ assign dm_addr = d_addr[31:3];
 wire [7:0] reg_imm = ins0[15:8];
 wire [6:0] reg_adr = ins0[22:16];
 
+// a memory move's source (DMODE.SIOM) or destination (DMODE.DIOM) in PCI I/O space: inside our own
+// BAR0 it is the chip's own registers (80-FF alias 00-7F), as AIX's ncr810dd copies DSA and the
+// SCRATCH registers to and from memory; any other I/O address is a bus fault
+wire       mm_src_io   = dmode[5];
+wire       mm_dst_io   = dmode[4];
+wire       mm_src_self = mm_src_io && io_on && dnad[31:8] == io_base;
+wire       mm_dst_self = mm_dst_io && io_on && temp[31:8] == io_base;
+logic [7:0] mm_byte;                            // the byte read from our own registers
+
 function automatic logic [31:0] sext24(input logic [23:0] v);
 	return {{8{v[23]}}, v};
 endfunction
@@ -445,7 +454,7 @@ always_ff @(posedge clk) begin
 							carry <= c_out;
 							if (ins0[29:27] == 3'b110) sfbr <= res;
 							else case (reg_adr)
-								7'h01: begin scntl1 <= res; sb_rst <= res[3]; end
+								7'h01: begin scntl1 <= res; sb_rst <= res[3]; if (res[3] && !scntl1[3]) set_s0[1] = 1'b1; end   // our own RST, as from the host
 								7'h14: begin sigp <= res[5]; sem <= res[4]; end
 								7'h1B: ctest3_w <= res & 8'hFB;
 								7'h2C: dsp[7:0] <= res; 7'h2D: dsp[15:8] <= res; 7'h2E: dsp[23:16] <= res; 7'h2F: dsp[31:24] <= res;
@@ -637,7 +646,12 @@ always_ff @(posedge clk) begin
 
 			// ---- memory move: a byte at a time through the read cache and the write buffer
 			E_MM_RD: begin
-				if (rc_valid && rc_addr == dnad[31:3]) est <= E_MM_WR;
+				if (mm_src_io) begin
+					// I/O space: our own registers, or a bus fault
+					if (mm_src_self) begin mm_byte <= reg_rd(dnad[6:0]); est <= E_MM_WR; end
+					else begin set_ds[5] = 1'b1; est <= E_FLUSH; fl_next <= 1'b0; end
+				end
+				else if (rc_valid && rc_addr == dnad[31:3]) est <= E_MM_WR;
 				else if (wb_valid && d_idle) begin
 					d_go <= 1'b1; dm_we <= 1'b1; d_addr <= {wb_addr, 3'd0}; dm_be <= wb_be; dm_wdata <= wb_data;
 					wb_valid <= 1'b0;
@@ -651,8 +665,25 @@ always_ff @(posedge clk) begin
 			end
 			E_MM_WR: begin
 				logic [7:0] b;
-				b = dw_byte(rc_data, dnad[2:0]);
-				if (wb_valid && wb_addr != temp[31:3]) begin
+				b = mm_src_io ? mm_byte : dw_byte(rc_data, dnad[2:0]);
+				if (mm_dst_io) begin
+					// I/O space: our own registers (as a register write from SCRIPTS), or a bus fault
+					if (mm_dst_self) begin
+						case (temp[6:0])
+							7'h01: begin scntl1 <= b; sb_rst <= b[3]; if (b[3] && !scntl1[3]) set_s0[1] = 1'b1; end
+							7'h14: begin sigp <= b[5]; sem <= b[4]; end
+							7'h1B: ctest3_w <= b & 8'hFB;
+							7'h2C: dsp[7:0] <= b; 7'h2D: dsp[15:8] <= b; 7'h2E: dsp[23:16] <= b; 7'h2F: dsp[31:24] <= b;
+							7'h3B: dcntl <= b & 8'hFB;
+							7'h4F: stest3_w <= b & 8'hFD;
+							default: reg_wr(temp[6:0], b);
+						endcase
+						dnad <= dnad + 32'd1; temp <= temp + 32'd1; dbc <= dbc - 24'd1;
+						est <= (dbc == 24'd1) ? E_FLUSH : E_MM_RD; fl_next <= 1'b1;
+					end
+					else begin set_ds[5] = 1'b1; est <= E_FLUSH; fl_next <= 1'b0; end
+				end
+				else if (wb_valid && wb_addr != temp[31:3]) begin
 					if (d_idle) begin
 						d_go <= 1'b1; dm_we <= 1'b1; d_addr <= {wb_addr, 3'd0}; dm_be <= wb_be; dm_wdata <= wb_data;
 						wb_valid <= 1'b0;
