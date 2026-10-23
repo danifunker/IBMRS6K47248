@@ -449,13 +449,15 @@ end
 // the exceptions other than the external interrupt and the decrementer: a vector (100-400,
 // 600-800, F00; not 1000 up, where code runs) reached other than from the instruction before it, at 0 or at FFF00000,
 // "Ppppppppp-xxx " ("Q" for FFF00000) with the PC retired before
+reg         isi_armed = 0;                // past the boot hand-off (progress 2F)
 reg  [31:0] pc_prev = 0;
 reg  [31:0] pc_from;
 reg  [11:0] pc_to;
 reg         pc_rom;
 reg         pc_pend = 0;
+// (the SCSI build: the external interrupt, 500, too once the boot hand-off is past, to see IRQ 15 taken)
 wire        vec_at = trace_pc[7:0] == 8'h00 && (trace_pc[31:12] == 20'd0 || trace_pc[31:12] == 20'hFFF00) &&
-                     trace_pc[11:8] != 4'h0 && trace_pc[11:8] != 4'h5 && trace_pc[11:8] != 4'h9 &&
+                     trace_pc[11:8] != 4'h0 && (trace_pc[11:8] != 4'h5 || isi_armed) && trace_pc[11:8] != 4'h9 &&
                      (trace_pc[11:8] <= 4'h8 || trace_pc[11:8] == 4'hF);
 wire        pc_hit = trace_valid & trace_last & vec_at & (pc_prev != trace_pc - 32'd4);
 always @(posedge clk_cpu) begin
@@ -466,7 +468,7 @@ end
 // syscall 3D830, mdreboot 148E24 and p_slih 3587C, the panic handler: the PCs logged tell which; LR the caller): LR, CTR and MSR as it
 // retires ("IL=... C=... M=..."), then that and the next 39 instructions retired,
 // "pppp=vvvvvvvv " (the PC's low half and the GPR each wrote, "--------" none)
-reg         isi_armed = 0, isi_done = 0;
+reg         isi_done = 0;
 reg  [5:0]  isi_n = 0, isi_w = 0, isi_r = 0;
 reg  [15:0] isi_pc [40];
 reg  [31:0] isi_v [40];
@@ -496,6 +498,17 @@ always @(posedge clk_cpu) begin
 	end
 	else if (~&c1_len) c1_len <= c1_len + 32'd1;
 end
+// (the SCSI build) from the hand-off on, every access to the 53C810's registers where AIX puts them (PCI I/O
+// 0100_0000, CPU 8100_0000-8100_00FF), through a 64-entry FIFO so a burst is kept:
+// "Wbaa=dddddddd " / "Rbaa=dddddddd " (b the byte lanes, aa the register offset, the data as on the bus)
+reg  [44:0] nq [64];                      // {we, be, offset, data}
+reg  [5:0]  nq_w = 0, nq_r = 0;
+wire        ncr_ev = isi_armed & io_ev & (io_addr[31:8] == 24'h810000);
+always @(posedge clk_cpu) if (ncr_ev && nq_w + 6'd1 != nq_r) begin
+	nq[nq_w] <= {io_we, io_be, io_addr[7:0], io_we ? io_wdata : io_rdata};
+	nq_w     <= nq_w + 6'd1;
+end
+wire [44:0] nq_e = nq[nq_r];
 wire        isi_go = trace_valid & trace_last & isi_armed & ~isi_done & (trace_pc == 32'h0003D830 || trace_pc == 32'h00148E24 || trace_pc == 32'h0003587C);
 always @(posedge clk_cpu) begin
 	if (post_ev && io_wdata[31:24] == 8'h2F) isi_armed <= 1'b1;
@@ -620,6 +633,12 @@ always @(posedge clk_cpu) begin
 	end
 	else if (c1_pendl) begin stage_n <= 4'd11; stage <= {8'h4C, 8'h3D, hex8(c1_minl), 8'h20, 24'h0}; c1_pendl <= 1'b0; end
 	else if (c1_pendh) begin stage_n <= 4'd11; stage <= {8'h48, 8'h3D, hex8(c1_minh), 8'h20, 24'h0}; c1_pendh <= 1'b0; end
+	else if (nq_r != nq_w) begin
+		stage_n <= 4'd13;
+		stage   <= {nq_e[44] ? 8'h57 : 8'h52, hex(nq_e[43:40]), hex(nq_e[39:36]), hex(nq_e[35:32]), 8'h3D, hex8(nq_e[31:0]),
+		            8'h20, 8'h0};
+		nq_r    <= nq_r + 6'd1;
+	end
 	else if (usr_pend) begin
 		stage_n  <= 4'd14;
 		stage    <= {usr_isa ? (usr_we ? 8'h77 : 8'h72) : (usr_we ? 8'h57 : 8'h52), hex(usr_a[15:12]), hex(usr_a[11:8]),
