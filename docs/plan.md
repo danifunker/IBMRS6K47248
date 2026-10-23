@@ -23,8 +23,9 @@ list), then the board.
       board; read it exactly on the bench (`--com1`, the divisor AIX programs
       at 3F8-3FF), find why the board's rate differs, then read the text
       (it may name the failed step).
-   2. **The failing `rc.boot` step** that ends in `loopled` (restbase,
-      `cfgmgr -f`, `bootinfo -b`/`-t`, the ipldevice, the `/SPOT` mount).
+   2. ~~**The failing `rc.boot` step**~~ (found 2026-10-23: the `/SPOT` mount, LED
+      0x518: `cfgmgr`'s SCSI scan under `ncr810dd` finds no `cd0`, so `bootinfo -b`
+      is empty; this is item 1, SCSI).
    3. ~~**The Serial check**~~ (done 2026-10-23: `0000000000012345`): the residual's Serial carries the EEPROM image's
       digits now that the NVRAM header holds them (`bf5f755`).
 1. **SCSI** (M5): the Main_MiSTer branch (`support/ibmrs6k/`: the disk write

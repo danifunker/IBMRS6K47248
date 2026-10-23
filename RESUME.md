@@ -76,6 +76,13 @@ bringup log's four "2026-10-18" sections from "afternoon" on.
 
 ### What to do first (before the priorities)
 
+**Update 2026-10-23: all three are settled** (`docs/bringup_log.md`, the 2026-10-23 sections):
+COM1 carries no text (AIX programs 9600 8N1 and never writes it), the Serial reaches the
+residual data, and the failing step is the `/SPOT` mount (LED 0x518) because AIX's SCSI scan
+finds no `cd0`. **Next is SCSI (M5)**, starting from build10's snapshots `snap24_a.bin`
+(clock 4.45 G, before the scan's waits) and `snap25_b.bin` (in the loop). The list below is
+kept for its methods.
+
 The user confirmed this order on 2026-10-22 (`docs/plan.md` "Priorities",
 item 0): the three install-CD blockers below (COM1's rate, the failing
 `rc.boot` step, the Serial check), then SCSI, video, the rest.

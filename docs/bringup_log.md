@@ -866,3 +866,35 @@ Findings (details in `scratch/work/com1_findings.md`):
   control block's info area, written by the CD's loader `aixmon`), whose failure or a
   type outside 1-5 gives `loopled 0xA06` before any device is touched; the
   diagnostics CD hard-codes `BOOTYPE=3`, so this path never ran before.
+
+## 2026-10-23: the failing rc.boot step is the CD mount (LED 0x518): AIX finds no cd0 (A2)
+
+- **A bench-only RTC bug first** (`09ba71a`): with `RTC_FAST` the divider wraps at 511,
+  but UIP was `div >= 32760`, so on the bench UIP never rose. AIX's planar PAL extension
+  (`/usr/lib/drivers/planar_pal_rspc`, function `planar_pal_init_ds1285`, loaded by
+  `cfgmgr`) turns interrupts off and waits for UIP to rise and fall: the bench spun there
+  for good (`run23`: `read_rtc` -> ports 70/71 between `iomem_att_ppc`/`iomem_det_ppc`, no
+  exception after instruction 1.2288 G). UIP is now the last 8 ticks before the wrap
+  (`SEC_WRAP - 7`): no change on the board (32760). The bench: `--save-clock N` (`893c3ec`).
+- **build10** from `snap21_user.bin` (`run24`, `run25.sh`): `cfgmgr` runs (the ISA bus
+  driver's 8237 set-up, port 808, PCI configuration), user space sleeps from instruction
+  ~1.38 G to ~3.7 G (timed waits: no hang), then the shell takes the board's signature (the
+  FP-unavailable trap at 100203E8 every tick). Snapshot in the loop: `snap25_b.bin`
+  (clock 7.5 G, `ram25b.bin`).
+- **The shell's `set -x` trace**, left in its heap (`ram25b.bin` 0x1DF3000; each line
+  stored with its length + 1):
+  `+ chramfs -t`, `+ init -c unlink ...`, `BOOTYPE=`, `+ [ -z 3 ]` (**`bootinfo -t` = 3, CD-ROM:
+  the A06 suspect is ruled out**), `+ unset ...`, `+ /usr/lib/methods/showled 0x510`,
+  `+ cfgmgr -f -v`, `> /etc/filesystems`, **`+ mount -v cdrfs -o ro /dev/ /SPOT`** (35
+  characters: `bootinfo -b` returned an **empty** name), **`+ [ 255 -ne 0 ]`**,
+  **`+ loopled 0x518`**; `showled` was exec'd with `0x518`.
+- **Why `bootinfo -b` is empty: there is no `cd0`.** RAM holds `scsi0` (CuDv, its
+  attributes: `adapter/pci/ncr810`, `bus_intr_lvl 15`, `04-B0`) and the runs of
+  `/usr/lib/methods/cfgncr_scsi -1 -l scsi0` and its child finder `find_sc_dev`, `cfgmgr`
+  reports "Configuration time: 38 seconds", but the only `cd0` in RAM is in kernel code: the
+  SCSI bus scan under AIX's `ncr810dd` found no device at ID 3. So the boot fails in the
+  53C810 under AIX (interrupts on IRQ 15, DMA into kernel buffers, the selection, message and
+  status phases of INQUIRY), which is the SCSI priority (M5), not the identity data.
+- **Next**: on the bench from `snap24_a.bin` (clock 4.45 G, before the scan's waits) or
+  earlier, `--io` over the 53C810's registers and the SCSI target's command log, to see what
+  `ncr810dd` asks of the chip and where the model falls short.
