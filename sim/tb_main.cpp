@@ -82,6 +82,7 @@ static void usage() {
 	       "  --watch PC   report when PC (hex) first retires (FFF10100 and 8398, main_control, always)\n"
 	       "  --beat N     every N clocks, a line with the instructions retired, the PC and the last progress code (default 20,000,000; 0 none)\n"
 	       "  --save FILE  snapshot the machine when --save-pc PC (hex; default 8398, main_control) first retires\n"
+	       "               (--save-clock N: at the first retire from clock N on instead)\n"
 	       "  --restore FILE  start from a snapshot (the same build and ROM; the options given apply from there)\n"
 	       "  --vram FILE  the S3's 2 MB VRAM at the end, raw (tools/vram.py draws it)\n"
 	       "  --frame FILE the picture's latest whole frame, as a PPM, rewritten at each vertical sync\n"
@@ -137,6 +138,7 @@ int main(int argc, char** argv) {
 	int lat = 6;                                   // the bench memory's answer, in clocks after the request
 	const char* save_path = nullptr;               // a snapshot of the machine (model and memory) ...
 	uint32_t save_pc = 0x00008398;                 // ... when this PC first retires (default main_control)
+	uint64_t save_clock = 0;                       // ... or at the first retire from this clock on (0: by PC)
 	const char* restore_path = nullptr;            // start from a snapshot instead of from reset
 	const char* vram_path = nullptr;               // the S3's VRAM at the end, raw
 	const char* frame_path = nullptr;              // the latest whole frame of the picture (PPM)
@@ -168,6 +170,7 @@ int main(int argc, char** argv) {
 		else if (a == "--frame") frame_path = next();
 		else if (a == "--save") save_path = next();
 		else if (a == "--save-pc") save_pc = strtoul(next(), nullptr, 16);
+		else if (a == "--save-clock") save_clock = strtoull(next(), nullptr, 0);
 		else if (a == "--restore") restore_path = next();
 		else if (a == "--disk0" || a == "--disk1" || a == "--cd") {
 			int n = a == "--disk0" ? 0 : a == "--disk1" ? 1 : 2;
@@ -552,7 +555,7 @@ int main(int argc, char** argv) {
 
 		if (top->trace_valid && top->trace_last) {
 			uint32_t pc = top->trace_pc;
-			if (save_path && !saved && pc == save_pc) {
+			if (save_path && !saved && (save_clock ? cycle >= save_clock : pc == save_pc)) {
 				last_pc = pc;
 				instr++;
 				VerilatedSave os;

@@ -135,7 +135,7 @@ check the data addresses or the call tree before calling it stuck.
 
 The OSD's RAM menu now lists sizes (32, 48, 56, 64, 96, 112 MB, then 16, 24;
 32 the default): commit 63d6756, bitstream being built at the end of the
-session. The core's options on .143 are in `/media/fat/config/IBMRS6K7248.CFG`
+session. The core's options on the board are in `/media/fat/config/IBMRS6K7248.CFG`
 (byte 0: bits 3-1 the RAM entry, bit 4 the UART: 1 = COM1).
 
 ### The rest
@@ -164,9 +164,10 @@ session. The core's options on .143 are in `/media/fat/config/IBMRS6K7248.CFG`
   from the repo (16-17 minutes; the first error list is in the bringup log:
   Quartus 17 misreads `N'(int)` casts as signed, needs `genvar` declared
   before `generate`, cannot slice a concatenation).
-- The board: **use 192.168.99.143** (not .92, until the user says
-  otherwise; the commands below name .92 from older sessions: substitute
-  .143), `ssh -i ~/mister_key root@192.168.99.143` from WSL;
+- The board: **use 192.168.99.92** (MiSTer-SS1; the user, 2026-10-23: .143 is
+  the PPC_Mac/Sun sessions' board). Ask before replacing a running core there, do
+  not write .CFG files over SSH on .92, and stage with `scratch/work/stage92.sh`
+  (some older scripts still name .143). `ssh -i ~/mister_key root@192.168.99.92` from WSL;
   `scratch/work/stage.sh` copies the rbf, boot.rom and the ISO; `echo
   load_core /media/fat/_Computer/IBMRS6K7248.rbf > /dev/MiSTer_cmd`; the
   screen through the MiSTerKVMS capture server on this PC
