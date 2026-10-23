@@ -105,8 +105,9 @@ endfunction
 wire [4:0] mdays = month == 4'd2 ? (year[1:0] == 2'd0 ? 5'd29 : 5'd28) :
                    (month == 4'd4 || month == 4'd6 || month == 4'd9 || month == 4'd11) ? 5'd30 : 5'd31;
 
-// the update cycle: UIP for the last 244 us (8 ticks) before each second
-wire uip = run && div >= 15'd32760;
+// the update cycle: UIP for the last 244 us (8 ticks) before each second (SEC_WRAP - 7: with FAST
+// the divider never reaches 32760, and AIX's planar_pal_init_ds1285 waits for UIP with interrupts off)
+wire uip = run && div >= SEC_WRAP - 15'd7;
 
 // the periodic interrupt: rate select 3-15 is every 2^(RS-1) ticks (8,192 Hz down to 2 Hz);
 // 1 and 2 are 256 and 128 Hz (every 128 and 256 ticks)
