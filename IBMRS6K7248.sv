@@ -473,13 +473,29 @@ reg  [31:0] isi_v [40];
 reg  [39:0] isi_vw = 0;
 reg  [31:0] isi_lr, isi_ctr, isi_msr;
 reg  [1:0]  isi_hdr = 0;                  // header parts left to send (3: all)
-// once user code runs after the hand-off (a PC in segments 1-7): the next 250 device accesses,
-// "waaaa=dddddddd " ("r"/"w" for ISA I/O at 8000xxxx, "R"/"W" otherwise; the address's low half)
+// (the COM1-rate build) from the hand-off (progress 2F) on, every write to COM1's registers (3F8-3FF):
+// "wbaaa=dddddddd " (b the byte lanes, aaa the port, the data as on the bus; the firmware's and AIX's divisor,
+// LCR, FCR and THR writes), and the shortest low and high pulses of com1_txd seen so far, in CPU clocks
+// ("L=cccccccc ", "H=cccccccc ": a lone bit is one bit time, 7292 clocks at 9600 baud and 70 MHz)
 reg         usr_on = 0;
 reg  [7:0]  usr_n = 8'd250;
 reg         usr_pend = 0, usr_we, usr_isa;
 reg  [15:0] usr_a;
 reg  [31:0] usr_d;
+reg         c1_q = 1'b1;
+reg  [31:0] c1_len = 32'd0, c1_minl = 32'hFFFFFFFF, c1_minh = 32'hFFFFFFFF;
+reg         c1_evl = 1'b0, c1_evh = 1'b0, c1_pendl = 1'b0, c1_pendh = 1'b0;
+always @(posedge clk_cpu) begin
+	c1_q   <= com1_txd;
+	c1_evl <= 1'b0;
+	c1_evh <= 1'b0;
+	if (com1_txd != c1_q) begin
+		c1_len <= 32'd1;
+		if (!c1_q && c1_len < c1_minl) begin c1_minl <= c1_len; c1_evl <= 1'b1; end
+		if ( c1_q && c1_len < c1_minh) begin c1_minh <= c1_len; c1_evh <= 1'b1; end
+	end
+	else if (~&c1_len) c1_len <= c1_len + 32'd1;
+end
 wire        isi_go = trace_valid & trace_last & isi_armed & ~isi_done & (trace_pc == 32'h0003D830 || trace_pc == 32'h00148E24 || trace_pc == 32'h0003587C);
 always @(posedge clk_cpu) begin
 	if (post_ev && io_wdata[31:24] == 8'h2F) isi_armed <= 1'b1;
@@ -550,10 +566,12 @@ always @(posedge clk_cpu) begin
 	if (k92_ev) k92_d <= io_wdata[15:8];
 	k92_pend   <= k92_pend | k92_ev;
 	if (isi_go) isi_hdr <= 2'd3;
-	if (usr_on && usr_n != 8'd0 && io_ev && !post_ev && !usr_pend) begin
-		usr_pend <= 1'b1; usr_we <= io_we; usr_isa <= io_addr[31:16] == 16'h8000; usr_a <= io_addr[15:0];
-		usr_d <= io_we ? io_wdata : io_rdata; usr_n <= usr_n - 8'd1;
+	if (isi_armed && io_ev && io_we && io_addr[31:3] == 29'h1000_007F && !usr_pend) begin
+		usr_pend <= 1'b1; usr_we <= io_we; usr_isa <= 1'b1; usr_a <= {io_be, io_addr[11:0]};
+		usr_d <= io_wdata;
 	end
+	c1_pendl <= c1_pendl | c1_evl;
+	c1_pendh <= c1_pendh | c1_evh;
 	post_pend  <= post_pend  | post_ev;
 	reset_pend <= reset_pend | reset_ev;
 	alive_pend <= alive_pend | alive_ev;
@@ -600,6 +618,8 @@ always @(posedge clk_cpu) begin
 		            isi_vw[isi_r] ? hex8(isi_v[isi_r]) : {8{8'h2D}}, 8'h20};
 		isi_r   <= isi_r + 6'd1;
 	end
+	else if (c1_pendl) begin stage_n <= 4'd11; stage <= {8'h4C, 8'h3D, hex8(c1_minl), 8'h20, 24'h0}; c1_pendl <= 1'b0; end
+	else if (c1_pendh) begin stage_n <= 4'd11; stage <= {8'h48, 8'h3D, hex8(c1_minh), 8'h20, 24'h0}; c1_pendh <= 1'b0; end
 	else if (usr_pend) begin
 		stage_n  <= 4'd14;
 		stage    <= {usr_isa ? (usr_we ? 8'h77 : 8'h72) : (usr_we ? 8'h57 : 8'h52), hex(usr_a[15:12]), hex(usr_a[11:8]),
