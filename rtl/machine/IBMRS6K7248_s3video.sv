@@ -14,7 +14,8 @@
 //
 //    - the scan-out: during each line, the next line: the hardware cursor's
 //      16 bytes of that line (when the cursor is on it), then its pixels, in
-//      bursts of up to 32 words, into one of two line buffers;
+//      bursts of up to 32 words, into one of two line buffers (4 KB each:
+//      800 pixels at 32 bits, 1152 at 16, 2048 at 8);
 //    - the CPU's and the graphics engine's words (IBMRS6K7248_s3's VRAM
 //      port, through their clock crossing): one beat with byte enables.
 //
@@ -22,17 +23,21 @@
 //  words have the lowest address in bits 31-24 (the PowerPC's order: the
 //  MPC105 keeps bytes at their addresses).
 //
-//  The timing: the VGA CRTC in character clocks of 8 dots (the registers in
-//  `crtc`, decoded in IBMRS6K7248_s3), the dot clock the SDAC's PLL
-//  (14.31818 MHz x (M + 2) / ((N[4:0] + 2) x 2^N[6:5])) as a clock enable of
-//  the video clock by phase accumulation. 8 bits a pixel, packed (the S3's
-//  enhanced mode: the only one the firmware uses); line y starts at
-//  start + y x pitch. Then the pixel mask, the palette (6 bits a component,
-//  widened), and the cursor: 64 x 64, each line 16 bytes of four groups of
-//  an AND word and an XOR word (MSB first); in Windows mode 00 the
-//  background colour (CR0F's palette index), 01 the foreground (CR0E's),
-//  10 the screen, 11 the screen inverted; in X11 mode (CR55 bit 4) 0x the
-//  screen, 10 the background, 11 the foreground.
+//  The timing: the VGA CRTC in pixels (the registers decoded in
+//  IBMRS6K7248_s3, scaled there by the depth), the pixel clock the SDAC's
+//  PLL (14.31818 MHz x (M + 2) / ((N[4:0] + 2) x 2^post), post from the
+//  register side) as a clock enable of the video clock by phase
+//  accumulation. Packed pixels (the S3's enhanced mode) of 8, 16 or 32 bits
+//  (depth), little-endian; line y starts at start + y x pitch. At 8 bits
+//  the pixel mask and the palette (6 bits a component, widened); at 15, 16
+//  and 32 the SDAC's direct colour (5-5-5, 5-6-5, 8-8-8 in the low 24 bits;
+//  each widened by its top bits), not through the palette. The cursor: 64 x
+//  64, each line 16 bytes of four groups of an AND word and an XOR word
+//  (MSB first); in Windows mode 00 the background colour, 01 the
+//  foreground, 10 the screen, 11 the screen inverted; in X11 mode (CR55 bit
+//  4) 0x the screen, 10 the background, 11 the foreground; the colours at
+//  8 bits palette indexes (CR0E, CR0F), deeper pixel values (the CR4A and
+//  CR4B stacks).
 //
 //============================================================================
 
@@ -66,10 +71,11 @@ module IBMRS6K7248_s3video
 	output logic         ddr_we,
 
 	// the S3's registers (quasi-static: they change between frames), from IBMRS6K7248_s3
-	input  logic [10:0]  h_total,         // dots
-	input  logic [10:0]  h_disp,
-	input  logic [10:0]  h_ss,            // horizontal sync start, dots
-	input  logic [10:0]  h_sl,            // ... its length
+	input  logic [11:0]  h_total,         // pixels
+	input  logic [11:0]  h_disp,
+	input  logic [11:0]  h_ss,            // horizontal sync start, pixels
+	input  logic [11:0]  h_sl,            // ... its length
+	input  logic [1:0]   depth,           // 0 8 bits a pixel, 1 15 (5-5-5), 2 16 (5-6-5), 3 32 (8-8-8)
 	input  logic [10:0]  v_total,         // lines
 	input  logic [10:0]  v_disp,
 	input  logic [10:0]  v_ss,
@@ -79,14 +85,14 @@ module IBMRS6K7248_s3video
 	input  logic         screen_on,       // SR1 bit 5 clear and the attribute controller's PAS set
 	input  logic [7:0]   pix_mask,
 	input  logic [6:0]   pll_m,           // the selected clock's PLL
-	input  logic [6:0]   pll_n,
+	input  logic [7:0]   pll_n,           // N[4:0]; 7:5 the post-divider's power of 2
 	input  logic         cur_on,
 	input  logic [10:0]  cur_x,
 	input  logic [10:0]  cur_y,
 	input  logic [20:10] cur_base,        // the cursor's image, in KB
 	input  logic         cur_x11,         // CR55 bit 4: X11 mode
-	input  logic [7:0]   cur_fg,          // the colours (CR0E, CR0F): palette indexes
-	input  logic [7:0]   cur_bg,
+	input  logic [23:0]  cur_fg,          // the colours: palette indexes at 8 bits, else pixel values
+	input  logic [23:0]  cur_bg,
 
 	// the palette's read port (IBMRS6K7248_s3, read in this clock): the colour a clock later
 	output logic [7:0]   pal_addr,
@@ -114,7 +120,7 @@ logic        ce_dot;
 wire  [40:0] acc_n = {1'b0, acc} + {1'b0, numer};
 always_ff @(posedge clk) begin
 	numer  <= (40'(pll_m) + 40'd2) * 40'(REF);
-	denom  <= ((40'(pll_n[4:0]) + 40'd2) * 40'(CLKV_HZ)) << pll_n[6:5];
+	denom  <= ((40'(pll_n[4:0]) + 40'd2) * 40'(CLKV_HZ)) << pll_n[7:5];
 	ce_dot <= 1'b0;
 	if (numer >= denom) begin acc <= 40'd0; ce_dot <= 1'b1; end            // at or above the video clock: every clock
 	else if (acc_n >= {1'b0, denom}) begin acc <= 40'(acc_n - {1'b0, denom}); ce_dot <= 1'b1; end
@@ -123,8 +129,9 @@ always_ff @(posedge clk) begin
 end
 
 // ---- the CRTC -------------------------------------------------------------------------------
-logic [10:0] hc, vc;
-wire  h_end   = hc == h_total - 11'd1;
+logic [11:0] hc;
+logic [10:0] vc;
+wire  h_end   = hc == h_total - 12'd1;
 wire  v_end   = vc == v_total - 11'd1;
 wire  h_act   = hc < h_disp;
 wire  v_act   = vc < v_disp;
@@ -132,11 +139,13 @@ wire  hs_on   = hc >= h_ss && hc < h_ss + h_sl;
 wire  vs_on   = vc >= v_ss && vc < v_ss + 11'(v_sl);
 always_ff @(posedge clk) begin
 	if (ce_dot) begin
-		hc <= h_end ? 11'd0 : hc + 11'd1;
+		hc <= h_end ? 12'd0 : hc + 12'd1;
 		if (h_end) vc <= v_end ? 11'd0 : vc + 11'd1;
 	end
-	if (reset) begin hc <= 11'd0; vc <= 11'd0; end
+	if (reset) begin hc <= 12'd0; vc <= 11'd0; end
 end
+// bytes a pixel, as a shift
+wire  [1:0] psz = depth == 2'd0 ? 2'd0 : depth == 2'd3 ? 2'd2 : 2'd1;
 assign vretrace = vs_on;
 assign disp_en  = h_act & v_act;
 
@@ -145,7 +154,7 @@ logic        fetch;
 logic [10:0] fetch_y;
 always_ff @(posedge clk) begin
 	fetch <= 1'b0;
-	if (ce_dot && hc == 11'd0) begin
+	if (ce_dot && hc == 12'd0) begin
 		fetch_y <= v_end ? 11'd0 : vc + 11'd1;
 		fetch   <= (v_end || vc + 11'd1 < v_disp);
 	end
@@ -155,7 +164,7 @@ end
 // the cursor: on the fetched line if cur_on and cur_y <= y < cur_y + 64; its row's 16 bytes (two words)
 wire  [11:0] c_row  = 12'(fetch_y) - 12'(cur_y);
 wire         c_line = cur_on && !c_row[11] && c_row < 12'd64;
-// the pixels: h_disp bytes from start + y x pitch, in 64-bit words (rounded out to whole words)
+// the pixels: h_disp pixels' bytes from start + y x pitch, in 64-bit words (rounded out to whole words)
 
 typedef enum logic [2:0] {D_IDLE, D_FREAD, D_FWAIT, D_CREAD, D_CWAIT, D_CWRITE} ds_t;
 ds_t         ds;
@@ -163,7 +172,7 @@ logic        f_pend, f_calc, f_calc2;
 logic [20:0] f_line;                   // the line's first byte
 logic [20:0] f_addr;                   // the next byte to ask for
 logic [11:0] f_left;                   // words still to ask for
-logic [11:0] f_put;                    // where the next word goes
+logic [11:0] f_put;                    // where the next word goes (up to 512)
 logic [2:0]  f_off;                    // the line's first pixel's lane in its first word
 logic        f_bank;
 logic [7:0]  f_burst, f_due;
@@ -187,7 +196,7 @@ always_ff @(posedge clk) begin
 	if (f_calc) begin
 		f_addr  <= {f_line[20:3], 3'b000};
 		f_off   <= f_line[2:0];
-		f_left  <= 12'((12'(h_disp) + 12'(f_line[2:0]) + 12'd7) >> 3);
+		f_left  <= 12'((({2'd0, h_disp} << psz) + 14'(f_line[2:0]) + 14'd7) >> 3);
 		f_put   <= 12'd0;
 		f_calc2 <= 1'b1;
 	end
@@ -204,16 +213,16 @@ always_ff @(posedge clk) begin
 	if (reset) begin f_pend <= 1'b0; f_cur <= 1'b0; end
 end
 
-// ---- the line buffers: two lines of up to 256 words (2048 pixels); the cursor's row in registers ----
-logic [63:0]  lbuf [0:511];
+// ---- the line buffers: two lines of up to 512 words (4 KB); the cursor's row in registers ----
+logic [63:0]  lbuf [0:1023];
 logic [63:0]  lb_q;
-logic [8:0]   lb_ra;
+logic [9:0]   lb_ra;
 logic [127:0] cur0, cur1;
 logic         cw;                      // the cursor's word being received
 logic         cur_has0, cur_has1;      // the line has the cursor
 logic [2:0]   off0, off1;              // each line's first lane
 always_ff @(posedge clk) begin
-	if (f_word && !f_curw) lbuf[{f_bank, f_put[7:0]}] <= ddr_dout;
+	if (f_word && !f_curw) lbuf[{f_bank, f_put[8:0]}] <= ddr_dout;
 	lb_q <= lbuf[lb_ra];
 	if (f_word && f_curw) begin
 		if (!f_bank) begin if (!cw) cur0[63:0] <= ddr_dout; else cur0[127:64] <= ddr_dout; end
@@ -303,20 +312,30 @@ assign c_rdata = c_addr[2] ? {c_got[39:32], c_got[47:40], c_got[55:48], c_got[63
                            : {c_got[7:0], c_got[15:8], c_got[23:16], c_got[31:24]};
 
 // ---- the pixels ----------------------------------------------------------------------------------
-// stage 0: the CRTC's dot: its byte in the line buffer (the line's first lane added)
-wire [11:0] p_byte = 12'(hc) + {9'd0, vc[0] ? off1 : off0};
-assign lb_ra = {vc[0], p_byte[10:3]};
+// stage 0: the CRTC's pixel: its first byte in the line buffer (the line's first lane added)
+wire [13:0] p_byte = ({2'd0, hc} << psz) + {11'd0, vc[0] ? off1 : off0};
+assign lb_ra = {vc[0], p_byte[11:3]};
 
-// stage 1: the word comes out of the line buffer; the pixel goes to the palette
+// stage 1: the word comes out of the line buffer; the pixel goes to the palette, or is the colour
 logic        p1_ce, p1_de, p1_hs, p1_vs, p1_hb, p1_vb, p1_ch;
 logic [2:0]  p1_lane;
-logic [10:0] p1_x;
+logic [11:0] p1_x;
 logic [5:0]  p1_cr;                    // the cursor's row, low bits
-wire  [7:0]  pix8 = lb_q[8 * p1_lane +: 8];
+wire  [63:0] p1_w  = lb_q >> {p1_lane, 3'b000};
+wire  [7:0]  pix8  = p1_w[7:0];
+wire  [31:0] pix32 = p1_w[31:0];
+// a direct colour's 24 bits (each component widened by its top bits)
+function automatic logic [23:0] dcol(input logic [1:0] d, input logic [31:0] p);
+	case (d)
+		2'd1:    dcol = {p[14:10], p[14:12], p[9:5], p[9:7], p[4:0], p[4:2]};
+		2'd2:    dcol = {p[15:11], p[15:13], p[10:5], p[10:9], p[4:0], p[4:2]};
+		default: dcol = p[23:0];
+	endcase
+endfunction
 
 // the cursor's pixel: (x - cur_x) in its 64, group g = rel >> 4, bit 15 - (rel & 15) of its AND and XOR words
 wire [127:0] cur_w = vc[0] ? cur1 : cur0;
-wire [11:0]  c_rel = 12'(p1_x) - 12'(cur_x);
+wire [11:0]  c_rel = p1_x - 12'(cur_x);
 wire         c_in  = p1_ch && !c_rel[11] && c_rel < 12'd64;
 wire [3:0]   c_bit = 4'd15 - c_rel[3:0];
 wire [15:0]  c_and = {cur_w[8 * (4 * c_rel[5:4])     +: 8], cur_w[8 * (4 * c_rel[5:4] + 1) +: 8]};
@@ -327,14 +346,16 @@ wire         c_x   = c_xor[c_bit];
 wire         c_col = c_in && (cur_x11 ? c_a : !c_a);
 wire         c_fg  = c_x;
 wire         c_inv = c_in && !cur_x11 && c_a && c_x;
-assign pal_addr = c_col ? (c_fg ? cur_fg : cur_bg) : pix8 & pix_mask;
+assign pal_addr = c_col ? (c_fg ? cur_fg[7:0] : cur_bg[7:0]) : pix8 & pix_mask;
 
-// stage 2: the palette answers
+// stage 2: the palette answers (or the direct colour, a clock on)
 logic        p2_ce, p2_de, p2_hs, p2_vs, p2_hb, p2_vb;
 logic        p2_inv;                   // the cursor inverts the screen here
+logic        p2_dir;                   // a direct colour
+logic [23:0] p2_d;
 logic [23:0] p2_c, p2_out;
 always_comb begin
-	p2_c   = {pal_q[17:12], pal_q[17:16], pal_q[11:6], pal_q[11:10], pal_q[5:0], pal_q[5:4]};
+	p2_c   = p2_dir ? p2_d : {pal_q[17:12], pal_q[17:16], pal_q[11:6], pal_q[11:10], pal_q[5:0], pal_q[5:4]};
 	p2_out = p2_inv ? ~p2_c : p2_c;      // (the stacks' colours came through the palette)
 	if (!p2_de || !screen_on) p2_out = 24'h0;
 end
@@ -357,6 +378,8 @@ always_ff @(posedge clk) begin
 	p2_hb  <= p1_hb;
 	p2_vb  <= p1_vb;
 	p2_inv <= c_inv;
+	p2_dir <= depth != 2'd0;
+	p2_d   <= dcol(depth, c_col ? {8'd0, c_fg ? cur_fg : cur_bg} : pix32);
 
 	{r, g, b} <= p2_out;
 	ce_pix    <= p2_ce;

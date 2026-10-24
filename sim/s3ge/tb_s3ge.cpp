@@ -254,7 +254,104 @@ int main(int argc, char **argv) {
 	}
 	check("image read leaves VRAM alone", 0, 795, 64, 10);
 
-	printf(fails ? "%d FAILED\n" : "ALL PASS\n", fails);
+	// ---- 16 bits a pixel (CR50 bits 5:4 = 01): a pixel at 2x, its low byte first ----
+	t->psz = 1;
+	w16(0xAAE8, 0xFFFF); w16(0xAEE8, 0xFFFF);
+	auto set16 = [](int x, int y, uint16_t v) { ref[y * PITCH + 2 * x] = v & 0xFF; ref[y * PITCH + 2 * x + 1] = v >> 8; };
+
+	// 13. a rectangle fill, foreground 0x1234
+	fill(0x00);
+	w16(0xBAE8, 0x27); w16(0xA6E8, 0x1234); mf(0xA, 0x000);
+	w16(0x86E8, 10); w16(0x82E8, 20); w16(0x96E8, 4); mf(0, 2); w16(0x9AE8, 0x40F3);
+	wait_idle();
+	for (int y = 20; y < 23; y++) for (int x = 10; x < 15; x++) set16(x, y, 0x1234);
+	check("16 bpp: rect fill", 0, 15, 64, 15);
+
+	// 14. colour data on a 16-bit bus: with BYTSEQ a pixel a transfer as written, without it swapped
+	fill(0x00);
+	w16(0xBAE8, 0x47);
+	w16(0x86E8, 100); w16(0x82E8, 30); w16(0x96E8, 2); mf(0, 1); w16(0x9AE8, 0x53B1);   // BYTSEQ, rows down
+	for (int r = 0; r < 2; r++) for (int i = 0; i < 3; i++) { uint16_t v = 0xA000 + 0x100 * r + i; pt(v); set16(100 + i, 30 + r, v); }
+	wait_idle();
+	w16(0x86E8, 100); w16(0x82E8, 40); w16(0x96E8, 2); mf(0, 0); w16(0x9AE8, 0x43B1);   // no BYTSEQ
+	for (int i = 0; i < 3; i++) { uint16_t v = 0xB100 + i; pt(v); set16(100 + i, 40, (v >> 8) | ((v & 0xFF) << 8)); }
+	wait_idle();
+	check("16 bpp: colour data, 16-bit bus", 180, 25, 60, 20);
+
+	// 15. the write mask (low byte only) and colour compare (10: source 0x0000 not written)
+	fill(0x55);
+	w16(0xAAE8, 0x00FF); w16(0xBAE8, 0x27); w16(0xA6E8, 0xCDEF);
+	w16(0x86E8, 0); w16(0x82E8, 50); w16(0x96E8, 3); mf(0, 0); w16(0x9AE8, 0x40F3);
+	wait_idle();
+	for (int x = 0; x < 4; x++) set16(x, 50, 0x55EF);
+	w16(0xAAE8, 0xFFFF);
+	mf(0xE, 0x100); w16(0xB2E8, 0x0000); w16(0xBAE8, 0x47);
+	w16(0x86E8, 0); w16(0x82E8, 52); w16(0x96E8, 3); mf(0, 0); w16(0x9AE8, 0x53B1);
+	pt(0x0000); pt(0x1111); pt(0x0100); pt(0x0000);
+	wait_idle();
+	set16(1, 52, 0x1111); set16(2, 52, 0x0100);
+	mf(0xE, 0x000);
+	check("16 bpp: write mask, colour compare", 0, 48, 16, 8);
+
+	// 16. a BitBLT and an image read (32-bit bus, BYTSEQ: two pixels a transfer, the first in bits 15:0)
+	fill(0x00);
+	for (int y = 0; y < 2; y++) for (int x = 0; x < 3; x++) { uint16_t v = 0x4000 + 0x100 * y + x; vram[(60 + y) * PITCH + 2 * (5 + x)] = v & 0xFF; vram[(60 + y) * PITCH + 2 * (5 + x) + 1] = v >> 8; }
+	same();
+	w16(0xBAE8, 0x67);
+	w16(0x86E8, 5); w16(0x82E8, 60); w16(0x8EE8, 50); w16(0x8AE8, 70); w16(0x96E8, 2); mf(0, 1); w16(0x9AE8, 0xC0B3);
+	wait_idle();
+	for (int y = 0; y < 2; y++) for (int x = 0; x < 3; x++) set16(50 + x, 70 + y, 0x4000 + 0x100 * y + x);
+	check("16 bpp: BitBLT", 0, 55, 120, 20);
+	w16(0x86E8, 5); w16(0x82E8, 60); w16(0x96E8, 2); mf(0, 1); w16(0x9AE8, 0x55B0);
+	{
+		int bad = 0;
+		for (int y = 0; y < 2; y++) {
+			uint32_t a = ptr(), b = ptr();
+			uint32_t wa = (0x4000 + 0x100 * y) | ((uint32_t)(0x4001 + 0x100 * y) << 16), wb = 0x4002 + 0x100 * y;
+			if (a != wa || b != wb) { printf("  row %d: %08X %08X, want %08X %08X\n", y, a, b, wa, wb); bad++; }
+		}
+		wait_idle();
+		printf("%-44s %s\n", "16 bpp: image read (32-bit, BYTSEQ)", bad ? "FAIL" : "pass");
+		if (bad) fails++;
+	}
+
+	// ---- 32 bits a pixel (CR50 bits 5:4 = 11): the colour registers in two writes (RSF) ----
+	t->psz = 2;
+	mf(0xE, 0x000);
+	w16(0xAAE8, 0xFFFF); w16(0xAAE8, 0xFFFF); w16(0xAEE8, 0xFFFF); w16(0xAEE8, 0xFFFF);
+	auto set32 = [](int x, int y, uint32_t v) { for (int k = 0; k < 4; k++) ref[y * PITCH + 4 * x + k] = (v >> (8 * k)) & 0xFF; };
+
+	// 17. a rectangle fill, foreground 0x00C0FFEE (low half, then high)
+	fill(0x00);
+	w16(0xBAE8, 0x27); w16(0xA6E8, 0xFFEE); w16(0xA6E8, 0x00C0); mf(0xA, 0x000);
+	w16(0x86E8, 3); w16(0x82E8, 80); w16(0x96E8, 5); mf(0, 1); w16(0x9AE8, 0x40F3);
+	wait_idle();
+	for (int y = 80; y < 82; y++) for (int x = 3; x < 9; x++) set32(x, y, 0x00C0FFEE);
+	check("32 bpp: rect fill (RSF halves)", 0, 75, 64, 10);
+
+	// 18. colour data: a 32-bit bus with BYTSEQ (a pixel a transfer), a 16-bit bus (a pixel in two, low half first)
+	fill(0x00);
+	w16(0xBAE8, 0x47);
+	w16(0x86E8, 10); w16(0x82E8, 90); w16(0x96E8, 2); mf(0, 0); w16(0x9AE8, 0x55B1);
+	for (int i = 0; i < 3; i++) { uint32_t v = 0x11223300 + i; pt(v); set32(10 + i, 90, v); }
+	wait_idle();
+	w16(0x86E8, 10); w16(0x82E8, 92); w16(0x96E8, 1); mf(0, 0); w16(0x9AE8, 0x53B1);
+	for (int i = 0; i < 2; i++) { uint32_t v = 0x00ABCD00 + 0x10 * i; pt(v & 0xFFFF); pt(v >> 16); set32(10 + i, 92, v); }
+	wait_idle();
+	check("32 bpp: colour data, 32- and 16-bit bus", 0, 88, 80, 8);
+
+	// 19. a BitBLT with a mix that reads the destination (XOR, 0x65)
+	fill(0x00);
+	for (int x = 0; x < 4; x++) { set32(x, 100, 0x01020304 * (x + 1)); set32(20 + x, 110, 0x00FF00FF); }
+	memcpy(vram, ref, sizeof vram);
+	w16(0xBAE8, 0x65);
+	w16(0x86E8, 0); w16(0x82E8, 100); w16(0x8EE8, 20); w16(0x8AE8, 110); w16(0x96E8, 3); mf(0, 0); w16(0x9AE8, 0xC0B3);
+	wait_idle();
+	for (int x = 0; x < 4; x++) set32(20 + x, 110, (0x01020304 * (x + 1)) ^ 0x00FF00FF);
+	check("32 bpp: BitBLT, XOR", 0, 98, 120, 15);
+	t->psz = 0;
+
+	printf(fails ?"%d FAILED\n" : "ALL PASS\n", fails);
 	delete t;
 	return fails ? 1 : 0;
 }

@@ -88,3 +88,5 @@ sim/audio/build/
 sim/audio/build.log
 sim/floppy/build/
 sim/floppy/build.log
+sim/s3video/build/
+sim/s3video/build.log

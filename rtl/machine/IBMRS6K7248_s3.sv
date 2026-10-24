@@ -71,18 +71,21 @@ module IBMRS6K7248_s3
 
 	// to and from the picture side (IBMRS6K7248_s3video), which runs in clk_v
 	input  logic        clk_v,
-	output logic [10:0] h_total, h_disp, h_ss, h_sl, v_total, v_disp, v_ss,
+	output logic [11:0] h_total, h_disp, h_ss, h_sl,     // in pixels
+	output logic [10:0] v_total, v_disp, v_ss,
 	output logic [4:0]  v_sl,
+	output logic [1:0]  v_depth,       // 0 8 bits a pixel (the palette), 1 15 (5-5-5), 2 16 (5-6-5), 3 32 (8-8-8)
 	output logic [20:0] v_start,
 	output logic [11:0] v_pitch,
 	output logic        v_screen_on,
 	output logic [7:0]  v_pix_mask,
-	output logic [6:0]  v_pll_m, v_pll_n,
+	output logic [6:0]  v_pll_m,
+	output logic [7:0]  v_pll_n,       // N[4:0], and in 7:5 the post-divider's power of 2 (the pixel's)
 	output logic        v_cur_on,
 	output logic [10:0] v_cur_x, v_cur_y,
 	output logic [10:0] v_cur_base,
 	output logic        v_cur_x11,
-	output logic [7:0]  v_cur_fg, v_cur_bg,
+	output logic [23:0] v_cur_fg, v_cur_bg,   // 8 bits a pixel: palette indexes; else pixel values
 	input  logic [7:0]  pal_vaddr,
 	output logic [17:0] pal_vq,
 	input  logic        vretrace_v,
@@ -136,6 +139,9 @@ logic [17:0] palette [256];
 logic [17:0] pal_q;
 logic       dac_rstate;             // 3C7 read: 0 the DAC is in write mode, 3 read mode
 logic [7:0] sdac_cmd;
+logic [2:0] sdac_magic;             // reads of 3C6 in a row: the fifth reaches the command register
+logic [23:0] cur_fgs, cur_bgs;      // the cursor's colour stacks (CR4A, CR4B), at 15 bits a pixel and more
+logic [1:0]  fgs_p, bgs_p;          // ... their next byte (a read of CR45 resets them)
 logic [3:0] pll_widx, pll_ridx;
 logic       pll_half;               // the next PLL data byte is N
 logic [15:0] pll [16];              // {M, N}; index 0E one byte
@@ -162,14 +168,35 @@ wire  vsync_q = vr_s[2];
 wire  vblank  = ~de_s[1];                       // 3DA bit 0: display disabled
 
 // ---- what the picture side needs (quasi-static) -------------------------------------------
-// the CRTC in characters of 8 dots, with the S3's overflow bits (CR5D, CR5E)
-assign h_total = {(11'(cr[7'h00]) + 11'd5 + {2'd0, cr[7'h5D][0], 8'd0})} << 3;
-assign h_disp  = {(11'(cr[7'h01]) + 11'd1 + {2'd0, cr[7'h5D][1], 8'd0})} << 3;
-assign h_ss    = {(11'(cr[7'h04]) + {2'd0, cr[7'h5D][4], 8'd0})} << 3;
+// the colour depth: the SDAC's command register (its input mode; 86Box's vid_ramdac_sdac.c). The 864's
+// CRTC counts its clock, VCLK: 8 bits a pixel one pixel each, in the SDAC's 2:1 mode (command 1x, with
+// CR67 1x) two; at 15 and 16 bits half a pixel, at 32 a quarter, VCLK twice the SDAC's clock (86Box's
+// Vision864), which is the pixel's at 15 and 16 bits, twice it at 32. (24 bits packed, 4x, 9x, Ex, is
+// not shown: 8 bits a pixel.)
+logic [1:0] depth;
+always_comb begin
+	case (sdac_cmd[7:4])
+		4'h2, 4'h3, 4'h8, 4'hA: depth = 2'd1;
+		4'h5, 4'h6, 4'hC:       depth = 2'd2;
+		4'h7:                   depth = 2'd3;
+		default:                depth = 2'd0;
+	endcase
+end
+assign v_depth = depth;
+// characters (of 8 VCLKs) to pixels: x 16, 8, 4, 2
+wire  [2:0] hsh = sdac_cmd[7:4] == 4'h1 ? 3'd4 : depth == 2'd0 ? 3'd3 : depth == 2'd3 ? 3'd1 : 3'd2;
+// the CRTC in characters, with the S3's overflow bits (CR5D, CR5E)
+wire  [9:0] ht_c = 10'(cr[7'h00]) + 10'd5 + {1'b0, cr[7'h5D][0], 8'd0};
+wire  [9:0] hd_c = 10'(cr[7'h01]) + 10'd1 + {1'b0, cr[7'h5D][1], 8'd0};
+wire  [9:0] hs_c = 10'(cr[7'h04]) + {1'b0, cr[7'h5D][4], 8'd0};
 // (a sync end equal to its start is a whole count: 32 characters, 16 lines)
 wire [4:0] hsl5 = 5'(cr[7'h05][4:0] - cr[7'h04][4:0]);
 wire [3:0] vsl4 = 4'(cr[7'h11][3:0] - cr[7'h10][3:0]);
-assign h_sl    = (hsl5 == 5'd0 ? 11'd32 : 11'(hsl5)) << 3;
+wire [9:0] hl_c = hsl5 == 5'd0 ? 10'd32 : 10'(hsl5);
+assign h_total = 12'({4'd0, ht_c} << hsh);
+assign h_disp  = 12'({4'd0, hd_c} << hsh);
+assign h_ss    = 12'({4'd0, hs_c} << hsh);
+assign h_sl    = 12'({4'd0, hl_c} << hsh);
 assign v_total = {cr[7'h5E][0], cr[7'h07][5], cr[7'h07][0], cr[7'h06]} + 11'd2;
 assign v_disp  = {cr[7'h5E][1], cr[7'h07][6], cr[7'h07][1], cr[7'h12]} + 11'd1;
 assign v_ss    = {cr[7'h5E][4], cr[7'h07][7], cr[7'h07][2], cr[7'h10]};
@@ -178,19 +205,23 @@ assign v_start = 21'({cr[7'h51][1:0], cr[7'h31][5:4], cr[7'h0C], cr[7'h0D]}) << 
 assign v_pitch = 12'({cr[7'h51][5:4], cr[7'h13], 3'b000});
 assign v_screen_on = ~sr[1][5] & ar_idx[5];
 assign v_pix_mask  = dac_mask;
-// the dot clock: misc[3:2] 0 and 1 select f0 and f1, 3 the SDAC's f[CR42[2:0]]
-wire  [3:0] clk_sel = misc[3:2] == 2'd3 ? {1'b0, cr[7'h42][2:0]} : {3'd0, misc[2]};
+// the dot clock: misc[3:2] 0 and 1 select f0 and f1, 3 the SDAC's f[CR42[2:0]]; or the SDAC's own
+// select, PLL control (0E) bit 5 with its bits 2:0. At 32 bits a pixel the pixel's is half of it
+wire  [3:0] clk_sel = pll[14][13]        ? {1'b0, pll[14][10:8]} :
+                      misc[3:2] == 2'd3 ? {1'b0, cr[7'h42][2:0]} : {3'd0, misc[2]};
 assign v_pll_m  = pll[clk_sel][14:8];
-assign v_pll_n  = pll[clk_sel][6:0];
+assign v_pll_n  = {3'({1'b0, pll[clk_sel][6:5]} + (depth == 2'd3 ? 3'd1 : 3'd0)), pll[clk_sel][4:0]};
 assign v_cur_on = cr[7'h45][0];
-assign v_cur_x  = {cr[7'h46][2:0], cr[7'h47]};
+// (at 32 bits a pixel the position is in half pixels: 86Box's 864)
+wire  [10:0] cur_x_r = {cr[7'h46][2:0], cr[7'h47]};
+assign v_cur_x  = depth == 2'd3 ? {1'b0, cur_x_r[10:1]} : cur_x_r;
 assign v_cur_y  = {cr[7'h48][2:0], cr[7'h49]};
 assign v_cur_base = {cr[7'h4C][2:0], cr[7'h4D]};
 assign v_cur_x11  = cr[7'h55][4];
-// the cursor's colours at 8 bits a pixel: CR0E the foreground, CR0F the background (the 801-864's; the
-// CR4A/CR4B stacks are 16 and 24 bits a pixel's, which the scan-out does not do). AIX's X server sets them so
-assign v_cur_fg   = cr[7'h0E];
-assign v_cur_bg   = cr[7'h0F];
+// the cursor's colours: at 8 bits a pixel CR0E the foreground, CR0F the background (the 801-864's; AIX's
+// X server sets them so); deeper, the CR4A/CR4B stacks' pixel values
+assign v_cur_fg   = depth == 2'd0 ? {16'd0, cr[7'h0E]} : cur_fgs;
+assign v_cur_bg   = depth == 2'd0 ? {16'd0, cr[7'h0F]} : cur_bgs;
 
 // the palette's second read port, in the picture's clock
 always_ff @(posedge clk_v) pal_vq <= palette[pal_vaddr];
@@ -247,7 +278,11 @@ always_comb begin
 	else if (bp == 16'h03C3)            rb = 8'h01;
 	else if (bp == 16'h03C4)            rb = {3'd0, sr_idx};
 	else if (bp == 16'h03C5)            rb = sr[sr_idx];
-	else if (bp == 16'h03C6)            rb = cr[7'h55][0] ? sdac_cmd : dac_mask;
+	// (3C6 with RS2 the command register; without, the mask, or after four reads in a row of it 00 00 70
+	// (the SDAC's ID) and then the command register: the ATT20C490 family's hidden access, 86Box's)
+	else if (bp == 16'h03C6)            rb = cr[7'h55][0] ? sdac_cmd :
+	                                         sdac_magic == 3'd0 ? dac_mask : sdac_magic == 3'd3 ? 8'h70 :
+	                                         sdac_magic == 3'd4 ? sdac_cmd : 8'h00;
 	else if (bp == 16'h03C7)            rb = cr[7'h55][0] ? {4'd0, pll_ridx} : {6'd0, dac_rstate, dac_rstate};
 	else if (bp == 16'h03C8)            rb = cr[7'h55][2] ? {4'h0, monitor_id} : cr[7'h55][0] ? {4'd0, pll_widx} : dac_widx;
 	else if (bp == 16'h03C9)            rb = cr[7'h55][0] ? (pll_half ? pll[pll_ridx][7:0] : pll[pll_ridx][15:8])
@@ -291,6 +326,7 @@ IBMRS6K7248_s3ge engine (
 	.pt_valid(ast == A_PT), .pt_data({pt_w[7:0], pt_w[15:8], pt_w[23:16], pt_w[31:24]}), .pt_ready,
 	.bus32(ge_bus32), .rd_mode(ge_rd_mode), .rd_valid(ge_rd_valid), .rd_data(ge_rd_data), .rd_take(ast == A_PR && ge_rd_valid),
 	.busy(ge_busy), .pitch(ge_pitch[11:0]),
+	.psz(cr[7'h50][5:4] == 2'b01 ? 2'd1 : cr[7'h50][5:4] == 2'b11 ? 2'd2 : 2'd0),   // CR50: bytes a pixel
 	.v_req(e_req), .v_we(e_we), .v_addr(e_addr), .v_be(e_be), .v_wdata(e_wdata), .v_ack(e_ack), .v_rdata
 );
 // the arbiter: whoever asks first keeps VRAM until answered; the CPU first if both
@@ -388,7 +424,8 @@ always_ff @(posedge clk) begin
 				if (bp == 16'h03C4) sr_idx <= bw[4:0];
 				if (bp == 16'h03C5) sr[sr_idx] <= bw;
 				if (bp == 16'h03C6) begin
-					if (cr[7'h55][0]) sdac_cmd <= bw; else dac_mask <= bw;
+					if (cr[7'h55][0] || sdac_magic == 3'd4) sdac_cmd <= bw; else dac_mask <= bw;
+					if (sdac_magic == 3'd4) sdac_magic <= 3'd0;
 				end
 				if (bp == 16'h03C7) begin
 					if (cr[7'h55][0]) begin pll_ridx <= bw[3:0]; pll_half <= 1'b0; end
@@ -400,7 +437,10 @@ always_ff @(posedge clk) begin
 				end
 				if (bp == 16'h03C9) begin
 					if (cr[7'h55][0]) begin
-						if (!pll_half) pll[pll_widx][15:8] <= bw; else pll[pll_widx][7:0] <= bw;
+						// (f0 and f1 are fixed; 8, 9, B-D, F do not exist)
+						if ((pll_widx >= 4'h2 && pll_widx <= 4'h7) || pll_widx == 4'hA || pll_widx == 4'hE) begin
+							if (!pll_half) pll[pll_widx][15:8] <= bw; else pll[pll_widx][7:0] <= bw;
+						end
 						// index 0E takes one byte; the others M then N, then the next index
 						if (pll_half || pll_widx == 4'hE) begin pll_half <= 1'b0; pll_widx <= pll_widx + 4'd1; end
 						else pll_half <= 1'b1;
@@ -420,6 +460,18 @@ always_ff @(posedge clk) begin
 				if (bp == 16'h03CE) gr_idx <= bw[3:0];
 				if (bp == 16'h03CF) gr[gr_idx] <= bw;
 				if (bp == crt_base + 16'h4) cr_idx <= bw[6:0];
+				if (bp == crt_base + 16'h5 && cr_idx == 7'h4A) begin
+					if (fgs_p == 2'd0) cur_fgs[7:0] <= bw;
+					if (fgs_p == 2'd1) cur_fgs[15:8] <= bw;
+					if (fgs_p == 2'd2) cur_fgs[23:16] <= bw;
+					fgs_p <= fgs_p + 2'd1;
+				end
+				if (bp == crt_base + 16'h5 && cr_idx == 7'h4B) begin
+					if (bgs_p == 2'd0) cur_bgs[7:0] <= bw;
+					if (bgs_p == 2'd1) cur_bgs[15:8] <= bw;
+					if (bgs_p == 2'd2) cur_bgs[23:16] <= bw;
+					bgs_p <= bgs_p + 2'd1;
+				end
 				if (bp == crt_base + 16'h5) begin
 					// CR11 bit 7 protects CR00-CR07 (but CR07 bit 4)
 					if (!(cr[7'h11][7] && cr_idx <= 7'h07)) cr[cr_idx] <= bw;
@@ -434,6 +486,15 @@ always_ff @(posedge clk) begin
 			end
 			// a read of input status 1 resets the attribute flip-flop
 			if (!we && bp == crt_base + 16'hA) ar_ff <= 1'b0;
+			// a read of CR45 resets the cursor's colour stacks
+			if (!we && bp == crt_base + 16'h5 && cr_idx == 7'h45) begin fgs_p <= 2'd0; bgs_p <= 2'd0; end
+			// the SDAC's reads of 3C6 in a row; any other DAC access starts again
+			if (bp >= 16'h03C6 && bp <= 16'h03C9) begin
+				if (bp == 16'h03C6 && !cr[7'h55][0]) begin
+					if (!we) sdac_magic <= sdac_magic == 3'd4 ? 3'd0 : sdac_magic + 3'd1;
+				end
+				else sdac_magic <= 3'd0;
+			end
 			// palette reads advance the component, then the index
 			if (!we && bp == 16'h03C9 && !cr[7'h55][0]) begin
 				if (dac_rc == 2'd2) begin dac_rc <= 2'd0; dac_ridx <= dac_ridx + 8'd1; end
@@ -455,12 +516,14 @@ always_ff @(posedge clk) begin
 		ast <= A_IDLE; ack <= 1'b0; l_req <= 1'b0;
 		misc <= 8'h00; sr_idx <= '0; cr_idx <= '0; gr_idx <= '0; ar_idx <= '0; ar_ff <= 1'b0;
 		dac_mask <= 8'hFF; dac_widx <= '0; dac_ridx <= '0; dac_wc <= '0; dac_rc <= '0; dac_rstate <= 1'b0;
-		sdac_cmd <= 8'h00; pll_widx <= '0; pll_ridx <= '0; pll_half <= 1'b0;
+		sdac_cmd <= 8'h00; sdac_magic <= 3'd0; pll_widx <= '0; pll_ridx <= '0; pll_half <= 1'b0;
+		fgs_p <= 2'd0; bgs_p <= 2'd0; cur_fgs <= 24'hFFFFFF; cur_bgs <= 24'h000000;
 		r46e8 <= 8'h00; r4ae8 <= 8'h00; r0102 <= 8'h00; vint <= 1'b0;
 		for (int i = 0; i < 128; i++) cr[i] <= 8'h00;
 		cr[7'h36] <= 8'h8E;                      // the straps: 2 MB (an open question: docs/s3_design.md 5)
-		pll[0] <= 16'h684D;                      // f0 about 25.175 MHz, f1 about 28.322 (the SDAC's power-on clocks)
-		pll[1] <= 16'h5D4A;
+		pll[0] <= 16'h2861;                      // f0 25.06 MHz, f1 28.19 (the SDAC's fixed clocks, as XFree86 reads them)
+		pll[1] <= 16'h3D62;
+		pll[14] <= 16'h0000;                     // PLL control: the clock select from the pins
 		cr[7'h37] <= 8'h0F;
 	end
 end
