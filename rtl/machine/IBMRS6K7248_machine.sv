@@ -174,8 +174,23 @@ module IBMRS6K7248_machine
 	output logic         tb_tick,
 	output logic         kbc_reset,                 // the 8042's reset line (a pulse)
 	output logic         speaker,                   // the 8254's counter 2 through port 61
-	output logic [15:0]  aud_l,                     // the CS4232's codec, signed
+	output logic [15:0]  aud_l,                     // the CS4232's codec and Sound Blaster, signed
 	output logic [15:0]  aud_r,
+	// the CS4232's FM chip (the top's IBMRS6K7248_opl): its port accesses, its status; the SB mixer's FM volume
+	output logic         fm_cs,
+	output logic         fm_we,
+	output logic [1:0]   fm_a,
+	output logic [7:0]   fm_wdata,
+	input  logic [7:0]   fm_rdata,
+	output logic [7:0]   fm_vol,
+	// the joystick port: hps_io's joysticks (any clock: quasi-static)
+	input  logic [5:0]   joy1,
+	input  logic [5:0]   joy2,
+	input  logic [15:0]  ana1,
+	input  logic [15:0]  ana2,
+	// the MPU-401's MIDI (31,250 baud: the MT32-pi on the user port)
+	output logic         midi_tx,
+	input  logic         midi_rx,
 
 	// the keyboard and mouse (hps_io's), the time to start the RTC from
 	input  logic [10:0]  ps2_key,
@@ -635,12 +650,21 @@ wire        aud_cfg  = s_isa && bport == 16'h0279;
 wire        dma_hit  = s_isa && (bport[15:4] == 12'h000 || bport[15:4] == 12'h008 || bport[15:5] == 11'h006 ||
                                  bport == 16'h040A || bport == 16'h040B || (bport >= 16'h0410 && bport <= 16'h043F) ||
                                  bport[15:4] == 12'h048 || bport == 16'h04D4 || bport == 16'h04D6);
-wire        sb_hit   = s_isa && aud_on && bport[15:4] == sb_base;
+wire        sb_win   = s_isa && aud_on && bport[15:4] == sb_base;
+// the Sound Blaster's window: + 0-3 and + 8-9 are the FM chip's, the rest the DSP's and the mixer's
+wire        sb_fm    = bport[3:2] == 2'b00 || bport[3:1] == 3'b100;
+wire        sb_hit   = sb_win && !sb_fm;
+wire        fm_hit   = (sb_win && sb_fm) || (s_isa && aud_on && bport[15:2] == 14'h00E2);    // 388-38B
+wire        mpu_hit  = s_isa && aud_on && bport[15:1] == 15'h0198;                         // 330/331
+wire        joy_hit  = s_isa && aud_on && bport[15:3] == 13'h0040;                         // 200-207
 wire        wss_hit  = s_isa && aud_on && bport[15:2] == wss_base;
 
 logic [15:0] irq;
-logic  [7:0] pic_q, pit_q, kbc_q, rtc_q, aud_q, ee_q, dma_q;
+logic  [7:0] pic_q, pit_q, kbc_q, rtc_q, aud_q, ee_q, dma_q, sb_q, mpu_q, joy_q;
 logic        aud_drq, aud_irq, sg_irq, dma_dack, dma_tc;
+logic        cap_drq, sb_drq, sb_rec, sb_irq, mpu_irq;
+logic  [7:0] rec_byte;
+logic [15:0] cs_l, cs_r, sb_l, sb_r;
 logic  [2:0] dma_dack_ch;
 logic [15:0] dma_dack_data;
 logic        irq0, irq1, irq8, irq12, nmi_mask;
@@ -683,17 +707,49 @@ IBMRS6K7248_eeprom eeprom (
 IBMRS6K7248_cs4232 #(.CLK_HZ(CPU_HZ)) cs4232 (
 	.clk, .reset,
 	.cfg_sel(d_sel & d_we & aud_cfg),
-	.sel(d_sel & (sb_hit | wss_hit)), .we(d_we), .wss(wss_hit), .off(bport[3:0]), .wdata(bwd), .rdata(aud_q),
+	.sel(d_sel & wss_hit), .we(d_we),  .off(bport[3:0]), .wdata(bwd), .rdata(aud_q),
 	.on(aud_on), .sb_base, .wss_base,
 	.drq(aud_drq), .dack(dma_dack), .dack_ch(dma_dack_ch), .dack_data(dma_dack_data[7:0]), .irq(aud_irq),
-	.aud_l, .aud_r
+	.cap_drq, .rec_byte,
+	.aud_l(cs_l), .aud_r(cs_r)
 );
+
+// its Sound Blaster Pro (the DSP, the mixer), MPU-401 and joystick port; the FM chip is the top's
+IBMRS6K7248_sb #(.CLK_HZ(CPU_HZ)) sb (
+	.clk, .reset,
+	.sel(d_sel & sb_hit), .we(d_we), .off(bport[3:0]), .wdata(bwd), .rdata(sb_q),
+	.drq(sb_drq), .rec(sb_rec), .dack(dma_dack), .dack_ch(dma_dack_ch), .dack_data(dma_dack_data[7:0]), .irq(sb_irq),
+	.aud_l(sb_l), .aud_r(sb_r), .fm_vol
+);
+IBMRS6K7248_mpu401 #(.CLK_HZ(CPU_HZ)) mpu (
+	.clk, .reset,
+	.sel(d_sel & mpu_hit), .we(d_we), .a0(bport[0]), .wdata(bwd), .rdata(mpu_q), .irq(mpu_irq),
+	.midi_tx, .midi_rx
+);
+IBMRS6K7248_joy #(.CLK_HZ(CPU_HZ)) joy (
+	.clk, .reset,
+	.sel(d_sel & joy_hit), .we(d_we), .rdata(joy_q),
+	.joy1, .joy2, .ana1, .ana2
+);
+assign fm_cs    = d_sel & fm_hit;
+assign fm_we    = d_we;
+assign fm_a     = (sb_win && bport[3]) ? {1'b0, bport[0]} : bport[1:0];   // (SB + 8/9: bank 0)
+assign fm_wdata = bwd;
+// the codec and the Sound Blaster summed, clipped
+wire [16:0] sum_l = {cs_l[15], cs_l} + {sb_l[15], sb_l};
+wire [16:0] sum_r = {cs_r[15], cs_r} + {sb_r[15], sb_r};
+always_ff @(posedge clk) begin
+	aud_l <= (sum_l[16] != sum_l[15]) ? {sum_l[16], {15{~sum_l[16]}}} : sum_l[15:0];
+	aud_r <= (sum_r[16] != sum_r[15]) ? {sum_r[16], {15{~sum_r[16]}}} : sum_r[15:0];
+end
 
 // the ISA DMA (Fire Coral's 8237s and the 82378's scatter/gather): the codec on channel 1
 IBMRS6K7248_dma dma (
 	.clk, .reset,
 	.sel(d_sel & dma_hit), .we(d_we), .port(bport), .wdata(bwd), .rdata(dma_q),
-	.dreq({6'd0, aud_drq, 1'b0}), .dack(dma_dack), .dack_ch(dma_dack_ch), .dack_data(dma_dack_data), .dev_data(16'h0000),
+	// channel 1: the codec's playback or the Sound Blaster's (never both); channel 0: the codec's capture
+	.dreq({6'd0, aud_drq | sb_drq, cap_drq}), .dack(dma_dack), .dack_ch(dma_dack_ch), .dack_data(dma_dack_data),
+	.dev_data(sb_rec ? 16'h0080 : {8'h00, rec_byte}),
 	.tc(dma_tc), .sg_irq,
 	.dm_req(isa_dm_req), .dm_we(isa_dm_we), .dm_addr(isa_dm_addr), .dm_be(isa_dm_be), .dm_wdata(isa_dm_wdata),
 	.dm_ack(isa_dm_ack), .dm_err, .dm_rdata
@@ -706,8 +762,8 @@ end
 
 // the request lines: COM1's INTR as a PC board gates it, with OUT2
 // IRQ 15: every PCI device's interrupt (Carolina's routing): the S3's and the 53C810's
-// IRQ 13: the scatter/gather's list ends; IRQ 5: the codec
-assign irq = {s3_irq | ncr_irq | pcn_irq, 1'b0, sg_irq, irq12, 3'b000, irq8, 2'b00, aud_irq, com1_irq & com1_out2, com2_irq & com2_out2, 1'b0, irq1, irq0} | (16'(irq6) << 6);
+// IRQ 13: the scatter/gather's list ends; IRQ 5: the codec, the Sound Blaster, the MPU-401
+assign irq = {s3_irq | ncr_irq | pcn_irq, 1'b0, sg_irq, irq12, 3'b000, irq8, 2'b00, aud_irq | sb_irq | mpu_irq, com1_irq & com1_out2, com2_irq & com2_out2, 1'b0, irq1, irq0} | (16'(irq6) << 6);
 
 // the planar ID, the SIMMs' presence detect
 wire        planar_hit = s_isa && bport == 16'h0852;
@@ -765,7 +821,7 @@ IBMRS6K7248_firecoral firecoral (
 
 // the answer, the cycle after the access
 logic       q_sio, q_com2, q_dev14, q_fdc;
-logic       q_pic, q_pit, q_kbc, q_rtc, q_p92, q_err, q_aud, q_audc, q_ee, q_ide, q_dma;
+logic       q_pic, q_pit, q_kbc, q_rtc, q_p92, q_err, q_aud, q_audc, q_ee, q_ide, q_dma, q_sb, q_fm, q_mpu, q_joy;
 logic       q_com1, q_planar, q_pd, q_cf8, q_cfc, q_dev0, q_dev11, q_fcio, q_pcicf, q_iack, q_dev16, q_ncr, q_dev12, q_pcn;
 logic [1:0] q_lane;
 always_ff @(posedge clk) if (d_sel) begin
@@ -781,7 +837,11 @@ always_ff @(posedge clk) if (d_sel) begin
 	q_ide   <= ide_hit;
 	q_p92   <= p92_hit;
 	q_err   <= err_hit;
-	q_aud   <= sb_hit | wss_hit;
+	q_aud   <= wss_hit;
+	q_sb    <= sb_hit;
+	q_fm    <= fm_hit;
+	q_mpu   <= mpu_hit;
+	q_joy   <= joy_hit;
 	q_dma   <= dma_hit;
 	q_audc  <= aud_cfg;
 	q_planar <= planar_hit;
@@ -816,6 +876,10 @@ always_comb begin
 	else if (q_p92)   dev_rdata = {4{p92}};
 	else if (q_err)   dev_rdata = 32'h0000_0000;
 	else if (q_aud)   dev_rdata = {4{aud_q}};
+	else if (q_sb)    dev_rdata = {4{sb_q}};
+	else if (q_fm)    dev_rdata = {4{fm_rdata}};
+	else if (q_mpu)   dev_rdata = {4{mpu_q}};
+	else if (q_joy)   dev_rdata = {4{joy_q}};
 	else if (q_dma)   dev_rdata = {4{dma_q}};
 	else if (q_planar) dev_rdata = {4{planar_id}};
 	else if (q_pd)    dev_rdata = {4{simm_pd[q_lane]}};
@@ -838,7 +902,7 @@ always_ff @(posedge clk) begin
 	if (w_done) begin
 		io_we    <= d_we;
 		io_stub  <= ~(q_s3 | q_fdc | q_com1 | q_com2 | q_sio | q_planar | q_pd | q_fcio | q_cf8 | q_dev0 | q_dev11 | q_dev14 | q_dev16 | q_ncr | q_dev12 | q_pcn |
-		              q_pic | q_pit | q_kbc | q_rtc | q_ee | q_ide | q_p92 | q_err | q_aud | q_audc | q_dma | q_iack);
+		              q_pic | q_pit | q_kbc | q_rtc | q_ee | q_ide | q_p92 | q_err | q_aud | q_audc | q_dma | q_sb | q_fm | q_mpu | q_joy | q_iack);
 		io_addr  <= p_a;
 		io_be    <= p_be;
 		io_wdata <= p_wd;

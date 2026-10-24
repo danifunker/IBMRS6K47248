@@ -303,7 +303,7 @@ always_ff @(posedge clk) begin
 			else if (ttype == 2'b01) begin                 // a write transfer: the device's into memory
 				dm_we    <= 1'b1;
 				dm_be    <= ch[2] ? (8'b1100_0000 >> ta[2:0]) : (8'b1000_0000 >> ta[2:0]);
-				dm_wdata <= {4{dev_data[7:0], dev_data[15:8]}};
+				dm_wdata <= ch[2] ? {4{dev_data[7:0], dev_data[15:8]}} : {8{dev_data[7:0]}};   // (8-bit: on every lane)
 				dm_req   <= 1'b1;
 				ts       <= T_WR;
 			end

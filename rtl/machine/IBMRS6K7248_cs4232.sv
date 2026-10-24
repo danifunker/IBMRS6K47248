@@ -22,11 +22,8 @@
 //  firmware checks that the Sound Blaster appears when activated and
 //  disappears when deactivated (init_4232).
 //
-//  Device 0's ports while active:
-//    base 2 + 6   DSP reset: writing 1 then 0 queues the DSP's AA
-//    base 2 + A   DSP read data: AA after a reset, else 00
-//    base 2 + C   DSP write status: ready (bit 7 clear)
-//    base 2 + E   DSP read status: bit 7 while a byte waits at + A
+//  Device 0's ports while active (the Sound Blaster's at base 2 are
+//  IBMRS6K7248_sb's):
 //    base 0       WSS index: bit 7 INIT (reads clear: ready), 6 MCE, 4:0 the register
 //    base 0 + 1   WSS indexed data: the CS4231's 32 registers (QEMU's cs4231a.c
 //                 for their reset values): I8 the rate and format, I9 PEN and
@@ -44,6 +41,15 @@
 //  dB) to the outputs; the playback count counts the frames down, and at its
 //  end PI, INT and (with IEN) IRQ 5. An empty FIFO repeats the last frame.
 //
+//  Capture (CEN, not CPIO; the MiSTer has no audio input): at the same rate
+//  a frame of silence in the capture format (I28 in mode 2, else I8) is
+//  offered on DMA channel 0, the capture count (I30/I31 in mode 2, else
+//  I14/I15) counting the frames down to CI and INT.
+//
+//  The Sound Blaster, the FM chip, the MPU-401 and the joystick port are
+//  their own modules (IBMRS6K7248_sb, the top's OPL, _mpu401, _joy); this one
+//  places them (on: device 0 active) and keeps their shared IRQ here.
+//
 //  The bus: the machine decodes 0279 and the two windows from the bases
 //  brought out here; one byte access a cycle, the read value in rdata the
 //  cycle after sel.
@@ -56,9 +62,8 @@ module IBMRS6K7248_cs4232
 	input  logic        reset,
 
 	input  logic        cfg_sel,       // a write to 0279
-	input  logic        sel,           // an access to one of device 0's windows
+	input  logic        sel,           // an access to device 0's WSS codec window
 	input  logic        we,
-	input  logic        wss,           // ... the WSS codec's (else the Sound Blaster's)
 	input  logic [3:0]  off,
 	input  logic [7:0]  wdata,
 	output logic [7:0]  rdata,
@@ -73,6 +78,8 @@ module IBMRS6K7248_cs4232
 	input  logic [2:0]  dack_ch,
 	input  logic [7:0]  dack_data,
 	output logic        irq,           // IRQ 5
+	output logic        cap_drq,       // capture: DMA channel 0
+	output logic [7:0]  rec_byte,      // ... the capture format's silence
 
 	output logic [15:0] aud_l,         // signed
 	output logic [15:0] aud_r
@@ -129,8 +136,7 @@ end
 assign sb_base  = base2[15:4];
 assign wss_base = base0[15:2];
 
-// ---- device 0's ports: the Sound Blaster's DSP reset handshake, the WSS codec ---------------
-logic       dsp_rst, dsp_avail;
+// ---- device 0's WSS codec ---------------------------------------------------------------------
 logic [7:0] idx;                          // R0: MCE, TRD, the register
 logic [7:0] dr [32];                      // I0-I31
 logic       int_st;                       // R2 bit 0
@@ -147,52 +153,37 @@ function automatic logic [7:0] dreg(input logic [4:0] n);
 	endcase
 endfunction
 
-// the playback engine's (below): a frame taken (the count steps), the count's end
-logic       pl_frame, pl_end;
+// the playback and capture engines' (below): a frame taken (the count steps), the counts' ends
+logic       pl_frame, pl_end, cp_end;
 
 always_ff @(posedge clk) begin
 	if (sel) begin
-		if (wss) begin
-			if (we) begin
-				case (off[1:0])
-					2'd0: idx <= {1'b0, wdata[6:0]};
-					2'd1: begin
-						if (ia == 5'd12)      dr[12][6] <= wdata[6];
-						else if (ia == 5'd24) begin
-							dr[24] <= wdata;
-							if (dr[24][4] && !wdata[4]) int_st <= 1'b0;     // PI cleared
-						end
-						else if (ia != 5'd11 && ia != 5'd25) dr[ia] <= wdata;
+		if (we) begin
+			case (off[1:0])
+				2'd0: idx <= {1'b0, wdata[6:0]};
+				2'd1: begin
+					if (ia == 5'd12)      dr[12][6] <= wdata[6];
+					else if (ia == 5'd24) begin
+						dr[24] <= wdata;
+						if (dr[24][4] && !wdata[4]) int_st <= 1'b0;     // PI cleared
 					end
-					2'd2: begin int_st <= 1'b0; dr[24][6:4] <= 3'b000; end  // the status: INT, PI/CI/TI clear
-					default: ;
-				endcase
-			end
-			else case (off[1:0])
-				2'd0:    rdata <= {1'b0, idx[6:0]};                 // INIT clear: ready
-				2'd1:    rdata <= dreg(ia);
-				2'd2:    rdata <= {7'd0, int_st};
-				default: rdata <= 8'h00;
-			endcase
-		end
-		else begin
-			if (we) begin
-				if (off == 4'h6) begin
-					if (wdata[0]) dsp_rst <= 1'b1;
-					else if (dsp_rst) begin dsp_rst <= 1'b0; dsp_avail <= 1'b1; end
+					else if (ia != 5'd11 && ia != 5'd25) dr[ia] <= wdata;
 				end
-			end
-			else case (off)
-				4'hA: begin rdata <= dsp_avail ? 8'hAA : 8'h00; dsp_avail <= 1'b0; end
-				4'hC: rdata <= 8'h00;
-				4'hE: rdata <= {dsp_avail, 7'h7F};
-				default: rdata <= 8'hFF;
+				2'd2: begin int_st <= 1'b0; dr[24][6:4] <= 3'b000; end  // the status: INT, PI/CI/TI clear
+				default: ;
 			endcase
 		end
+		else case (off[1:0])
+			2'd0:    rdata <= {1'b0, idx[6:0]};                 // INIT clear: ready
+			2'd1:    rdata <= dreg(ia);
+			2'd2:    rdata <= {7'd0, int_st};
+			default: rdata <= 8'h00;
+		endcase
 	end
 	if (pl_end) begin int_st <= 1'b1; dr[24][4] <= 1'b1; end      // PI
+	if (cp_end) begin int_st <= 1'b1; dr[24][5] <= 1'b1; end      // CI
 	if (reset) begin
-		dsp_rst <= 1'b0; dsp_avail <= 1'b0; idx <= 8'h40; int_st <= 1'b0;
+		idx <= 8'h40; int_st <= 1'b0;
 		for (int i = 0; i < 32; i++) dr[i] <= 8'h00;
 		dr[2] <= 8'h88; dr[3] <= 8'h88; dr[4] <= 8'h88; dr[5] <= 8'h88;
 		dr[6] <= 8'h80; dr[7] <= 8'h80;                         // the DACs muted
@@ -295,6 +286,36 @@ end
 always_ff @(posedge clk) begin
 	aud_l <= att(sl, dr[6]);
 	aud_r <= att(sr, dr[7]);
+end
+
+// ---- capture: silence, a frame at the rate, offered to DMA channel 0 -------------------------------
+localparam logic [2:0] CAP_CH = 3'd0;
+wire        cen    = dr[9][1] & ~dr[9][7] & on;
+wire [7:0]  cfmt_r = mode2 ? dr[28] : dr[8];
+wire [2:0]  cfmt   = mode2 ? cfmt_r[7:5] : {1'b0, cfmt_r[6:5]};
+wire        cw16   = cfmt == 3'd2 || cfmt == 3'd6;
+wire [2:0]  cbytes = {cw16 & cfmt_r[4], cw16 ^ cfmt_r[4], ~(cw16 | cfmt_r[4])};
+assign rec_byte = cfmt == 3'd0 ? 8'h80 : cfmt == 3'd1 ? 8'hFF : cfmt == 3'd3 ? 8'hD5 : 8'h00;
+logic [31:0] cph;
+logic [4:0]  c_pend;                                            // bytes offered, not yet taken
+logic [15:0] ccnt;
+logic        cen_q, ctick;
+assign cap_drq = cen && c_pend != 5'd0;
+wire   ctake = dack && dack_ch == CAP_CH && cen && c_pend != 5'd0;
+always_ff @(posedge clk) begin
+	ctick  <= 1'b0;
+	cp_end <= 1'b0;
+	cen_q  <= cen;
+	if (!cen) cph <= 32'd0;
+	else if (cph + {15'd0, fs} >= 32'(CLK_HZ)) begin cph <= cph + {15'd0, fs} - 32'(CLK_HZ); ctick <= 1'b1; end
+	else cph <= cph + {15'd0, fs};
+	if (ctick) begin
+		if (ccnt == 16'd0) begin cp_end <= 1'b1; ccnt <= mode2 ? {dr[30], dr[31]} : {dr[14], dr[15]}; end
+		else ccnt <= ccnt - 16'd1;
+	end
+	c_pend <= (ctick && c_pend <= 5'd12 ? c_pend + {2'b00, cbytes} : c_pend) - (ctake ? 5'd1 : 5'd0);
+	if (cen && !cen_q) ccnt <= mode2 ? {dr[30], dr[31]} : {dr[14], dr[15]};
+	if (!cen || reset) c_pend <= 5'd0;
 end
 
 endmodule

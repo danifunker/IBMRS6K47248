@@ -40,7 +40,6 @@ localparam int TB_HZ   = 16_666_667;        // the 604's time base: a quarter of
 ///////// Default values for ports not used in this core /////////
 
 assign ADC_BUS  = 'Z;
-assign USER_OUT = '1;
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 
 assign VGA_SL = 0;
@@ -53,12 +52,34 @@ assign HDMI_BOB_DEINT = 0;
 
 assign AUDIO_S = 1;
 wire   speaker;                         // the 8254's counter 2 through port 61, in the CPU's clock
-wire [15:0] aud_l, aud_r;                // the CS4232's codec, signed, in the CPU's clock
-// the codec, the speaker added (as the planar's amplifier mixes them), clipped
-wire [16:0] mix_l = {aud_l[15], aud_l} + (speaker ? 17'h00800 : 17'h0);
-wire [16:0] mix_r = {aud_r[15], aud_r} + (speaker ? 17'h00800 : 17'h0);
-assign AUDIO_L = (mix_l[16] != mix_l[15]) ? {mix_l[16], {15{~mix_l[16]}}} : mix_l[15:0];
-assign AUDIO_R = (mix_r[16] != mix_r[15]) ? {mix_r[16], {15{~mix_r[16]}}} : mix_r[15:0];
+wire [15:0] aud_l, aud_r;                // the CS4232's codec and Sound Blaster, signed, in the CPU's clock
+wire [15:0] fm_snd;                      // its FM chip (IBMRS6K7248_opl, below)
+wire  [7:0] fm_vol;                      // ... at the SB mixer's FM volume (left 7:4, right 3:0)
+wire [15:0] mt32_i2s_l, mt32_i2s_r;      // an MT32-pi's synth (CLK_AUDIO)
+wire        mt32_use;
+// the mix, in the audio clock: the codec and Sound Blaster, the FM chip, the speaker (as the planar's
+// amplifier mixes it), the MT32-pi; clipped
+reg  [15:0] a_cs_l, a_cs_r, a_fm, a_cs_l2, a_cs_r2, a_fm2;
+reg   [7:0] a_fv, a_fv2;
+reg         a_spk, a_spk2;
+always @(posedge CLK_AUDIO) begin
+	{a_cs_l, a_cs_l2} <= {a_cs_l2, aud_l};
+	{a_cs_r, a_cs_r2} <= {a_cs_r2, aud_r};
+	{a_fm, a_fm2}     <= {a_fm2, fm_snd};
+	{a_fv, a_fv2}     <= {a_fv2, fm_vol};
+	{a_spk, a_spk2}   <= {a_spk2, speaker};
+end
+wire signed [15:0] fm_l = 16'(($signed(a_fm) * $signed({1'b0, a_fv[7:4], 4'h0})) >>> 8);
+wire signed [15:0] fm_r = 16'(($signed(a_fm) * $signed({1'b0, a_fv[3:0], 4'h0})) >>> 8);
+wire signed [17:0] mix_l = $signed(a_cs_l) + fm_l + (a_spk ? 18'sh00800 : 18'sh0) + (mt32_use ? $signed(mt32_i2s_l) : 18'sh0);
+wire signed [17:0] mix_r = $signed(a_cs_r) + fm_r + (a_spk ? 18'sh00800 : 18'sh0) + (mt32_use ? $signed(mt32_i2s_r) : 18'sh0);
+reg  [15:0] out_l, out_r;
+always @(posedge CLK_AUDIO) begin
+	out_l <= mix_l > 18'sd32767 ? 16'h7FFF : mix_l < -18'sd32768 ? 16'h8000 : mix_l[15:0];
+	out_r <= mix_r > 18'sd32767 ? 16'h7FFF : mix_r < -18'sd32768 ? 16'h8000 : mix_r[15:0];
+end
+assign AUDIO_L = out_l;
+assign AUDIO_R = out_r;
 assign AUDIO_MIX = 0;
 
 assign LED_POWER = 0;
@@ -89,6 +110,7 @@ localparam CONF_STR = {
 	"-;",
 	"P2,Video;",
 	"P3,Input;",
+	"P4,Audio;",
 	"P5,Advanced;",
 `ifdef IBMRS6K7248_DEBUG
 	"P9,Debug;",
@@ -100,6 +122,12 @@ localparam CONF_STR = {
 	"P2O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
 
 	"P3O[5],Swap Alt/Win keys,No,Yes;",
+
+	// the MPU-401's MIDI to an MT32-pi on the user port (sys/mt32pi.sv; these act at once)
+	"P4O[9],Use MT32-pi,Yes,No;",
+	"P4O[10],Synth,Munt,FluidSynth;",
+	"P4H1O[12:11],Munt ROM,MT-32 v1,MT-32 v2,CM-32L;",
+	"P4h1O[15:13],SoundFont,0,1,2,3,4,5,6,7;",
 
 	"P5SC3,NVR,NVRAM image;",
 
@@ -163,6 +191,8 @@ wire [26:0] ioctl_addr;
 wire  [7:0] ioctl_dout;
 wire        ioctl_wait;
 wire [15:0] sdram_sz;
+wire [31:0] joystick_0, joystick_1;   // the CS4232's joystick port's sticks
+wire [15:0] joystick_l_analog_0, joystick_l_analog_1;
 wire [10:0] ps2_key;                  // {toggle, pressed, extended, set 2 code}, from the Main
 wire [10:0] ps2_key_m;                // ... to the machine: Swap Alt/Win keys applied
 wire [24:0] ps2_mouse;
@@ -205,7 +235,8 @@ hps_io #(.CONF_STR(CONF_STR), .VDNUM(4), .BLKSZ(2)) hps_io
 	.forced_scandoubler(forced_scandoubler),
 	.buttons(buttons),
 	.status(status),
-	.status_menumask({15'd0, pending}),       // bit 0: "Changes pending"
+	.status_menumask({14'd0, status[10], pending}),   // bit 0: "Changes pending"; bit 1: FluidSynth (SoundFont, not Munt ROM)
+	.joystick_0, .joystick_1, .joystick_l_analog_0, .joystick_l_analog_1,
 	.sdram_sz(sdram_sz),
 	.ps2_key(ps2_key),
 	.ps2_mouse(ps2_mouse),
@@ -401,6 +432,9 @@ IBMRS6K7248_system #(.CPU_HZ(CPU_MHZ * 1_000_000), .TB_HZ(TB_HZ)) system
 	.rtc_set(rtc_set_c),
 	.rtc_time(rtc[55:0]),
 	.speaker, .aud_l, .aud_r, .kbc_reset,
+	.fm_cs, .fm_we, .fm_a, .fm_wdata, .fm_rdata, .fm_vol,
+	.joy1(joystick_0[5:0]), .joy2(joystick_1[5:0]), .ana1(joystick_l_analog_0), .ana2(joystick_l_analog_1),
+	.midi_tx, .midi_rx,
 
 	// the S3's VRAM in DDR3 and its picture, in the memory clock
 	.net_on(status[8:6] != 3'd1),
@@ -425,6 +459,26 @@ IBMRS6K7248_system #(.CPU_HZ(CPU_MHZ * 1_000_000), .TB_HZ(TB_HZ)) system
 );
 assign UART_RTS = 0;
 assign UART_DTR = UART_DSR;
+
+// the CS4232's FM chip: JTOPL's OPL2 behind the OPL3's ports (rtl/IBMRS6K7248_opl.sv), in the CPU's clock
+wire        fm_cs, fm_we;
+wire  [1:0] fm_a;
+wire  [7:0] fm_wdata, fm_rdata;
+IBMRS6K7248_opl #(.CLK_HZ(CPU_MHZ * 1_000_000)) opl (
+	.clk(clk_cpu), .reset(cpu_reset), .cs(fm_cs), .we(fm_we), .a(fm_a), .wdata(fm_wdata), .rdata(fm_rdata), .snd(fm_snd)
+);
+
+// the MPU-401's MIDI to an MT32-pi on the user port (the framework's sys/mt32pi.sv), its synth back
+wire        midi_tx, midi_rx, mt32_available;
+assign      mt32_use = mt32_available & ~status[9];
+mt32pi mt32pi (
+	.CLK_AUDIO(CLK_AUDIO), .CLK_VIDEO(clk_mem), .CE_PIXEL(vid_ce), .VGA_VS(vid_vs), .VGA_DE(~(vid_hblank | vid_vblank)),
+	.USER_IN(USER_IN), .USER_OUT(USER_OUT),
+	.reset(cpu_reset_m), .midi_tx(midi_tx | ~mt32_use), .midi_rx(midi_rx),
+	.mt32_i2s_r(mt32_i2s_r), .mt32_i2s_l(mt32_i2s_l), .mt32_available(mt32_available),
+	.mt32_mode_req(status[10]), .mt32_rom_req(status[12:11]), .mt32_sf_req({5'd0, status[15:13]}),
+	.mt32_mode(), .mt32_rom(), .mt32_sf(), .mt32_newmode(), .mt32_lcd_en(), .mt32_lcd_pix(), .mt32_lcd_update()
+);
 
 // the NVRAM and CMOS kept in the NVRAM file (block device 3)
 IBMRS6K7248_nvsave nvsave (
