@@ -233,7 +233,10 @@ always_comb begin
 			8'hFF:   begin kpush_n = 3'd2; kpush[0] = 8'hFA; kpush[1] = 8'hAA; end
 			8'hF2:   begin kpush_n = 3'd3; kpush[0] = 8'hFA; kpush[1] = 8'hAB; kpush[2] = cbyte[6] ? 8'h41 : 8'h83; end
 			8'hEE:   begin kpush_n = 3'd1; kpush[0] = 8'hEE; end
-			default: begin kpush_n = 3'd1; kpush[0] = 8'hFA; end
+			// the other commands are ED, F0 and F2-FF (acknowledged); anything else is not a command and
+			// a real keyboard asks for it again (FE, Resend): AIX's keyboard probe sends EF after its reset and
+			// gives up on the keyboard (command byte 30) when it is acknowledged
+			default: begin kpush_n = 3'd1; kpush[0] = (wdata == 8'hED || wdata == 8'hF0 || wdata >= 8'hF2) ? 8'hFA : 8'hFE; end
 		endcase
 	end
 	// a key
