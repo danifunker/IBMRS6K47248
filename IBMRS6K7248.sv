@@ -62,33 +62,45 @@ assign BUTTONS = 0;
 
 //////////////////////////////////////////////////////////////////
 
-wire [1:0] ar = status[122:121];
-
-assign VIDEO_ARX = (!ar) ? 12'd4 : (ar - 1'd1);
-assign VIDEO_ARY = (!ar) ? 12'd3 : 12'd0;
 
 `include "build_id.v"
+// The OSD as the computer cores' standard has it (hp9000-715_MiSTer docs/osd-standard.md): the media and
+// Load ROM, Memory, the submenus by their fixed pages (P2 Video, P3 Input, P5 Advanced, P9 Debug in a
+// debug build), "Changes pending" and Apply and reset. Media and Input act at once; the rest waits for
+// a reset. The status bits are the earlier OSD's, so saved settings carry over.
 localparam CONF_STR = {
 	"IBMRS6K7248;UART115200:57600:38400:19200:9600;",
 	"-;",
-	"F1,ROMBINIMG,Load firmware ROM;",
-	"-;",
 	// (SC: the Main remembers each image and mounts it again at the next core load)
-	"SC0,IMGHDAVHD,SCSI disk ID 0;",
-	"SC1,IMGHDAVHD,SCSI disk ID 1;",
-	"SC2,ISOBINCUECHD,SCSI CD-ROM ID 3;",
-	"SC3,NVR,NVRAM file;",
+	"SC0,IMGHDAVHD,Pri. disk (ID 0);",
+	"SC1,IMGHDAVHD,Disk (ID 1);",
+	"SC2,ISOBINCUECHD,CD-ROM (ID 3);",
+	"F1,ROMBINIMG,Load ROM;",
 	"-;",
 	// the RAM as the board's SIMM pairs, beside the ROM (the SDRAM's top 4 MB); a size the
 	// SDRAM cannot hold gives the most it can (24, 56 or 112 MB). 32 MB first: AIX's least
-	"O[3:1],RAM (on reset),32 MB,48 MB,56 MB,64 MB,96 MB,112 MB,16 MB,24 MB;",
+	"O[3:1],Memory,32MB,48MB,56MB,64MB,96MB,112MB,16MB,24MB;",
 	"-;",
-	"O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
+	"P2,Video;",
+	"P3,Input;",
+	"P5,Advanced;",
+`ifdef IBMRS6K7248_DEBUG
+	"P9,Debug;",
+`endif
 	"-;",
-	"O[4],UART,POST codes,COM1;",
-	"-;",
-	"T[0],Reset;",
-	"R[0],Reset and close OSD;",
+	"h0-,Changes pending;",
+	"R[0],Apply and reset;",
+
+	"P2O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
+
+	"P3O[5],Swap Alt/Win keys,No,Yes;",
+
+	"P5SC3,NVR,NVRAM image;",
+
+`ifdef IBMRS6K7248_DEBUG
+	// the MiSTer's UART: the bring-up log (POST codes, the debug FIFO) or COM1; a release build has COM1
+	"P9O[4],UART,POST codes,COM1;",
+`endif
 	"v,0;",
 	"V,v",`BUILD_DATE
 };
@@ -131,6 +143,13 @@ wire clk_sys = clk_mem;
 wire        forced_scandoubler;
 wire  [1:0] buttons;
 wire [127:0] status;
+// the settings the machine runs with (taken at reset: below), and "Changes pending"
+reg  [127:0] cfg = 128'd0;
+wire         pending = {status[4:1], status[122:121]} != {cfg[4:1], cfg[122:121]};
+
+wire [1:0] ar = cfg[122:121];
+assign VIDEO_ARX = (!ar) ? 12'd4 : (ar - 1'd1);
+assign VIDEO_ARY = (!ar) ? 12'd3 : 12'd0;
 wire        ioctl_download;
 wire [15:0] ioctl_index;
 wire        ioctl_wr;
@@ -138,7 +157,8 @@ wire [26:0] ioctl_addr;
 wire  [7:0] ioctl_dout;
 wire        ioctl_wait;
 wire [15:0] sdram_sz;
-wire [10:0] ps2_key;
+wire [10:0] ps2_key;                  // {toggle, pressed, extended, set 2 code}, from the Main
+wire [10:0] ps2_key_m;                // ... to the machine: Swap Alt/Win keys applied
 wire [24:0] ps2_mouse;
 wire [64:0] rtc;                      // BCD: seconds, minutes, hours, date, month, year, weekday; [64] toggles                 // the Main's SDRAM board: [15] known, [1:0] 1 32 MB, 2 64 MB, 3 128 MB
 reg   [1:0] sdram_mod = 2'd1;         // the board the ROM went into (an unknown one taken as 32 MB)
@@ -179,7 +199,7 @@ hps_io #(.CONF_STR(CONF_STR), .VDNUM(4), .BLKSZ(2)) hps_io
 	.forced_scandoubler(forced_scandoubler),
 	.buttons(buttons),
 	.status(status),
-	.status_menumask(16'd0),
+	.status_menumask({15'd0, pending}),       // bit 0: "Changes pending"
 	.sdram_sz(sdram_sz),
 	.ps2_key(ps2_key),
 	.ps2_mouse(ps2_mouse),
@@ -226,7 +246,7 @@ end
 
 ///////////////////////   OPTIONS, ROM AND RESET (memory clock)   ///////////////////////////////
 
-// the RAM: the OSD's size as SIMM pairs (3 bits a pair, pair 0 lowest: 1 8 MB, 2 16, 3 32,
+// the RAM: the OSD's size (taken at reset below: simm_cfg) as SIMM pairs (3 bits a pair, pair 0 lowest: 1 8 MB, 2 16, 3 32,
 // 4 64; IBMRS6K7248_machine), no more than the SDRAM holds beside the ROM: 24 MB on a
 // 32 MB board, 56 on a 64 MB one, 112 on a 128 MB one
 localparam [8:0] SIMM_16 = 9'o002, SIMM_24 = 9'o012, SIMM_32 = 9'o003, SIMM_48 = 9'o023,
@@ -291,6 +311,18 @@ always @(posedge clk_mem) reset_in <= {reset_in[1:0], RESET | status[0] | button
 
 reg cpu_reset_m = 1;
 always @(posedge clk_mem) cpu_reset_m <= reset_in[2] | ~sdram_ready | rom_dl | ~rom_loaded;
+
+// the settings the machine runs with: the OSD's, taken while the machine is in reset (Apply and
+// reset, the board's reset, a core load, a ROM load). "Changes pending" while an OSD setting differs:
+// Memory, the UART, Aspect ratio (not Swap Alt/Win keys, an Input setting: it acts at once)
+always @(posedge clk_mem) if (cpu_reset_m) cfg <= status;
+
+// Swap Alt/Win keys (live): left Alt (11) and left Win (E0 1F), right Alt (E0 11) and right Win (E0 27)
+wire       alt_l = ps2_key[8:0] == 9'h011, win_l = ps2_key[8:0] == 9'h11F;
+wire       alt_r = ps2_key[8:0] == 9'h111, win_r = ps2_key[8:0] == 9'h127;
+assign ps2_key_m = !status[5] ? ps2_key :
+                   alt_l ? {ps2_key[10:9], 9'h11F} : win_l ? {ps2_key[10:9], 9'h011} :
+                   alt_r ? {ps2_key[10:9], 9'h127} : win_r ? {ps2_key[10:9], 9'h111} : ps2_key;
 
 // the options taken under reset
 reg [8:0] simm_cfg = SIMM_16;
@@ -359,7 +391,7 @@ IBMRS6K7248_system #(.CPU_HZ(CPU_MHZ * 1_000_000), .TB_HZ(TB_HZ)) system
 	.reset_b(cpu_reset_m),
 	.b_req, .b_we, .b_line, .b_addr, .b_be, .b_wdata, .b_ack, .b_rdata,
 
-	.ps2_key, .ps2_mouse,
+	.ps2_key(ps2_key_m), .ps2_mouse,
 	.rtc_set(rtc_set_c),
 	.rtc_time(rtc[55:0]),
 	.speaker, .kbc_reset,
@@ -733,7 +765,11 @@ always @(posedge clk_cpu) begin
 		tx_n     <= tx_n - 4'd1;
 	end else tx_div <= tx_div + 16'd1;
 end
-assign UART_TXD = status[4] ? com1_txd : post_txd;
+`ifdef IBMRS6K7248_DEBUG
+assign UART_TXD = cfg[4] ? com1_txd : post_txd;
+`else
+assign UART_TXD = com1_txd;
+`endif
 
 ///////////////////////   THE LED   ///////////////////////////////
 

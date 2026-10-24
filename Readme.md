@@ -47,6 +47,36 @@ Work in progress: just started (2026-10-16).
   them apart by the planar ID at port 0852.
 - Real hardware outranks every emulator.
 
+## Using it on the MiSTer
+
+Put the files in `games/IBMRS6K7248/`:
+
+- `boot.rom`: the 7248's firmware (512 KB). It loads at every start.
+- A disk image for AIX, made with `dd if=/dev/zero of=AIX.img bs=1M count=4096`.
+- `IBMRS6K7248.nvr`: the NVRAM image, made with `dd if=/dev/zero of=IBMRS6K7248.nvr bs=512 count=9`.
+  The core fills it on first mount.
+- The AIX install CD, as an ISO.
+
+### The OSD
+
+The OSD follows the computer cores' standard ([osd-standard.md](https://github.com/danifunker/hp9000-715_MiSTer/blob/master/docs/osd-standard.md)).
+Mounted images are remembered and mounted again at every core load.
+
+| Page | Row | Meaning |
+|---|---|---|
+| top | `Pri. disk (ID 0)` | the SCSI disk at ID 0, hdisk0 under AIX. "Pri." is the usual boot disk; the firmware's boot list (SMS) can boot another device |
+| top | `Disk (ID 1)` | a second SCSI disk |
+| top | `CD-ROM (ID 3)` | the CD image (the AIX install CD) |
+| top | `Load ROM` | another firmware ROM for this session (a normal start loads `boot.rom`); it resets the machine |
+| top | `Memory` | the RAM as SIMM pairs. AIX needs 32 MB at least. A size the SDRAM can't hold gives the most it can: 24, 56 or 112 MB on a 32, 64 or 128 MB module |
+| top | `Apply and reset` | resets the machine with the OSD's settings. "Changes pending" shows while they differ from the running ones |
+| P2 Video | `Aspect ratio` | Original (4:3), Full Screen, or the custom ratios |
+| P3 Input | `Swap Alt/Win keys` | swaps the Alt and Win keys (acts at once) |
+| P5 Advanced | `NVRAM image` | the file holding the 4 KB PReP NVRAM and the CMOS: the boot list, the console choice, SMS settings. Loaded at the mount, saved two seconds after AIX or the firmware writes them |
+| P9 Debug | `UART` | debug builds only (`IBMRS6K7248_DEBUG` in the `.qsf`): the MiSTer's UART carries the bring-up log (POST codes) or COM1. A release build carries COM1 |
+
+Memory, the UART and the aspect ratio take effect at the next reset; media and Input settings take effect at once.
+
 ## Running the bench
 
 ```
