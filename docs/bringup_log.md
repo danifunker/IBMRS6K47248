@@ -964,3 +964,22 @@ Findings (details in `scratch/work/com1_findings.md`):
   **hdisk0**, English), and **"Installing Base Operating System"** started at 10:59: "Making
   boot logical volume", writing to the disk image through the 53C810 and the Main's standard
   block write path.
+
+## 2026-10-24 afternoon: AIX's X server: the hardware cursor, and the retrace poll that deafened it
+
+- **The picture**: the installed AIX boots from hdisk0 into X (1024 x 768 x 8: CR00=A1, CR01=7F,
+  CR06=24, CR07=F5, CR12=FF, CR13=80): the stipple root, the X cursor, and a **black 64 x 64
+  square** at the cursor with the X glyph in its top left. The mouse did not move the cursor.
+- **The cursor** (`a9066ad`, `scratch/work/x1a.raw`, `scratch/work/s3dec.py` decodes the S3
+  entries): X sets CR55 bit 4, **X11 mode** (0x the screen, 10 the background, 11 the
+  foreground), which the model lacked: in Windows mode its empty bits (00) drew the background.
+  Its colours at 8 bits a pixel are **CR0E (foreground) and CR0F (background)**, palette indexes
+  (X writes CR0E=00, CR0F=01 just before CR45=01); CR4A/CR4B are the 16/24-bit stacks. With
+  X11 mode the square is gone.
+- **The mouse**: the packets reach AIX (the kernel's IRQ 12 handler reads status 31, then
+  e.g. 28 3C D8, a move of +60, -40), but X never takes them: the one-shot capture at D0110B04
+  shows X's loop: `lis 0x4020; addi 0x3DA; lhz; andi. 8; bne`, waiting for the vertical
+  retrace's end with a **halfword read of 3DA** and testing the low byte, **3DB**'s. The model
+  answered 3DA but left 3DB undecoded (FF), so bit 3 never cleared and X spun forever (the
+  earlier recordings: `r3D8=FFFF00FF`, byte enables 0011). 3DB now answers as input status 1,
+  the chip's one read byte on both lanes.
