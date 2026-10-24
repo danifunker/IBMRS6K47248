@@ -142,6 +142,11 @@ logic [15:0] pll [16];              // {M, N}; index 0E one byte
 logic [7:0] r46e8, r4ae8, r0102;
 logic [15:0] ge [64];               // the 8514 registers xxE8 by xx >> 2 (82E8 ... BEE8), little-endian
 logic       vint;                   // the vertical interrupt pending
+logic       ge_rd_mode, ge_rd_valid;      // the engine's image read: running, a transfer waiting
+logic [31:0] ge_rd_data;
+logic       ge_bus32;                     // the engine's command takes 32-bit transfers
+logic [31:0] pt_w;                        // a PIX_TRANS transfer for the engine, the bus's lanes
+logic [15:0] pt_lo;                       // ... its first half (E2E8, E2E9) when it came alone
 
 // the CRTC's port base follows misc bit 0 (3Dx colour, 3Bx mono)
 wire  [15:0] crt_base = misc[0] ? 16'h03D0 : 16'h03B0;
@@ -220,7 +225,7 @@ assign mem_hit = mem_on && cr[7'h58][4] && ((pci_addr[31:16] & lfb_mask) == (lfb
 wire [21:0] lfb_off = pci_addr[21:0] & {~lfb_mask[21:16], 16'hFFFF};
 
 // ---- the access: I/O a byte at a time; memory to VRAM ------------------------------------
-typedef enum logic [2:0] {A_IDLE, A_IO, A_MEM, A_PT, A_DONE} ast_t;
+typedef enum logic [2:0] {A_IDLE, A_IO, A_MEM, A_PT, A_PR, A_DONE} ast_t;
 ast_t        ast;
 logic [3:0]  left;                  // I/O: the lanes still to do (bit 3 the lowest address)
 logic [31:0] rq;                    // the answer being gathered
@@ -262,7 +267,7 @@ always_comb begin
 	else if (bp == 16'h4AE8)            rb = r4ae8;
 	else if (bp == 16'h0102)            rb = r0102;
 	else if (bp == 16'h9AE8)            rb = 8'h00;                             // GP_STAT: the FIFO empty (no FIFO: the bus waits)
-	else if (bp == 16'h9AE9)            rb = {6'd0, ge_busy, 1'b0};             // ... bit 9 the engine busy
+	else if (bp == 16'h9AE9)            rb = {6'd0, ge_busy, ge_rd_valid};      // ... bit 9 the engine busy, 8 read data waiting
 	else if (bp[9:0] == 10'h2E8)        rb = ge[bp[15:10]][7:0];
 	else if (bp[9:0] == 10'h2E9)        rb = ge[bp[15:10]][15:8];
 end
@@ -283,7 +288,8 @@ IBMRS6K7248_s3ge engine (
 	.clk, .reset,
 	.r_we(ast == A_IO && we && ge_reg_b && !ge_busy), .r_idx(bp[15:10]), .r_hi(bp[0]), .r_data(bw),
 	.r_abort(ast == A_IO && we && bp == 16'h42E9 && bw[7:6] == 2'b10),
-	.pt_valid(ast == A_PT), .pt_data({wdata[7:0], wdata[15:8], wdata[23:16], wdata[31:24]}), .pt_ready,
+	.pt_valid(ast == A_PT), .pt_data({pt_w[7:0], pt_w[15:8], pt_w[23:16], pt_w[31:24]}), .pt_ready,
+	.bus32(ge_bus32), .rd_mode(ge_rd_mode), .rd_valid(ge_rd_valid), .rd_data(ge_rd_data), .rd_take(ast == A_PR && ge_rd_valid),
 	.busy(ge_busy), .pitch(ge_pitch[11:0]),
 	.v_req(e_req), .v_we(e_we), .v_addr(e_addr), .v_be(e_be), .v_wdata(e_wdata), .v_ack(e_ack), .v_rdata
 );
@@ -334,7 +340,18 @@ always_ff @(posedge clk) begin
 				end
 			end
 			else if (port == 16'hE2E8 && we) begin   // PIX_TRANS: the transfer whole, to the engine
-				ast <= A_PT;
+				// (on a 32-bit bus a halfword write of E2E8 waits for E2EA's to complete the transfer)
+				if (ge_bus32 && be == 4'b1100) begin
+					pt_lo <= wdata[31:16];
+					ast   <= A_DONE;
+				end
+				else begin
+					pt_w <= (ge_bus32 && be == 4'b0011) ? {pt_lo, wdata[15:0]} : wdata;
+					ast  <= A_PT;
+				end
+			end
+			else if (port == 16'hE2E8 && ge_rd_mode) begin   // ... or from it, in an image read
+				ast <= A_PR;
 			end
 			else begin
 				left <= be;
@@ -348,6 +365,14 @@ always_ff @(posedge clk) begin
 			ast   <= A_DONE;
 		end
 		A_PT: if (pt_ready | ~ge_busy) ast <= A_DONE;    // taken by the engine, or dropped with none running
+		A_PR: if (ge_rd_valid) begin                     // the engine's transfer (E2E8 in its bits 7:0) on the bus's lanes
+			rq  <= {ge_rd_data[7:0], ge_rd_data[15:8], ge_rd_data[23:16], ge_rd_data[31:24]};
+			ast <= A_DONE;
+		end
+		else if (!ge_busy) begin
+			rq  <= 32'hFFFF_FFFF;
+			ast <= A_DONE;
+		end
 		A_IO: if (!(we && ge_reg_b && ge_busy)) begin     // an engine register waits for the engine
 			left[3 - k] <= 1'b0;
 			if (left == (4'b1000 >> k)) ast <= A_DONE;
