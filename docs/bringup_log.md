@@ -927,3 +927,20 @@ Findings (details in `scratch/work/com1_findings.md`):
   byte (the W/R letter), so the entries read "baa=dddddddd".
 - **Next**: bench `run29.sh` (build13, both fixes, the SCRIPTS trace) from reset through the
   scan: which SELECT hangs, and the bus fault's address.
+
+## 2026-10-24 night: the install CD gets past the mount: "Please define the System Console"
+
+- Bench `run29` (build13: the alias and SIOM/DIOM fixes, the SCRIPTS trace) reproduced the
+  board: the scan selects IDs 0, 1, 2, 4 (STO; the driver's abort and bus reset after most of
+  them are its STO handling) and at **ID 3 the CD answers**: SCRIPTS connects (ISTAT.CON), runs
+  to its INT (SIR), and then a RETURN goes to a bad address: a bus fault, twice, and the driver
+  gives up on ID 3, so no `cd0`. The RETURN follows a CALLed routine of MEMORY MOVEs, and the model
+  kept each move's destination in **TEMP**, the RETURN address. Real chips keep TEMP across
+  memory moves (QEMU's lsi53c895a says the same; AIX's SCRIPTS rely on it): a memory move's
+  destination now has its own register, and SBCL shows the phase lines only while BSY (`2b0d399`).
+- **The board** (.92, `2b0d399`, 112 MB, loaded through the OSD from `_Unstable`,
+  `scratch/work/scsi92c.raw`): no bus fault; the driver's steady SCRIPTS cycle (INT 6, restart
+  at 825FB100: 648 times, 1089 external interrupts); `rc.boot` mounts `/SPOT` from the CD and
+  the BOS install program runs: **the display shows AIX's "Please define the System Console"**
+  in all its languages (`scratch/work/kv92_42.png`). M5's first goal (AIX reads the install CD)
+  is reached; the console choice (F1 + Enter on the display) is the next step.

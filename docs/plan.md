@@ -45,6 +45,11 @@ device is touched, and `rc.boot` ends in its `loopled` forever-loop (a step
 failed before any hardware was needed: see `bringup_log.md` 2026-10-18 late
 evening). Item 0 is found first, then 1-3 above.
 
+**2026-10-24**: with the 53C810 fixes (`2df9a08`, `1440701`, `2b0d399`) the install CD gets past the
+`/SPOT` mount on the board: AIX's install program shows "Please define the System Console". Next in
+SCSI: the console choice and the install menus, then a SCSI disk image to install onto (writes:
+the Main_MiSTer branch's write buffer).
+
 ## Milestones
 
 ### M0 Skeleton (done, 2026-10-17)
