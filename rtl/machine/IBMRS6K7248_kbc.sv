@@ -17,7 +17,9 @@
 //  byte makes a new edge for the 8259.
 //
 //  The keyboard: reset (FA AA), identify (FA AB 83), enable and disable,
-//  the LEDs, the scan set (2 only; asked, it answers 2), typematic, echo;
+//  the LEDs, the scan set (2, or 3 as AIX selects it; asked, it answers which), the set 3
+//  key types (FB/FC/FD and their key lists: all keys stay make/break), typematic, echo, FE for a
+//  byte that is not a command;
 //  its keys in set 2 (E0 for extended keys, F0 before a release). The
 //  mouse: reset (FA AA 00), identify (FA 00), enable and disable
 //  streaming, defaults, sample rate, resolution, scaling, status (FA 00 02
@@ -184,6 +186,64 @@ function automatic logic [7:0] xlat(input logic [7:0] c);
 	endcase
 endfunction
 
+// a key's scan set 3 code from the Main's set 2 code (e: E0-extended in set 2); 00 for keys set 3 has
+// no code for here. Set 3 is the IBM terminal set AIX selects (F0 03); its letters, digits, Enter, Space,
+// Backspace, Tab, the shifts and most of the keypad keep their set 2 codes
+function automatic logic [7:0] set3(input logic e, input logic [7:0] c);
+	if (e) case (c)
+		8'h11: set3 = 8'h39;    // right Alt
+		8'h14: set3 = 8'h58;    // right Ctrl
+		8'h70: set3 = 8'h67;    // Insert
+		8'h6C: set3 = 8'h6E;    // Home
+		8'h7D: set3 = 8'h6F;    // Page Up
+		8'h71: set3 = 8'h64;    // Delete
+		8'h69: set3 = 8'h65;    // End
+		8'h7A: set3 = 8'h6D;    // Page Down
+		8'h75: set3 = 8'h63;    // Up
+		8'h6B: set3 = 8'h61;    // Left
+		8'h72: set3 = 8'h60;    // Down
+		8'h74: set3 = 8'h6A;    // Right
+		8'h4A: set3 = 8'h77;    // keypad /
+		8'h5A: set3 = 8'h79;    // keypad Enter
+		8'h7C: set3 = 8'h57;    // Print Screen
+		8'h1F: set3 = 8'h8B;    // left Windows
+		8'h27: set3 = 8'h8C;    // right Windows
+		8'h2F: set3 = 8'h8D;    // Menu
+		default: set3 = 8'h00;
+	endcase
+	else case (c)
+		8'h76: set3 = 8'h08;    // Esc
+		8'h05: set3 = 8'h07;    // F1
+		8'h06: set3 = 8'h0F;    // F2
+		8'h04: set3 = 8'h17;    // F3
+		8'h0C: set3 = 8'h1F;    // F4
+		8'h03: set3 = 8'h27;    // F5
+		8'h0B: set3 = 8'h2F;    // F6
+		8'h83: set3 = 8'h37;    // F7
+		8'h0A: set3 = 8'h3F;    // F8
+		8'h01: set3 = 8'h47;    // F9
+		8'h09: set3 = 8'h4F;    // F10
+		8'h78: set3 = 8'h56;    // F11
+		8'h07: set3 = 8'h5E;    // F12
+		8'h7E: set3 = 8'h5F;    // Scroll Lock
+		8'h14: set3 = 8'h11;    // left Ctrl
+		8'h11: set3 = 8'h19;    // left Alt
+		8'h58: set3 = 8'h14;    // Caps Lock
+		8'h5D: set3 = 8'h5C;    // backslash
+		8'h61: set3 = 8'h13;    // the 102nd key (< >)
+		8'h77: set3 = 8'h76;    // Num Lock
+		8'h7C: set3 = 8'h7E;    // keypad *
+		8'h7B: set3 = 8'h84;    // keypad -
+		8'h79: set3 = 8'h7C;    // keypad +
+		default: set3 = c;
+	endcase
+endfunction
+
+// a byte the keyboard takes as a command: ED, EE, F0, F2-FF (anything else is answered FE)
+function automatic logic k_cmd(input logic [7:0] b);
+	return b == 8'hED || b == 8'hEE || b == 8'hF0 || b >= 8'hF2;
+endfunction
+
 // ---- queues: the controller's answers first, then the keyboard's, then the mouse's -------
 localparam int QN = 16;
 logic [7:0] kq [QN], mq [QN];
@@ -203,6 +263,8 @@ logic [15:0] gap;
 logic       k_on;                       // scanning
 logic [7:0] k_wait;                     // a command waiting for its parameter (0 none)
 logic       k_rel;                      // translation: the next code is a release
+logic       k_set3;                     // scan set 3 selected (F0 03; else set 2)
+logic       k_list;                     // after FB/FC/FD: key codes follow until the next command
 // mouse device
 logic       m_on;
 logic [7:0] m_wait;
@@ -229,6 +291,7 @@ always_comb begin
 	if (sel & we & ~cmd & pend == 8'h00) begin
 		if (k_wait == 8'hF0 && wdata == 8'h00) begin end      // the scan set, asked: below
 		else if (k_wait != 8'h00) begin kpush_n = 3'd1; kpush[0] = 8'hFA; end
+		else if (k_list && !k_cmd(wdata)) begin kpush_n = 3'd1; kpush[0] = 8'hFA; end   // a key code after FB/FC/FD
 		else case (wdata)
 			8'hFF:   begin kpush_n = 3'd2; kpush[0] = 8'hFA; kpush[1] = 8'hAA; end
 			8'hF2:   begin kpush_n = 3'd3; kpush[0] = 8'hFA; kpush[1] = 8'hAB; kpush[2] = cbyte[6] ? 8'h41 : 8'h83; end
@@ -236,12 +299,21 @@ always_comb begin
 			// the other commands are ED, F0 and F2-FF (acknowledged); anything else is not a command and
 			// a real keyboard asks for it again (FE, Resend): AIX's keyboard probe sends EF after its reset and
 			// gives up on the keyboard (command byte 30) when it is acknowledged
-			default: begin kpush_n = 3'd1; kpush[0] = (wdata == 8'hED || wdata == 8'hF0 || wdata >= 8'hF2) ? 8'hFA : 8'hFE; end
+			default: begin kpush_n = 3'd1; kpush[0] = k_cmd(wdata) ? 8'hFA : 8'hFE; end
 		endcase
 	end
 	// a key
 	else if (key_ev && k_on && kq_n <= 5'(QN - 3)) begin
-		if (cbyte[6]) begin
+		if (k_set3 && !cbyte[6]) begin
+			// set 3 (AIX): the code, F0 before it for a release; keys without a set 3 code are dropped
+			logic [7:0] c3;
+			c3 = set3(ps2_key[8], ps2_key[7:0]);
+			if (c3 != 8'h00) begin
+				if (ps2_key[9]) begin kpush_n = 3'd1; kpush[0] = c3; end
+				else            begin kpush_n = 3'd2; kpush[0] = 8'hF0; kpush[1] = c3; end
+			end
+		end
+		else if (cbyte[6]) begin
 			// translated: E0, then the code with bit 7 for a release
 			if (ps2_key[8]) begin kpush_n = 3'd2; kpush[0] = 8'hE0; kpush[1] = xlat(ps2_key[7:0]) | {~ps2_key[9], 7'd0}; end
 			else            begin kpush_n = 3'd1; kpush[0] = xlat(ps2_key[7:0]) | {~ps2_key[9], 7'd0}; end
@@ -362,14 +434,23 @@ always_ff @(posedge clk) begin
 					end
 					default: begin                          // to the keyboard
 						cbyte[4] <= 1'b0;
-						if (k_wait != 8'h00) k_wait <= 8'h00;
-						else case (wdata)
-							8'hED, 8'hF0, 8'hF3: k_wait <= wdata;
-							8'hF4: k_on <= 1'b1;
-							8'hF5: k_on <= 1'b0;
-							8'hF6, 8'hFF: k_on <= 1'b1;
-							default: ;
-						endcase
+						if (k_wait != 8'h00) begin
+							// the scan set: 1-3 select (set 1 is taken as 2), 0 asks (answered below)
+							if (k_wait == 8'hF0 && wdata != 8'h00) k_set3 <= wdata == 8'h03;
+							k_wait <= 8'h00;
+						end
+						else if (k_list && !k_cmd(wdata)) ;      // a key code after FB/FC/FD: all keys stay make/break
+						else begin
+							k_list <= wdata == 8'hFB || wdata == 8'hFC || wdata == 8'hFD;
+							case (wdata)
+								8'hED, 8'hF0, 8'hF3: k_wait <= wdata;
+								8'hF4: k_on <= 1'b1;
+								8'hF5: k_on <= 1'b0;
+								8'hF6: k_on <= 1'b1;
+								8'hFF: begin k_on <= 1'b1; k_set3 <= 1'b0; end     // the reset: set 2 again
+								default: ;
+							endcase
+						end
 					end
 				endcase
 			end
@@ -391,17 +472,17 @@ always_ff @(posedge clk) begin
 		mq[4'(mq_w + 4'd3)] <= wdata == 8'hE9 ? m_rate : 8'h00;
 		mq_w <= mq_w + 4'd4;
 	end
-	// the scan set, asked (F0 00): the keyboard answers 2 after its FA
+	// the scan set, asked (F0 00): the keyboard answers its set (2 or 3) after its FA
 	if (sel & we & ~cmd & pend == 8'h00 & k_wait == 8'hF0 & wdata == 8'h00) begin
 		kq[kq_w] <= 8'hFA;
-		kq[4'(kq_w + 4'd1)] <= 8'h02;
+		kq[4'(kq_w + 4'd1)] <= k_set3 ? 8'h03 : 8'h02;
 		kq_w <= kq_w + 4'd2;
 	end
 
 	if (reset) begin
 		kq_r <= '0; kq_w <= '0; mq_r <= '0; mq_w <= '0;
 		obf <= 1'b0; ob_aux <= 1'b0; cbyte <= 8'h00; a2 <= 1'b0; pend <= 8'h00; outport <= 8'hCF;
-		gap <= '0; k_on <= 1'b1; k_wait <= 8'h00; m_on <= 1'b0; m_wait <= 8'h00;
+		gap <= '0; k_on <= 1'b1; k_wait <= 8'h00; k_set3 <= 1'b0; k_list <= 1'b0; m_on <= 1'b0; m_wait <= 8'h00;
 		m_rate <= 8'd100; m_res <= 8'd2; m_scale <= 1'b0;
 	end
 end
