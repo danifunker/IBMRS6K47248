@@ -983,3 +983,34 @@ Findings (details in `scratch/work/com1_findings.md`):
   answered 3DA but left 3DB undecoded (FF), so bit 3 never cleared and X spun forever (the
   earlier recordings: `r3D8=FFFF00FF`, byte enables 0011). 3DB now answers as input status 1,
   the chip's one read byte on both lanes.
+
+## 2026-10-24 evening: the desktop's stall; the whole S3 engine; the NVRAM kept on the SD card
+
+- **The board** (`0eac9ef`: 3DB and CR0E/CR0F): X gets past its retrace loop; the cursor draws
+  right (a black and white hourglass), the desktop starts (a console window, `x2_6.png`), and
+  then **the core stops** at 15:43: no more debug output at all, not even the periodic marks.
+  Before it, X had turned to **32-bit** accesses of the engine (`CUR_X=0000:0000`,
+  `CMD=40B3:0000`, the upper halves to the undecoded xxEA) with PIX_CNTL A080 (mono
+  expansion) and new scissors. The engine knew 8- and 16-bit PIX_TRANS buses only (CMD bit 9
+  alone) and took the low halfword: a command on a 32-bit bus would wait for data X never
+  sends, and every register write after it holds the bus: the stall. The mouse was set up by
+  then (D4 F5, F6, F4, F5, F3 3C, F4).
+- **The engine, whole** (8 bpp; `sim/s3ge/run.sh` checks each command pixel by pixel against a
+  C++ model: all 15 pass): Bresenham and radial lines, short-stroke vectors (the high byte
+  first unless BYTSEQ), pattern fills, display memory selecting the mix (source AND RD_MASK
+  = RD_MASK), colour compare (MULT_MISC 8:7, the source against COLOR_CMP: the firmware's
+  transparent bitmaps), image reads through PIX_TRANS (GP_STAT bit 8), DRAW YES and WRTDATA,
+  mono expansion only across-plane (CMD bit 1, as the firmware's 51B3 has it and its 4331 does
+  not), the position a line, vectors or a rectangle leaves; PIX_TRANS on an 8-, 16- or 32-bit
+  bus, a 32-bit transfer whole or as E2E8 then E2EA (the semantics from MAME's ibm8514a.cpp and
+  86Box's vid_s3.c).
+- **The NVRAM and CMOS on the SD card** (`rtl/IBMRS6K7248_nvsave.sv`, `sim/nvsave/run.sh`: all
+  pass): the OSD's "NVRAM file" (block device 3; `games/IBMRS6K7248/IBMRS6K7248.nvr`, 4608 bytes
+  made with dd): blocks 0-7 the NVRAM, block 8 a marker and the CMOS; loaded at the mount when
+  the marker is there, else the RTC's contents written to the new file; saved two seconds after
+  the CPU's last write of the NVRAM or CMOS 0E-7F. No change to the Main: the image entries are
+  now **SC** (the stock Main remembers them in `config/IBMRS6K7248.s<n>` and mounts them at
+  every core load), so the disk, the CD and the NVRAM file stay mounted across loads. The OSD's
+  settings (RAM 112 MB, the UART) are saved with "Save settings" (`config/IBMRS6K7248.CFG`).
+- The debug build's one-shot capture now reports a stall (nothing retired for 0.24 s): the
+  last PC and the data access the CPU waits on.

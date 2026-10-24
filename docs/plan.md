@@ -64,6 +64,13 @@ The places that can bite the installed AIX next, in this order:
    on every core load, so after a reload the firmware may boot the CD instead of hdisk0; saved
    to the SD card through the Main_MiSTer branch (`support/ibmrs6k/`).
 
+State (2026-10-24 evening): the mouse's packets reach AIX; X's blockers were the S3's (3DB, the
+cursor's X11 mode and colours, the engine's 32-bit bus). The engine is now whole at 8 bpp and
+checked on its own bench (`sim/s3ge`); the NVRAM and CMOS are kept in the OSD's NVRAM file with
+no Main change (`rtl/IBMRS6K7248_nvsave.sv`, `sim/nvsave`), and the image entries are SC (the
+Main mounts them again at every load). Next on the board: X's desktop with the mouse, and the
+NVRAM file keeping AIX's boot list across a core load.
+
 Then the rest of `docs/stubbed-hardware.md` (8237 DMA, Ethernet with the branch, audio, floppy),
 the Main_MiSTer write buffer for faster disk writes, and timing (the latest fit misses by 3.36 ns).
 
