@@ -341,7 +341,7 @@ always_ff @(posedge clk) begin
 	if (reset) ;
 	else if (srst) begin
 		// ISTAT.SRST holds the chip in reset until the host clears it
-		if (sel && we && off == 6'h05 && be[3] && !wdata[30]) srst <= 1'b0;
+		if (sel && we && off[6:2] == 5'h05 && be[3] && !wdata[30]) srst <= 1'b0;
 		if (sel && !we) rdata <= {reg_rd({off[6:2], 2'd0}), reg_rd({off[6:2], 2'd1}), reg_rd({off[6:2], 2'd2}), reg_rd({off[6:2], 2'd3})};
 	end else begin
 		// ------------------------------------------------ the host's register access
@@ -349,10 +349,10 @@ always_ff @(posedge clk) begin
 			if (!we) begin
 				rdata <= {reg_rd({off[6:2], 2'd0}), reg_rd({off[6:2], 2'd1}), reg_rd({off[6:2], 2'd2}), reg_rd({off[6:2], 2'd3})};
 				// reads that clear (and unstack)
-				if (off == 6'h03 && be[3]) begin dstat_st <= dstat_pend; dstat_pend <= 7'd0; end      // DSTAT (0C)
-				if (off == 6'h10 && be[1]) begin sist0_st <= sist0_pend; sist0_pend <= 8'd0; end      // SIST0 (42)
-				if (off == 6'h10 && be[0]) begin sist1_st <= sist1_pend; sist1_pend <= 3'd0; end      // SIST1 (43)
-				if (off == 6'h06 && be[1]) sigp <= 1'b0;                                              // CTEST2 (1A)
+				if (off[6:2] == 5'h03 && be[3]) begin dstat_st <= dstat_pend; dstat_pend <= 7'd0; end      // DSTAT (0C)
+				if (off[6:2] == 5'h10 && be[1]) begin sist0_st <= sist0_pend; sist0_pend <= 8'd0; end      // SIST0 (42)
+				if (off[6:2] == 5'h10 && be[0]) begin sist1_st <= sist1_pend; sist1_pend <= 3'd0; end      // SIST1 (43)
+				if (off[6:2] == 5'h06 && be[1]) sigp <= 1'b0;                                              // CTEST2 (1A)
 			end else begin
 				for (int i = 0; i < 4; i++) if (be[3 - i]) begin
 					logic [6:0] a;
