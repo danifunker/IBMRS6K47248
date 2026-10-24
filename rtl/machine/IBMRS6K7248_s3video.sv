@@ -30,8 +30,9 @@
 //  start + y x pitch. Then the pixel mask, the palette (6 bits a component,
 //  widened), and the cursor: 64 x 64, each line 16 bytes of four groups of
 //  an AND word and an XOR word (MSB first); in Windows mode 00 the
-//  background colour (the stack's: black here), 01 the foreground (white
-//  here), 10 the screen, 11 the screen inverted.
+//  background colour (CR4B's palette index), 01 the foreground (CR4A's),
+//  10 the screen, 11 the screen inverted; in X11 mode (CR55 bit 4) 0x the
+//  screen, 10 the background, 11 the foreground.
 //
 //============================================================================
 
@@ -83,6 +84,9 @@ module IBMRS6K7248_s3video
 	input  logic [10:0]  cur_x,
 	input  logic [10:0]  cur_y,
 	input  logic [20:10] cur_base,        // the cursor's image, in KB
+	input  logic         cur_x11,         // CR55 bit 4: X11 mode
+	input  logic [7:0]   cur_fg,          // the colour stacks' first bytes (CR4A, CR4B): palette indexes
+	input  logic [7:0]   cur_bg,
 
 	// the palette's read port (IBMRS6K7248_s3, read in this clock): the colour a clock later
 	output logic [7:0]   pal_addr,
@@ -309,7 +313,6 @@ logic [2:0]  p1_lane;
 logic [10:0] p1_x;
 logic [5:0]  p1_cr;                    // the cursor's row, low bits
 wire  [7:0]  pix8 = lb_q[8 * p1_lane +: 8];
-assign pal_addr = pix8 & pix_mask;
 
 // the cursor's pixel: (x - cur_x) in its 64, group g = rel >> 4, bit 15 - (rel & 15) of its AND and XOR words
 wire [127:0] cur_w = vc[0] ? cur1 : cur0;
@@ -318,21 +321,21 @@ wire         c_in  = p1_ch && !c_rel[11] && c_rel < 12'd64;
 wire [3:0]   c_bit = 4'd15 - c_rel[3:0];
 wire [15:0]  c_and = {cur_w[8 * (4 * c_rel[5:4])     +: 8], cur_w[8 * (4 * c_rel[5:4] + 1) +: 8]};
 wire [15:0]  c_xor = {cur_w[8 * (4 * c_rel[5:4] + 2) +: 8], cur_w[8 * (4 * c_rel[5:4] + 3) +: 8]};
+wire         c_a   = c_and[c_bit];
+wire         c_x   = c_xor[c_bit];
+// a colour of the stacks (the foreground if c_fg), or the screen (inverted if c_inv)
+wire         c_col = c_in && (cur_x11 ? c_a : !c_a);
+wire         c_fg  = c_x;
+wire         c_inv = c_in && !cur_x11 && c_a && c_x;
+assign pal_addr = c_col ? (c_fg ? cur_fg : cur_bg) : pix8 & pix_mask;
 
 // stage 2: the palette answers
 logic        p2_ce, p2_de, p2_hs, p2_vs, p2_hb, p2_vb;
-logic [1:0]  p2_cur;                   // {in the cursor, AND, XOR}: 0 none
-logic        p2_cin;
+logic        p2_inv;                   // the cursor inverts the screen here
 logic [23:0] p2_c, p2_out;
 always_comb begin
-	p2_c = {pal_q[17:12], pal_q[17:16], pal_q[11:6], pal_q[11:10], pal_q[5:0], pal_q[5:4]};
-	if (!p2_cin)                 p2_out = p2_c;
-	else case (p2_cur)
-		2'b00:   p2_out = 24'h000000;          // the background stack colour (CR4B: black here)
-		2'b01:   p2_out = 24'hFFFFFF;          // the foreground (CR4A: white here)
-		2'b10:   p2_out = p2_c;                // the screen
-		default: p2_out = ~p2_c;               // the screen inverted
-	endcase
+	p2_c   = {pal_q[17:12], pal_q[17:16], pal_q[11:6], pal_q[11:10], pal_q[5:0], pal_q[5:4]};
+	p2_out = p2_inv ? ~p2_c : p2_c;      // (the stacks' colours came through the palette)
 	if (!p2_de || !screen_on) p2_out = 24'h0;
 end
 
@@ -353,8 +356,7 @@ always_ff @(posedge clk) begin
 	p2_vs  <= p1_vs;
 	p2_hb  <= p1_hb;
 	p2_vb  <= p1_vb;
-	p2_cin <= c_in;
-	p2_cur <= {c_and[c_bit], c_xor[c_bit]};
+	p2_inv <= c_inv;
 
 	{r, g, b} <= p2_out;
 	ce_pix    <= p2_ce;
