@@ -498,14 +498,19 @@ always @(posedge clk_cpu) begin
 	end
 	else if (~&c1_len) c1_len <= c1_len + 32'd1;
 end
-// (the SCSI build) from the hand-off on, every access to the 53C810's registers where AIX puts them (PCI I/O
-// 0100_0000, CPU 8100_0000-8100_00FF), through a 64-entry FIFO so a burst is kept:
-// "Wbaa=dddddddd " / "Rbaa=dddddddd " (b the byte lanes, aa the register offset, the data as on the bus)
+// (the SCSI and keyboard build) from the hand-off on, through a 64-entry FIFO so a burst is kept,
+// "Wbaa=dddddddd " / "Rbaa=dddddddd " (b the byte lanes, aa the offset, the data as on the bus):
+// every access to the 53C810's registers where AIX puts them (PCI I/O 0100_0000, CPU 8100_0000-8100_00FF:
+// aa 80-FF), to the 8042 (ports 60 and 64: aa 60, 64), and each key event from the Main (hps_io's ps2_key:
+// "W000=00000kkk", b 0, kkk its 11 bits: [9] pressed, [8] extended, [7:0] the set 2 code)
 reg  [44:0] nq [64];                      // {we, be, offset, data}
 reg  [5:0]  nq_w = 0, nq_r = 0;
-wire        ncr_ev = isi_armed & io_ev & (io_addr[31:8] == 24'h810000);
-always @(posedge clk_cpu) if (ncr_ev && nq_w + 6'd1 != nq_r) begin
-	nq[nq_w] <= {io_we, io_be, io_addr[7:0], io_we ? io_wdata : io_rdata};
+wire        ncr_ev = isi_armed & io_ev & (io_addr[31:8] == 24'h810000 || io_addr[31:3] == 29'h1000_000C);
+reg  [2:0]  pk_s = 0;                     // ps2_key[10] (it toggles once a key event) into this clock
+always @(posedge clk_cpu) pk_s <= {pk_s[1:0], ps2_key[10]};
+wire        pk_ev = isi_armed & (pk_s[2] ^ pk_s[1]);   // (the other bits stand still long before the toggle)
+always @(posedge clk_cpu) if ((ncr_ev || pk_ev) && nq_w + 6'd1 != nq_r) begin
+	nq[nq_w] <= ncr_ev ? {io_we, io_be, io_addr[7:0], io_we ? io_wdata : io_rdata} : {1'b1, 4'h0, 8'h00, 21'd0, ps2_key};
 	nq_w     <= nq_w + 6'd1;
 end
 wire [44:0] nq_e = nq[nq_r];
@@ -634,9 +639,9 @@ always @(posedge clk_cpu) begin
 	else if (c1_pendl) begin stage_n <= 4'd11; stage <= {8'h4C, 8'h3D, hex8(c1_minl), 8'h20, 24'h0}; c1_pendl <= 1'b0; end
 	else if (c1_pendh) begin stage_n <= 4'd11; stage <= {8'h48, 8'h3D, hex8(c1_minh), 8'h20, 24'h0}; c1_pendh <= 1'b0; end
 	else if (nq_r != nq_w) begin
-		stage_n <= 4'd13;
+		stage_n <= 4'd14;                  // (14 bytes: the stage's whole width; a pad byte had pushed the letter out)
 		stage   <= {nq_e[44] ? 8'h57 : 8'h52, hex(nq_e[43:40]), hex(nq_e[39:36]), hex(nq_e[35:32]), 8'h3D, hex8(nq_e[31:0]),
-		            8'h20, 8'h0};
+		            8'h20};
 		nq_r    <= nq_r + 6'd1;
 	end
 	else if (usr_pend) begin
