@@ -144,7 +144,7 @@ logic [6:0]  dstat_st, dstat_pend;              // DSTAT 6-0 (DFE separately)
 logic [7:0]  sist0_st, sist0_pend;
 logic [2:0]  sist1_st, sist1_pend;
 logic [2:0]  latched_phase;                     // SSTAT1's: the phase at the last REQ
-logic [31:0] dsa, temp, dnad, dsp, dsps, scratcha, scratchb, adder;
+logic [31:0] dsa, temp, mm_dst, dnad, dsp, dsps, scratcha, scratchb, adder;
 logic [7:0]  ctest0, ctest3_w, ctest4, ctest5, ctest6;
 logic [23:0] dbc;
 logic [7:0]  dcmd;
@@ -164,7 +164,7 @@ wire  [7:0]  dstat  = {1'b1, dstat_st};                       // DFE: no FIFO
 wire  [7:0]  istat  = {abrt_req, srst, sigp, sem, con, intf, sip, dip};
 wire  [7:0]  sstat0 = {6'd0, sb_rst, 1'b0};
 wire  [7:0]  sstat1 = {5'd0, latched_phase};
-wire  [7:0]  sbcl   = {sb_req, sb_ack | sb_ackhold, sb_bsy, sb_sel, sb_atn, sb_phase};
+wire  [7:0]  sbcl   = {sb_req, sb_ack | sb_ackhold, sb_bsy, sb_sel, sb_atn, sb_bsy ? sb_phase : 3'b000};   // (a free bus: no phase lines)
 wire  [7:0]  sbdl   = sb_req ? sb_tdata : sodl;
 wire  [7:0]  ctest1 = 8'hF0;                                  // the FIFO's lanes empty
 wire  [7:0]  ctest2 = {1'b0, sigp, 1'b1, 1'b0, 3'b000, 1'b1}; // CIO, DACK
@@ -253,7 +253,7 @@ wire [6:0] reg_adr = ins0[22:16];
 wire       mm_src_io   = dmode[5];
 wire       mm_dst_io   = dmode[4];
 wire       mm_src_self = mm_src_io && io_on && dnad[31:8] == io_base;
-wire       mm_dst_self = mm_dst_io && io_on && temp[31:8] == io_base;
+wire       mm_dst_self = mm_dst_io && io_on && mm_dst[31:8] == io_base;
 logic [7:0] mm_byte;                            // the byte read from our own registers
 
 function automatic logic [31:0] sext24(input logic [23:0] v);
@@ -408,7 +408,7 @@ always_ff @(posedge clk) begin
 						case (fcnt)
 							3'd0: begin ins0 <= w; dcmd <= w[31:24]; dbc <= w[23:0]; end
 							3'd1: begin dsps <= w; dnad <= w; end
-							default: temp <= w;
+							default: mm_dst <= w;                // a memory move's destination (TEMP stays: real chips keep it)
 						endcase
 						dsp <= dsp + 32'd4;
 						fcnt <= fcnt + 3'd1;
@@ -494,7 +494,7 @@ always_ff @(posedge clk) begin
 						else est <= E_TC_EVAL;
 					end
 					default: begin                                       // memory move (LOAD/STORE: illegal here)
-						if (ins0[29:25] != 5'd0 || dsps[1:0] != temp[1:0]) begin set_ds[0] = 1'b1; est <= E_IDLE; end
+						if (ins0[29:25] != 5'd0 || dsps[1:0] != mm_dst[1:0]) begin set_ds[0] = 1'b1; est <= E_IDLE; end
 						else if (dbc == 24'd0) est <= E_FETCH;
 						else begin dnad <= dsps; est <= E_MM_RD; end
 					end
@@ -669,31 +669,31 @@ always_ff @(posedge clk) begin
 				if (mm_dst_io) begin
 					// I/O space: our own registers (as a register write from SCRIPTS), or a bus fault
 					if (mm_dst_self) begin
-						case (temp[6:0])
+						case (mm_dst[6:0])
 							7'h01: begin scntl1 <= b; sb_rst <= b[3]; if (b[3] && !scntl1[3]) set_s0[1] = 1'b1; end
 							7'h14: begin sigp <= b[5]; sem <= b[4]; end
 							7'h1B: ctest3_w <= b & 8'hFB;
 							7'h2C: dsp[7:0] <= b; 7'h2D: dsp[15:8] <= b; 7'h2E: dsp[23:16] <= b; 7'h2F: dsp[31:24] <= b;
 							7'h3B: dcntl <= b & 8'hFB;
 							7'h4F: stest3_w <= b & 8'hFD;
-							default: reg_wr(temp[6:0], b);
+							default: reg_wr(mm_dst[6:0], b);
 						endcase
-						dnad <= dnad + 32'd1; temp <= temp + 32'd1; dbc <= dbc - 24'd1;
+						dnad <= dnad + 32'd1; mm_dst <= mm_dst + 32'd1; dbc <= dbc - 24'd1;
 						est <= (dbc == 24'd1) ? E_FLUSH : E_MM_RD; fl_next <= 1'b1;
 					end
 					else begin set_ds[5] = 1'b1; est <= E_FLUSH; fl_next <= 1'b0; end
 				end
-				else if (wb_valid && wb_addr != temp[31:3]) begin
+				else if (wb_valid && wb_addr != mm_dst[31:3]) begin
 					if (d_idle) begin
 						d_go <= 1'b1; dm_we <= 1'b1; d_addr <= {wb_addr, 3'd0}; dm_be <= wb_be; dm_wdata <= wb_data;
 						wb_valid <= 1'b0;
 					end
 				end else if (d_idle) begin
-					if (!wb_valid) begin wb_valid <= 1'b1; wb_addr <= temp[31:3]; wb_be <= 8'h80 >> temp[2:0]; end
-					else wb_be[7 - temp[2:0]] <= 1'b1;
-					wb_data[63 - 8 * temp[2:0] -: 8] <= b;
-					if (rc_addr == temp[31:3]) rc_valid <= 1'b0;     // the read cache is stale
-					dnad <= dnad + 32'd1; temp <= temp + 32'd1; dbc <= dbc - 24'd1;
+					if (!wb_valid) begin wb_valid <= 1'b1; wb_addr <= mm_dst[31:3]; wb_be <= 8'h80 >> mm_dst[2:0]; end
+					else wb_be[7 - mm_dst[2:0]] <= 1'b1;
+					wb_data[63 - 8 * mm_dst[2:0] -: 8] <= b;
+					if (rc_addr == mm_dst[31:3]) rc_valid <= 1'b0;     // the read cache is stale
+					dnad <= dnad + 32'd1; mm_dst <= mm_dst + 32'd1; dbc <= dbc - 24'd1;
 					est <= (dbc == 24'd1) ? E_FLUSH : E_MM_RD; fl_next <= 1'b1;
 				end
 				if (d_done && d_err) begin set_ds[5] = 1'b1; set_ma <= 1'b1; est <= E_IDLE; end
