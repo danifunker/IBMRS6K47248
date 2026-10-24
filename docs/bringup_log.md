@@ -944,3 +944,23 @@ Findings (details in `scratch/work/com1_findings.md`):
   the BOS install program runs: **the display shows AIX's "Please define the System Console"**
   in all its languages (`scratch/work/kv92_42.png`). M5's first goal (AIX reads the install CD)
   is reached; the console choice (F1 + Enter on the display) is the next step.
+
+## 2026-10-24 morning: the keyboard under AIX; the AIX 4.3.3 install runs onto a 4 GB disk
+
+- **The disk**: `AIX433_4GB.img`, 4 GiB of zeros written with `dd` (`scratch/work/mkdisk.sh`), on
+  the board in `games/IBMRS6K7248/`, mounted as SCSI disk ID 0. With it the scan has four fewer
+  selection timeouts (ID 0 answers) and no bus fault.
+- **The keyboard** (the debug FIFO now also logs ports 60/64 and each key event from the Main,
+  `2e08b7e`; it also fixed the lost W/R letter: 15 bytes in a 14-byte stage). Keys reached the
+  core (set 2 codes 05, 5A, 1C), but AIX had disabled the keyboard: its probe resets the keyboard
+  (FF: FA AA) and sends **EF**, not a command; the model acknowledged it (FA) where a real
+  keyboard answers **FE**, and after three tries AIX wrote command byte 30 (`2e1bb84`). Then AIX's
+  set-up: F2 (FA AB 83), F5, F3 25, **F0 03 (scan set 3)**, FA, **FC 39** (a key list): the model
+  took 39 for a command (FE), ten tries, keyboard disabled again. Now scan set 3 (set 3 codes, F0
+  before a release, no E0) and FB/FC/FD with their key lists (`1bff1fe`).
+- **The board** (`1bff1fe`, 112 MB; its fit misses by 3.36 ns, more than usual, and runs): F1 +
+  Enter at "Please define the System Console" is taken; the language menu, the BOS
+  "Installation and Maintenance" menu, "Installation and Settings" (New and Complete Overwrite,
+  **hdisk0**, English), and **"Installing Base Operating System"** started at 10:59: "Making
+  boot logical volume", writing to the disk image through the 53C810 and the Main's standard
+  block write path.
