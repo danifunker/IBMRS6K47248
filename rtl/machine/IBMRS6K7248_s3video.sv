@@ -30,7 +30,7 @@
 //  start + y x pitch. Then the pixel mask, the palette (6 bits a component,
 //  widened), and the cursor: 64 x 64, each line 16 bytes of four groups of
 //  an AND word and an XOR word (MSB first); in Windows mode 00 the
-//  background colour (CR4B's palette index), 01 the foreground (CR4A's),
+//  background colour (CR0F's palette index), 01 the foreground (CR0E's),
 //  10 the screen, 11 the screen inverted; in X11 mode (CR55 bit 4) 0x the
 //  screen, 10 the background, 11 the foreground.
 //
@@ -85,7 +85,7 @@ module IBMRS6K7248_s3video
 	input  logic [10:0]  cur_y,
 	input  logic [20:10] cur_base,        // the cursor's image, in KB
 	input  logic         cur_x11,         // CR55 bit 4: X11 mode
-	input  logic [7:0]   cur_fg,          // the colour stacks' first bytes (CR4A, CR4B): palette indexes
+	input  logic [7:0]   cur_fg,          // the colours (CR0E, CR0F): palette indexes
 	input  logic [7:0]   cur_bg,
 
 	// the palette's read port (IBMRS6K7248_s3, read in this clock): the colour a clock later

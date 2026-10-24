@@ -142,10 +142,6 @@ logic [15:0] pll [16];              // {M, N}; index 0E one byte
 logic [7:0] r46e8, r4ae8, r0102;
 logic [15:0] ge [64];               // the 8514 registers xxE8 by xx >> 2 (82E8 ... BEE8), little-endian
 logic       vint;                   // the vertical interrupt pending
-// the cursor's colour stacks (CR4A foreground, CR4B background): each write the next byte, a read
-// of CR45 back to the first; 8 bits a pixel uses the first
-logic [7:0] cur_fg, cur_bg;
-logic [1:0] fg_ptr, bg_ptr;
 
 // the CRTC's port base follows misc bit 0 (3Dx colour, 3Bx mono)
 wire  [15:0] crt_base = misc[0] ? 16'h03D0 : 16'h03B0;
@@ -186,8 +182,10 @@ assign v_cur_x  = {cr[7'h46][2:0], cr[7'h47]};
 assign v_cur_y  = {cr[7'h48][2:0], cr[7'h49]};
 assign v_cur_base = {cr[7'h4C][2:0], cr[7'h4D]};
 assign v_cur_x11  = cr[7'h55][4];
-assign v_cur_fg   = cur_fg;
-assign v_cur_bg   = cur_bg;
+// the cursor's colours at 8 bits a pixel: CR0E the foreground, CR0F the background (the 801-864's; the
+// CR4A/CR4B stacks are 16 and 24 bits a pixel's, which the scan-out does not do). AIX's X server sets them so
+assign v_cur_fg   = cr[7'h0E];
+assign v_cur_bg   = cr[7'h0F];
 
 // the palette's second read port, in the picture's clock
 always_ff @(posedge clk_v) pal_vq <= palette[pal_vaddr];
@@ -254,7 +252,10 @@ always_comb begin
 	else if (bp == 16'h03CF)            rb = gr[gr_idx];
 	else if (bp == crt_base + 16'h4)    rb = {1'b0, cr_idx};
 	else if (bp == crt_base + 16'h5)    rb = cr_idx == 7'h30 ? 8'hC0 : cr[cr_idx];
-	else if (bp == crt_base + 16'hA)    rb = {4'h0, vsync, 2'b00, vblank};       // input status 1
+	// input status 1; 3DB, not decoded, answers the same (the chip's one read byte on every lane): AIX's
+	// X server polls the retrace with a halfword read of 3DA and tests the low byte, 3DB's
+	else if (bp == crt_base + 16'hA ||
+	         bp == crt_base + 16'hB)    rb = {4'h0, vsync, 2'b00, vblank};
 	else if (bp == 16'h42E8)            rb = {7'd0, vint};
 	else if (bp == 16'h42E9)            rb = 8'h00;
 	else if (bp == 16'h46E8)            rb = r46e8;
@@ -398,14 +399,6 @@ always_ff @(posedge clk) begin
 					// CR11 bit 7 protects CR00-CR07 (but CR07 bit 4)
 					if (!(cr[7'h11][7] && cr_idx <= 7'h07)) cr[cr_idx] <= bw;
 					else if (cr_idx == 7'h07) cr[7'h07][4] <= bw[4];
-					if (cr_idx == 7'h4A) begin
-						if (fg_ptr == 2'd0) cur_fg <= bw;
-						if (fg_ptr != 2'd3) fg_ptr <= fg_ptr + 2'd1;
-					end
-					if (cr_idx == 7'h4B) begin
-						if (bg_ptr == 2'd0) cur_bg <= bw;
-						if (bg_ptr != 2'd3) bg_ptr <= bg_ptr + 2'd1;
-					end
 				end
 				if (bp == 16'h42E8 && bw[0]) vint <= 1'b0;
 				if (bp == 16'h46E8) r46e8 <= bw;
@@ -416,8 +409,6 @@ always_ff @(posedge clk) begin
 			end
 			// a read of input status 1 resets the attribute flip-flop
 			if (!we && bp == crt_base + 16'hA) ar_ff <= 1'b0;
-			// a read of CR45 resets the cursor's colour stacks
-			if (!we && bp == crt_base + 16'h5 && cr_idx == 7'h45) begin fg_ptr <= 2'd0; bg_ptr <= 2'd0; end
 			// palette reads advance the component, then the index
 			if (!we && bp == 16'h03C9 && !cr[7'h55][0]) begin
 				if (dac_rc == 2'd2) begin dac_rc <= 2'd0; dac_ridx <= dac_ridx + 8'd1; end
@@ -441,7 +432,6 @@ always_ff @(posedge clk) begin
 		dac_mask <= 8'hFF; dac_widx <= '0; dac_ridx <= '0; dac_wc <= '0; dac_rc <= '0; dac_rstate <= 1'b0;
 		sdac_cmd <= 8'h00; pll_widx <= '0; pll_ridx <= '0; pll_half <= 1'b0;
 		r46e8 <= 8'h00; r4ae8 <= 8'h00; r0102 <= 8'h00; vint <= 1'b0;
-		cur_fg <= 8'hFF; cur_bg <= 8'h00; fg_ptr <= 2'd0; bg_ptr <= 2'd0;
 		for (int i = 0; i < 128; i++) cr[i] <= 8'h00;
 		cr[7'h36] <= 8'h8E;                      // the straps: 2 MB (an open question: docs/s3_design.md 5)
 		pll[0] <= 16'h684D;                      // f0 about 25.175 MHz, f1 about 28.322 (the SDAC's power-on clocks)
