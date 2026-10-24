@@ -76,6 +76,15 @@ bringup log's four "2026-10-18" sections from "afternoon" on.
 
 ### What to do first (before the priorities)
 
+**Update 2026-10-24: AIX 4.3.3 is installed and boots on the board.** The 53C810 and keyboard
+fixes (`docs/bringup_log.md`, the 2026-10-23/24 sections) took the install CD through the BOS install
+onto a 4 GB SCSI disk image (`games/IBMRS6K7248/AIX433_4GB.img` on .92; backup
+`~/ibmrs6k/disks/backup/AIX433_4GB_installed.zip` in WSL), and the installed system boots into X.
+**Next stages: the mouse, the S3 under AIX's X server, NVRAM persistence** (`docs/plan.md`, "Next
+stages"). Board recipe: the core is in `_Unstable`, loaded through the OSD with misterkvms
+(System -> Core -> up to the root -> Unstable -> IBMRS6K7248), disk on SCSI ID 0, CD on ID 3, RAM
+112 MB, all set again after each core load (the OSD keeps nothing).
+
 **Update 2026-10-23: all three are settled** (`docs/bringup_log.md`, the 2026-10-23 sections):
 COM1 carries no text (AIX programs 9600 8N1 and never writes it), the Serial reaches the
 residual data, and the failing step is the `/SPOT` mount (LED 0x518) because AIX's SCSI scan

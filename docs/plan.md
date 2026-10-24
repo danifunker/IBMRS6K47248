@@ -46,9 +46,26 @@ failed before any hardware was needed: see `bringup_log.md` 2026-10-18 late
 evening). Item 0 is found first, then 1-3 above.
 
 **2026-10-24**: with the 53C810 fixes (`2df9a08`, `1440701`, `2b0d399`) the install CD gets past the
-`/SPOT` mount on the board: AIX's install program shows "Please define the System Console". Next in
-SCSI: the console choice and the install menus, then a SCSI disk image to install onto (writes:
-the Main_MiSTer branch's write buffer).
+`/SPOT` mount on the board: AIX's install program shows "Please define the System Console". With
+the keyboard fixes (`2e1bb84`, `1bff1fe`: FE for a non-command, scan set 3, FC key lists) AIX
+4.3.3 **installed onto a 4 GB SCSI disk image** (about 80 minutes, through the Main's standard
+block writes) and boots from hdisk0 into X on the S3 (backup:
+`~/ibmrs6k/disks/backup/AIX433_4GB_installed.zip` in WSL).
+
+## Next stages (the user's order, 2026-10-24)
+
+The places that can bite the installed AIX next, in this order:
+
+1. **The mouse**: the 8042's auxiliary port and its PS/2 mouse as AIX (`mousedd`) and its X
+   server drive them; the keyboard showed AIX's probes depend on exact answers (EF, FC lists).
+2. **The S3 Vision864 under AIX's X server**: the accelerator, the SDAC/RAMDAC modes and the
+   registers AIX's driver uses beyond the firmware's (`docs/s3_design.md`).
+3. **NVRAM/CMOS persistence**: the 4 KB PReP NVRAM (AIX's boot list) and the CMOS are rebuilt
+   on every core load, so after a reload the firmware may boot the CD instead of hdisk0; saved
+   to the SD card through the Main_MiSTer branch (`support/ibmrs6k/`).
+
+Then the rest of `docs/stubbed-hardware.md` (8237 DMA, Ethernet with the branch, audio, floppy),
+the Main_MiSTer write buffer for faster disk writes, and timing (the latest fit misses by 3.36 ns).
 
 ## Milestones
 
