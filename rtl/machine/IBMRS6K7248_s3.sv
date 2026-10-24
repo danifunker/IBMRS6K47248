@@ -283,7 +283,7 @@ IBMRS6K7248_s3ge engine (
 	.clk, .reset,
 	.r_we(ast == A_IO && we && ge_reg_b && !ge_busy), .r_idx(bp[15:10]), .r_hi(bp[0]), .r_data(bw),
 	.r_abort(ast == A_IO && we && bp == 16'h42E9 && bw[7:6] == 2'b10),
-	.pt_valid(ast == A_PT), .pt_data({wdata[23:16], wdata[31:24]}), .pt_ready,
+	.pt_valid(ast == A_PT), .pt_data({wdata[7:0], wdata[15:8], wdata[23:16], wdata[31:24]}), .pt_ready,
 	.busy(ge_busy), .pitch(ge_pitch[11:0]),
 	.v_req(e_req), .v_we(e_we), .v_addr(e_addr), .v_be(e_be), .v_wdata(e_wdata), .v_ack(e_ack), .v_rdata
 );

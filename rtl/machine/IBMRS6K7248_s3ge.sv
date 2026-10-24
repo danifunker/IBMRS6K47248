@@ -7,10 +7,12 @@
 //  on 8-bit pixels with the four sources (background colour, foreground
 //  colour, CPU data through PIX_TRANS, display memory), the PIX_CNTL modes
 //  "foreground mix always" and "CPU data selects the mix" (mono expansion,
-//  MSB first), PIX_TRANS on an 8- or 16-bit bus with BYTSEQ (with BYTSEQ
-//  clear the high byte, E2E9, is the first pixel: the firmware's
-//  putbitmap relies on it), each row starting a new transfer, the write
-//  mask, the scissors, the pitch from the CRTC's offset (CR13, CR51[5:4]).
+//  MSB first), PIX_TRANS on an 8-, 16- or 32-bit bus (CMD bits 10:9) with
+//  BYTSEQ (with BYTSEQ clear the highest byte is the first, E2E9 on a 16-bit
+//  bus: the firmware's putbitmap relies on it; set, E2E8), each row starting
+//  a new transfer, the write mask, the scissors, the pitch from the CRTC's
+//  offset (CR13, CR51[5:4]). The other commands (lines, short strokes,
+//  pattern fills, NOP) end at once: they draw nothing.
 //
 //  One pixel at a time over the VRAM port (32-bit words): a mix that needs
 //  the destination, or a write mask other than FF, reads it first. There is
@@ -37,9 +39,9 @@ module IBMRS6K7248_s3ge
 	input  logic [7:0]  r_data,
 	input  logic        r_abort,       // 42E8 bits 15:14 = 10: reset the engine
 
-	// PIX_TRANS: a transfer as the bus carried it, little-endian (E2E8 in bits 7:0)
+	// PIX_TRANS: a transfer as the bus carried it, little-endian (E2E8 in bits 7:0, E2EB in 31:24)
 	input  logic        pt_valid,
-	input  logic [15:0] pt_data,
+	input  logic [31:0] pt_data,
 	output logic        pt_ready,
 
 	output logic        busy,
@@ -115,15 +117,15 @@ logic [11:0] x, y, sx, sy;            // the destination and (BitBLT) the source
 logic [11:0] n_x, n_y;                // pixels left in the row, rows left
 logic [11:0] w0;                      // the row's width
 logic [11:0] x0, sx0;                 // the row's first x
-logic [15:0] dbuf;                    // CPU data being used
-logic [4:0]  dbits;                   // ... bits (mono) or bytes x 8 (colour) left in it
+logic [31:0] dbuf;                    // CPU data being used, the next bit or byte at the top
+logic [5:0]  dbits;                   // ... bits (mono) or bytes x 8 (colour) left in it
 logic [7:0]  src, dst;
 
 wire is_blt   = c[15:13] == 3'b110;
 wire pcdata   = c[8];
 wire inc_x    = c[5];
 wire inc_y    = c[7];
-wire bus16    = c[9];
+wire [1:0] bus = c[10:9];                        // 0 8 bits, 1 16, 2 32
 wire bytseq   = c[12];
 wire mono     = pix_cntl[7:6] == 2'b10;          // CPU data picks the mix
 // the mix: the foreground mix unless mono expansion's bit is 0
@@ -148,12 +150,19 @@ function automatic logic [7:0] mix(input logic [3:0] f, input logic [7:0] s, inp
 	endcase
 endfunction
 
-// the next CPU data for this pixel: mono a bit, colour a byte; the first is the high byte
-// (or with BYTSEQ, on a 16-bit bus, the low byte); on an 8-bit bus the byte at E2E8
-wire  [7:0] cpu_byte = !bus16 ? dbuf[7:0] :
-                       ((dbits == 5'd16) ^ bytseq) ? dbuf[15:8] : dbuf[7:0];
-wire        cpu_bit  = dbuf[4'(dbits - 5'd1)];           // MSB first: bit 7 (8-bit bus) or 15 (16-bit) at the row's start
-wire        need_data = pcdata & (dbits == 5'd0);
+// a transfer's bytes in the order they are used, the first at the top: the highest address first,
+// or with BYTSEQ the lowest; on an 8-bit bus the byte at E2E8
+wire [31:0] pt_ord = bus == 2'd0 ? {pt_data[7:0], 24'd0} :
+                     bus == 2'd1 ? (bytseq ? {pt_data[7:0], pt_data[15:8], 16'd0} : {pt_data[15:0], 16'd0}) :
+                                   (bytseq ? {pt_data[7:0], pt_data[15:8], pt_data[23:16], pt_data[31:24]} : pt_data);
+// the next CPU data for this pixel: mono a bit (MSB first), colour a byte
+wire  [7:0] cpu_byte = dbuf[31:24];
+wire        cpu_bit  = dbuf[31];
+wire        need_data = pcdata & (dbits == 6'd0);
+// the commands drawn: rectangles (010) and BitBLTs (110)
+function automatic logic drawn(input logic [7:0] hi);
+	drawn = hi[7:5] == 3'b010 || hi[7:5] == 3'b110;
+endfunction
 
 assign busy     = g != G_IDLE;
 assign pt_ready = g == G_DATA;
@@ -164,7 +173,7 @@ wire [1:0] lane   = d_off[1:0];
 
 always_ff @(posedge clk) begin
 	case (g)
-		G_IDLE: if (start) begin
+		G_IDLE: if (start && drawn(r_data)) begin
 			c     <= {r_data, lo[6'h26]};
 			x     <= is_blt_cmd(r_data) ? dest_x[11:0] : cur_x[11:0];
 			y     <= is_blt_cmd(r_data) ? dest_y[11:0] : cur_y[11:0];
@@ -175,7 +184,7 @@ always_ff @(posedge clk) begin
 			w0    <= maj[11:0];
 			n_x   <= maj[11:0];
 			n_y   <= min_axis;
-			dbits <= 5'd0;
+			dbits <= 6'd0;
 			g     <= G_PIX;
 		end
 		G_PIX: begin
@@ -187,8 +196,8 @@ always_ff @(posedge clk) begin
 			end
 		end
 		G_DATA: if (pt_valid) begin
-			dbuf  <= pt_data;
-			dbits <= bus16 ? 5'd16 : 5'd8;
+			dbuf  <= pt_ord;
+			dbits <= bus == 2'd0 ? 6'd8 : bus == 2'd1 ? 6'd16 : 6'd32;
 			g     <= G_PIX;
 		end
 		G_SRC_RD: begin
@@ -205,7 +214,10 @@ always_ff @(posedge clk) begin
 				end
 			endcase
 			// consume the CPU data: mono a bit, colour a byte
-			if (pcdata) dbits <= mono ? dbits - 5'd1 : dbits - 5'd8;
+			if (pcdata) begin
+				dbits <= mono ? dbits - 6'd1 : dbits - 6'd8;
+				dbuf  <= mono ? dbuf << 1 : dbuf << 8;
+			end
 		end
 		G_SRC_W: if (v_ack) begin
 			v_req <= 1'b0;
@@ -253,7 +265,7 @@ always_ff @(posedge clk) begin
 				sx    <= sx0;
 				y     <= inc_y ? y + 12'd1 : y - 12'd1;
 				sy    <= inc_y ? sy + 12'd1 : sy - 12'd1;
-				dbits <= 5'd0;                              // each row starts a new transfer
+				dbits <= 6'd0;                              // each row starts a new transfer
 				g     <= G_PIX;
 			end
 			else g <= G_IDLE;
