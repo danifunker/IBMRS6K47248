@@ -54,7 +54,8 @@ module IBMRS6K7248_dma
 	output logic        dack,           // a pulse: the channel's transfer is done
 	output logic [2:0]  dack_ch,
 	output logic [15:0] dack_data,      // a read transfer's byte (7:0) or word, from memory
-	input  logic [15:0] dev_data,       // a write transfer's, from the device (dreq's channel, while dreq)
+	input  logic [15:0] dev_data,       // a write transfer's, from the device (dev_ch's)
+	output logic [2:0]  dev_ch,         // the channel being served
 	output logic        tc,             // with dack: the count ran out
 	output logic        sg_irq,         // a scatter/gather list ended (IRQ 13)
 
@@ -84,6 +85,7 @@ logic [7:0]  scratch [16];              // 80-8F
 logic [7:0]  temp;                      // the last byte read (the temporary register)
 // the engine's (below): the channel served, its step or its TC
 logic [2:0]  ch;
+assign dev_ch = ch;
 logic        go_step, go_tc;
 // scatter/gather: each channel's list running, its entry (address, count left, the last), loading, ended
 logic [7:0]  sg_on, sg_load, sg_end, sg_int;

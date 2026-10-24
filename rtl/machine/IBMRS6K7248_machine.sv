@@ -55,7 +55,7 @@
 //    0398-0399  the PC87312's configuration (IBMRS6K7248_sio); where it puts them:
 //    COM1       a 16550A (IBMRS6K7248_uart) on the MiSTer's UART (3F8 at reset)
 //    COM2       a 16550A with nothing on its line (2F8 at reset)
-//    FDC        the floppy disk controller, its drive empty (3F0; IBMRS6K7248_fdc), IRQ 6
+//    FDC        the floppy disk controller and its drive, a disk image (3F0; IBMRS6K7248_fdc), IRQ 6, DMA 2
 //    LPT        the parallel port's registers (378 at reset; the firmware's
 //               progress codes go to its data latch at 3BC)
 //    0020-0021, 00A0-00A1, 04D0-04D1   the 8259s and their ELCR (IBMRS6K7248_pic);
@@ -191,6 +191,19 @@ module IBMRS6K7248_machine
 	// the MPU-401's MIDI (31,250 baud: the MT32-pi on the user port)
 	output logic         midi_tx,
 	input  logic         midi_rx,
+	// the floppy image (IBMRS6K7248_fdimg): present, read-only, its sectors, mounted; a sector asked and answered
+	input  logic         fd_in,
+	input  logic         fd_ro,
+	input  logic [12:0]  fd_blocks,
+	input  logic         fd_mounted,
+	output logic         fd_req,
+	output logic         fd_we,
+	output logic [12:0]  fd_lba,
+	input  logic         fd_ack,
+	output logic [8:0]   fd_buf_a,
+	input  logic [7:0]   fd_buf_q,
+	output logic         fd_buf_we,
+	output logic [7:0]   fd_buf_d,
 
 	// the keyboard and mouse (hps_io's), the time to start the RTC from
 	input  logic [10:0]  ps2_key,
@@ -542,13 +555,20 @@ IBMRS6K7248_sio sio (
 );
 
 // the floppy disk controller where the PC87312 puts it (3F0 or 370; not 3F6, the IDE's)
-logic [7:0] fdc_q;
-logic       irq6;
+logic [7:0] fdc_q, fdc_byte;
+logic       irq6, fdc_drq;
+logic        dma_dack, dma_tc;                // (the ISA DMA's, below)
+logic  [2:0] dma_dack_ch, dma_dev_ch;
+logic [15:0] dma_dack_data;
 wire        fdc_hit = s_isa && fdc_on && bport[15:3] == (fdc_alt ? 13'h006E : 13'h007E) && bport[2:0] != 3'd6;
 IBMRS6K7248_fdc fdc (
 	.clk, .reset,
 	.sel(d_sel & fdc_hit), .we(d_we), .off(bport[2:0]), .wdata(bwd), .rdata(fdc_q),
-	.irq6
+	.irq6,
+	.drq(fdc_drq), .dack(dma_dack), .dack_ch(dma_dack_ch), .dack_data(dma_dack_data[7:0]), .tc(dma_tc), .dev_byte(fdc_byte),
+	.img_in(fd_in), .img_ro(fd_ro), .img_blocks(fd_blocks), .img_mounted(fd_mounted),
+	.sec_req(fd_req), .sec_we(fd_we), .sec_lba(fd_lba), .sec_ack(fd_ack),
+	.buf_a(fd_buf_a), .buf_q(fd_buf_q), .buf_we(fd_buf_we), .buf_d(fd_buf_d)
 );
 
 // COM1
@@ -661,12 +681,11 @@ wire        wss_hit  = s_isa && aud_on && bport[15:2] == wss_base;
 
 logic [15:0] irq;
 logic  [7:0] pic_q, pit_q, kbc_q, rtc_q, aud_q, ee_q, dma_q, sb_q, mpu_q, joy_q;
-logic        aud_drq, aud_irq, sg_irq, dma_dack, dma_tc;
+logic        aud_drq, aud_irq, sg_irq;
 logic        cap_drq, sb_drq, sb_rec, sb_irq, mpu_irq;
 logic  [7:0] rec_byte;
 logic [15:0] cs_l, cs_r, sb_l, sb_r;
-logic  [2:0] dma_dack_ch;
-logic [15:0] dma_dack_data;
+
 logic        irq0, irq1, irq8, irq12, nmi_mask;
 logic  [7:0] p92;
 
@@ -747,9 +766,10 @@ end
 IBMRS6K7248_dma dma (
 	.clk, .reset,
 	.sel(d_sel & dma_hit), .we(d_we), .port(bport), .wdata(bwd), .rdata(dma_q),
-	// channel 1: the codec's playback or the Sound Blaster's (never both); channel 0: the codec's capture
-	.dreq({6'd0, aud_drq | sb_drq, cap_drq}), .dack(dma_dack), .dack_ch(dma_dack_ch), .dack_data(dma_dack_data),
-	.dev_data(sb_rec ? 16'h0080 : {8'h00, rec_byte}),
+	// channel 2: the floppy; channel 1: the codec's playback or the Sound Blaster's (never both); channel 0: the
+	// codec's capture. A write's byte from the channel being served
+	.dreq({5'd0, fdc_drq, aud_drq | sb_drq, cap_drq}), .dack(dma_dack), .dack_ch(dma_dack_ch), .dack_data(dma_dack_data),
+	.dev_data(dma_dev_ch == 3'd2 ? {8'h00, fdc_byte} : dma_dev_ch == 3'd1 ? 16'h0080 : {8'h00, rec_byte}), .dev_ch(dma_dev_ch),
 	.tc(dma_tc), .sg_irq,
 	.dm_req(isa_dm_req), .dm_we(isa_dm_we), .dm_addr(isa_dm_addr), .dm_be(isa_dm_be), .dm_wdata(isa_dm_wdata),
 	.dm_ack(isa_dm_ack), .dm_err, .dm_rdata

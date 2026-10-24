@@ -86,3 +86,5 @@ sim/pcnet/build.log
 sim/pcnet/build_net/
 sim/audio/build/
 sim/audio/build.log
+sim/floppy/build/
+sim/floppy/build.log

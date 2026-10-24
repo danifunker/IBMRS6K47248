@@ -67,6 +67,7 @@ Mounted images are remembered and mounted again at every core load.
 | top | `Pri. disk (ID 0)` | the SCSI disk at ID 0, hdisk0 under AIX. "Pri." is the usual boot disk; the firmware's boot list (SMS) can boot another device |
 | top | `Disk (ID 1)` | a second SCSI disk |
 | top | `CD-ROM (ID 3)` | the CD image (the AIX install CD) |
+| top | `Floppy` | drive A:'s diskette image (720 KB, 1.2 MB, 1.44 MB or 2.88 MB); a read-only image is write-protected |
 | top | `Load ROM` | another firmware ROM for this session (a normal start loads `boot.rom`); it resets the machine |
 | top | `Memory` | the RAM as SIMM pairs. AIX needs 32 MB at least. A size the SDRAM can't hold gives the most it can: 24, 56 or 112 MB on a 32, 64 or 128 MB module |
 | top | `Apply and reset` | resets the machine with the OSD's settings. "Changes pending" shows while they differ from the running ones |

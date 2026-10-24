@@ -100,6 +100,7 @@ localparam CONF_STR = {
 	"SC0,IMGHDAVHD,Pri. disk (ID 0);",
 	"SC1,IMGHDAVHD,Disk (ID 1);",
 	"SC2,ISOBINCUECHD,CD-ROM (ID 3);",
+	"SC4,IMGIMAVFD,Floppy;",
 	"F1,ROMBINIMG,Load ROM;",
 	"-;",
 	// the RAM as the board's SIMM pairs, beside the ROM (the SDRAM's top 4 MB); a size the
@@ -199,16 +200,16 @@ wire [24:0] ps2_mouse;
 wire [64:0] rtc;                      // BCD: seconds, minutes, hours, date, month, year, weekday; [64] toggles                 // the Main's SDRAM board: [15] known, [1:0] 1 32 MB, 2 64 MB, 3 128 MB
 reg   [1:0] sdram_mod = 2'd1;         // the board the ROM went into (an unknown one taken as 32 MB)
 
-// hps_io's block devices (8-bit, 512-byte blocks): 0-2 the SCSI devices' images, 3 the NVRAM file
-wire  [3:0] img_mounted;
+// hps_io's block devices (8-bit, 512-byte blocks): 0-2 the SCSI devices' images, 3 the NVRAM file, 4 the floppy
+wire  [4:0] img_mounted;
 wire        img_readonly;
 wire [63:0] img_size;
-wire [31:0] sd_lba[4];
-wire  [5:0] sd_blk_cnt[4];
-wire  [3:0] sd_rd, sd_wr, sd_ack;
+wire [31:0] sd_lba[5];
+wire  [5:0] sd_blk_cnt[5];
+wire  [4:0] sd_rd, sd_wr, sd_ack;
 wire [13:0] sd_buff_addr;
 wire  [7:0] sd_buff_dout;
-wire  [7:0] sd_buff_din[4];
+wire  [7:0] sd_buff_din[5];
 wire        sd_buff_wr;
 // the RTC's maintenance port, to the NVRAM file's keeper (IBMRS6K7248_nvsave, below)
 wire [12:0] nv_m_addr;
@@ -225,7 +226,7 @@ generate for (gi = 0; gi < 3; gi++) begin : sd_scsi
 	assign sd_buff_din[gi] = scsi_buff_din[gi];
 end endgenerate
 
-hps_io #(.CONF_STR(CONF_STR), .VDNUM(4), .BLKSZ(2)) hps_io
+hps_io #(.CONF_STR(CONF_STR), .VDNUM(5), .BLKSZ(2)) hps_io
 (
 	.clk_sys(clk_sys),
 	.HPS_BUS(HPS_BUS),
@@ -435,6 +436,7 @@ IBMRS6K7248_system #(.CPU_HZ(CPU_MHZ * 1_000_000), .TB_HZ(TB_HZ)) system
 	.fm_cs, .fm_we, .fm_a, .fm_wdata, .fm_rdata, .fm_vol,
 	.joy1(joystick_0[5:0]), .joy2(joystick_1[5:0]), .ana1(joystick_l_analog_0), .ana2(joystick_l_analog_1),
 	.midi_tx, .midi_rx,
+	.fd_in, .fd_ro, .fd_blocks, .fd_mounted, .fd_req, .fd_we, .fd_lba, .fd_ack, .fd_buf_a, .fd_buf_q, .fd_buf_we, .fd_buf_d,
 
 	// the S3's VRAM in DDR3 and its picture, in the memory clock
 	.net_on(status[8:6] != 3'd1),
@@ -478,6 +480,21 @@ mt32pi mt32pi (
 	.mt32_i2s_r(mt32_i2s_r), .mt32_i2s_l(mt32_i2s_l), .mt32_available(mt32_available),
 	.mt32_mode_req(status[10]), .mt32_rom_req(status[12:11]), .mt32_sf_req({5'd0, status[15:13]}),
 	.mt32_mode(), .mt32_rom(), .mt32_sf(), .mt32_newmode(), .mt32_lcd_en(), .mt32_lcd_pix(), .mt32_lcd_update()
+);
+
+// the floppy image (block device 4): sectors for the floppy controller
+wire        fd_in, fd_ro, fd_mounted, fd_req, fd_we, fd_ack, fd_buf_we;
+wire [12:0] fd_blocks, fd_lba;
+wire  [8:0] fd_buf_a;
+wire  [7:0] fd_buf_q, fd_buf_d;
+IBMRS6K7248_fdimg fdimg (
+	.clk_s(clk_sys), .clk_c(clk_cpu),
+	.img_mounted(img_mounted[4]), .img_readonly, .img_size,
+	.sd_lba(sd_lba[4]), .sd_blk_cnt(sd_blk_cnt[4]), .sd_rd(sd_rd[4]), .sd_wr(sd_wr[4]), .sd_ack(sd_ack[4]),
+	.sd_buff_addr, .sd_buff_dout, .sd_buff_wr, .sd_buff_din(sd_buff_din[4]),
+	.img_in(fd_in), .img_ro(fd_ro), .img_blocks(fd_blocks), .mounted(fd_mounted),
+	.sec_req(fd_req), .sec_we(fd_we), .sec_lba(fd_lba), .sec_ack(fd_ack),
+	.buf_a(fd_buf_a), .buf_q(fd_buf_q), .buf_we(fd_buf_we), .buf_d(fd_buf_d)
 );
 
 // the NVRAM and CMOS kept in the NVRAM file (block device 3)

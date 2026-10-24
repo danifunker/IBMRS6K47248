@@ -91,7 +91,7 @@ and `rc.boot` give the order in which the core's gaps will be hit:
 | 8237 DMA | done | with scatter/gather; the floppy and ECP still have no DREQ |
 | 53C810 under AIX | medium | interrupts (IRQ15 level), DMA to arbitrary kernel buffers, the message and status phases the driver uses; the firmware's boot path already covers reads |
 | 16550 under AIX | small | FIFO control, modem status, interrupts; already real for the firmware |
-| Floppy | large | a full 82077 with DMA; only if a configuration diskette is ever wanted |
+| Floppy | done | one drive, the OSD's image |
 | S3 for AIX (S15 driver) | large | the accelerator and the driver's register expectations; see `s3_design.md` |
 | PCnet Ethernet | done | the core's side; the Main's bridge to merge (`mister/README.md`) |
 
@@ -124,7 +124,7 @@ that cannot proceed without it.
 | PC87312 configuration | `398`/`399` | **real** (the index/data pairs the firmware writes) | firmware `PC87312Init` | |
 | COM1, COM2 (16550) | `3F8`/`2F8` | **real** (COM1 on the MiSTer's UART; the bench's `--com1`) | the firmware's async console; **AIX's console on S1** (`consdef`: the prompt goes to S1) | the diagnostics CD has no S3 driver: S1 is its only console. Not reached yet (the identity check reboots first) |
 | Parallel port | `3BC`-`3BE` (LPT1), ECP DMA | logged (checkpoints) | AIX `ppdd` | |
-| Floppy (PC87312) | `3F0`-`3F7` | **partial**: the firmware's probe sequence (`fd` reads `3F4`/`3F5`... 65 K status polls in the SCSI runs) is stubbed; no drive | firmware (configuration diskette), AIX `fdisa` | rc.boot's `process_diskette` returns at once if no diskette drive is configured: fine without |
+| Floppy (PC87312) | `3F0`-`3F7` | **real**: drive A: is the OSD's Floppy image (720 KB, 1.2 MB, 1.44 MB, 2.88 MB by its size): READ, WRITE, READ TRACK, VERIFY, FORMAT, READ ID, multi-track, DMA channel 2 or PIO, the terminal count, write protection, the disk change line (`IBMRS6K7248_fdc`, `rtl/IBMRS6K7248_fdimg.sv`; `sim/floppy/run.sh`) | firmware (configuration diskette), AIX `fdisa` / `fd0` | one drive; no deleted-data marks, no scan commands' comparisons (they read) |
 | CS4232 audio | `220`/`240`, `388`, `200`, `330`, `534`/`535` | **real**: the WSS codec (playback and capture of silence, the CS4231 registers, DMA 1 / 0, IRQ 5), the Sound Blaster Pro (DSP 3.02: direct, 8-bit and high-speed DMA in and out, the mixer; `IBMRS6K7248_sb`), the FM chip (JTOPL's OPL2 behind the OPL3's ports: bank 0 only, the status an OPL3's; `rtl/IBMRS6K7248_opl.sv`), the MPU-401 in UART mode (MIDI to an MT32-pi on the user port), the joystick port (the MiSTer's sticks); all mixed with the speaker. `sim/audio/run.sh` | firmware `audio_play` (the POST tune), AIX `cs4232` | not done: the OPL3's second bank, 4-operator voices and stereo; a real audio input; the Plug-and-Play IRQ/DMA choices (taken as the residual's: 5, DMA 1 and 0) |
 | IDE (Fire Coral) | `1F0`-`1F7`/`3F6`, `170`-`177`/`376` | **stub**: the firmware's probe (`3F6`/`376` reads, 65 K each) finds nothing | none on the 7248 (SCSI planar) | the 7248 has no IDE drive; keep as "no device" (reads FF would end the probe faster) |
 | ISA PnP | `279`/`A79` | **stub** | firmware `build_isa` | |

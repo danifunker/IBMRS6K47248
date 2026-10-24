@@ -3,5 +3,6 @@ set_global_assignment -name QIP_FILE rtl/machine/IBMRS6K7248_machine.qip
 set_global_assignment -name SDC_FILE IBMRS6K7248.sdc
 set_global_assignment -name QIP_FILE rtl/jtopl/jtopl.qip
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/IBMRS6K7248_opl.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/IBMRS6K7248_fdimg.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/IBMRS6K7248_nvsave.sv
 set_global_assignment -name SYSTEMVERILOG_FILE IBMRS6K7248.sv

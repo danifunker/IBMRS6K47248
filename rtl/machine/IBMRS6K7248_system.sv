@@ -80,6 +80,19 @@ module IBMRS6K7248_system
 	input  logic [15:0]  ana2,
 	output logic         midi_tx,
 	input  logic         midi_rx,
+	// the floppy image (IBMRS6K7248_fdimg): present, read-only, its sectors, mounted; a sector asked and answered
+	input  logic         fd_in,
+	input  logic         fd_ro,
+	input  logic [12:0]  fd_blocks,
+	input  logic         fd_mounted,
+	output logic         fd_req,
+	output logic         fd_we,
+	output logic [12:0]  fd_lba,
+	input  logic         fd_ack,
+	output logic [8:0]   fd_buf_a,
+	input  logic [7:0]   fd_buf_q,
+	output logic         fd_buf_we,
+	output logic [7:0]   fd_buf_d,
 	output logic         kbc_reset,
 
 	// COM1, 1 when idle; asynchronous in
@@ -223,6 +236,7 @@ IBMRS6K7248_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .LE_MODE(LE_MODE), .UART_F
 	.sb_ack, .sb_idata, .sb_ackhold, .sb_atn, .sb_rst,
 	.ext_irq, .tb_tick, .kbc_reset, .speaker, .aud_l, .aud_r,
 	.fm_cs, .fm_we, .fm_a, .fm_wdata, .fm_rdata, .fm_vol, .joy1, .joy2, .ana1, .ana2, .midi_tx, .midi_rx,
+	.fd_in, .fd_ro, .fd_blocks, .fd_mounted, .fd_req, .fd_we, .fd_lba, .fd_ack, .fd_buf_a, .fd_buf_q, .fd_buf_we, .fd_buf_d,
 	.ps2_key, .ps2_mouse, .rtc_set, .rtc_time,
 	.nv_m_addr, .nv_m_we, .nv_m_wdata, .nv_m_q, .nv_m_ok, .nv_wr_seq,
 	.v_req, .v_we, .v_addr, .v_be, .v_wdata, .v_ack, .v_rdata,
