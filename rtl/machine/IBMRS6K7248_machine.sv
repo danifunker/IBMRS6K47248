@@ -71,6 +71,7 @@
 //    0840-0844  the memory and L2 error status registers: no error (0)
 //    0880-0882  SIMM presence detect (read only)
 //    Fire Coral's BAR0 (1000 as the firmware sets it): its index/data pair
+//    PCI device 12: the AMD Am79C970 PCnet (IBMRS6K7248_pcnet) at its BAR0, IRQ 15
 //    PCI device 16: the NCR 53C810 (IBMRS6K7248_ncr810) at its BAR0, IRQ 15
 //               with the S3's; its DMA through the CPU's snoop port (below)
 //    0852       planar ID (read only): the model, which the firmware reads to
@@ -220,6 +221,23 @@ module IBMRS6K7248_machine
 	input  logic         vretrace_v,
 	input  logic         disp_en_v,
 
+	// the PCnet's wire side (IBMRS6K7248_pcnet), in clk_v: to IBMRS6K7248_enetbox
+	output logic         en_tx_pend,
+	output logic [10:0]  en_tx_len,
+	input  logic [10:0]  en_tx_a,
+	output logic [7:0]   en_tx_q,
+	input  logic         en_tx_done,
+	output logic         en_rx_free,
+	input  logic         en_rx_we,
+	input  logic [10:0]  en_rx_a,
+	input  logic [7:0]   en_rx_d,
+	input  logic         en_rx_post,
+	input  logic [10:0]  en_rx_len,
+	input  logic [5:0]   en_rx_hash,
+	input  logic [47:0]  en_aprom_mac,
+	output logic [47:0]  en_padr,
+	output logic         en_padr_ok,
+
 	// every device access as it is answered (for the test bench)
 	output logic         io_ev,
 	output logic         io_we,
@@ -313,11 +331,32 @@ wire        is_rom = a[31:20] == 12'hFFF && !(rom_512k && a[19]);
 wire        to_mem = is_ram | (is_rom & ~c_we);
 wire [19:2] rom_a  = a[19:2];
 
-// ---- the 53C810's DMA and the CPU on the memory port ---------------------------------------
+// ---- the PCI bus masters' DMA (the 53C810, the PCnet) and the CPU on the memory port --------
 logic         dm_req, dm_we, dm_ack, dm_err;
 logic [31:3]  dm_addr;
 logic [7:0]   dm_be;
 logic [63:0]  dm_wdata, dm_rdata;
+// each master's request (one doubleword, held until its ack); one at a time, the 810 first
+logic         ncr_dm_req, ncr_dm_we, pcn_dm_req, pcn_dm_we;
+logic [31:3]  ncr_dm_addr, pcn_dm_addr;
+logic [7:0]   ncr_dm_be, pcn_dm_be;
+logic [63:0]  ncr_dm_wdata, pcn_dm_wdata;
+logic         dm_hold, dm_sel;                             // a request in service; whose (1: the PCnet)
+always_ff @(posedge clk) begin
+	if (!dm_hold && !dm_ack && (ncr_dm_req || pcn_dm_req)) begin
+		dm_hold <= 1'b1;
+		dm_sel  <= !ncr_dm_req;
+	end
+	else if (dm_ack) dm_hold <= 1'b0;
+	if (reset) dm_hold <= 1'b0;
+end
+assign dm_req   = dm_hold & (dm_sel ? pcn_dm_req : ncr_dm_req);
+assign dm_we    = dm_sel ? pcn_dm_we : ncr_dm_we;
+assign dm_addr  = dm_sel ? pcn_dm_addr : ncr_dm_addr;
+assign dm_be    = dm_sel ? pcn_dm_be : ncr_dm_be;
+assign dm_wdata = dm_sel ? pcn_dm_wdata : ncr_dm_wdata;
+wire          ncr_dm_ack = dm_ack & ~dm_sel;
+wire          pcn_dm_ack = dm_ack & dm_sel;
 wire  [31:0]  dpa     = {dm_addr, 3'b000};                 // the PCI address
 wire  [8:0]   d_dec   = ram_dec({1'b0, dpa[30:20]});
 wire          d_ok    = dpa[31] & d_dec[8];                // memory behind the MPC105's window
@@ -547,9 +586,28 @@ IBMRS6K7248_ncr810 #(.STO_UNIT(STO_UNIT)) ncr810 (
 	.cfg_sel(d_sel & cfg_dev16), .cfg_we(d_we), .cfg_reg(cf8[7:2]), .cfg_be(le_be), .cfg_wdata(le_wd), .cfg_rdata(ncr_cfg_q),
 	.io_on(ncr_io_on), .io_base(ncr_io_base),
 	.sel(d_sel & ncr_hit), .we(d_we), .off(p_a[7:2]), .be(p_be), .wdata(p_wd), .rdata(ncr_q), .irq(ncr_irq),
-	.dm_req, .dm_we, .dm_addr, .dm_be, .dm_wdata, .dm_ack, .dm_err, .dm_rdata,
+	.dm_req(ncr_dm_req), .dm_we(ncr_dm_we), .dm_addr(ncr_dm_addr), .dm_be(ncr_dm_be), .dm_wdata(ncr_dm_wdata),
+	.dm_ack(ncr_dm_ack), .dm_err, .dm_rdata,
 	.sb_sel, .sb_sel_id, .sb_sel_atn, .sb_sel_done, .sb_sel_fail, .sb_bsy, .sb_req, .sb_phase, .sb_tdata,
 	.sb_ack, .sb_idata, .sb_ackhold, .sb_atn, .sb_rst
+);
+
+// ---- the AMD Am79C970 PCnet (PCI device 12): its registers at BAR0 in PCI I/O space ---------
+logic        pcn_io_on;
+logic [31:5] pcn_io_base;
+wire         pcn_hit = s_pciio && pcn_io_on && pcn_io_base == {2'b00, p_a[29:5]};
+logic [31:0] pcn_cfg_q, pcn_q;
+logic        pcn_irq;
+IBMRS6K7248_pcnet pcnet (
+	.clk, .reset,
+	.cfg_sel(d_sel & cfg_dev12), .cfg_we(d_we), .cfg_reg(cf8[7:2]), .cfg_be(le_be), .cfg_wdata(le_wd), .cfg_rdata(pcn_cfg_q),
+	.io_on(pcn_io_on), .io_base(pcn_io_base),
+	.sel(d_sel & pcn_hit), .we(d_we), .off(p_a[4:2]), .be(p_be), .wdata(p_wd), .rdata(pcn_q), .irq(pcn_irq),
+	.dm_req(pcn_dm_req), .dm_we(pcn_dm_we), .dm_addr(pcn_dm_addr), .dm_be(pcn_dm_be), .dm_wdata(pcn_dm_wdata),
+	.dm_ack(pcn_dm_ack), .dm_err, .dm_rdata,
+	.clk_m(clk_v), .tx_pend(en_tx_pend), .tx_len(en_tx_len), .m_tx_a(en_tx_a), .m_tx_q(en_tx_q), .m_tx_done(en_tx_done),
+	.rx_free(en_rx_free), .m_rx_we(en_rx_we), .m_rx_a(en_rx_a), .m_rx_d(en_rx_d), .m_rx_post(en_rx_post),
+	.m_rx_len(en_rx_len), .m_rx_hash(en_rx_hash), .aprom_mac(en_aprom_mac), .padr(en_padr), .padr_ok(en_padr_ok)
 );
 
 // ---- the ISA core: the 8259s, the 8254, the 8042, the RTC and NVRAM, port 92 -------------
@@ -624,7 +682,7 @@ end
 
 // the request lines: COM1's INTR as a PC board gates it, with OUT2
 // IRQ 15: every PCI device's interrupt (Carolina's routing): the S3's and the 53C810's
-assign irq = {s3_irq | ncr_irq, 2'b00, irq12, 3'b000, irq8, 3'b000, com1_irq & com1_out2, com2_irq & com2_out2, 1'b0, irq1, irq0} | (16'(irq6) << 6);
+assign irq = {s3_irq | ncr_irq | pcn_irq, 2'b00, irq12, 3'b000, irq8, 3'b000, com1_irq & com1_out2, com2_irq & com2_out2, 1'b0, irq1, irq0} | (16'(irq6) << 6);
 
 // the planar ID, the SIMMs' presence detect
 wire        planar_hit = s_isa && bport == 16'h0852;
@@ -654,6 +712,7 @@ wire        cfg_dev0  = cfc_hit && cfg_on && cf8[15:11] == 5'd0;
 wire        cfg_dev11 = cfc_hit && cfg_on && cf8[15:11] == 5'd11;
 wire        cfg_dev14 = cfc_hit && cfg_on && cf8[15:11] == 5'd14;
 wire        cfg_dev16 = cfc_hit && cfg_on && cf8[15:11] == 5'd16;
+wire        cfg_dev12 = cfc_hit && cfg_on && cf8[15:11] == 5'd12;
 always_ff @(posedge clk) begin
 	if (d_sel & d_we & cf8_hit)
 		for (int k = 0; k < 4; k++) if (le_be[k]) cf8[8 * k +: 8] <= le_wd[8 * k +: 8];
@@ -682,7 +741,7 @@ IBMRS6K7248_firecoral firecoral (
 // the answer, the cycle after the access
 logic       q_sio, q_com2, q_dev14, q_fdc;
 logic       q_pic, q_pit, q_kbc, q_rtc, q_p92, q_err, q_aud, q_audc, q_ee, q_ide;
-logic       q_com1, q_planar, q_pd, q_cf8, q_cfc, q_dev0, q_dev11, q_fcio, q_pcicf, q_iack, q_dev16, q_ncr;
+logic       q_com1, q_planar, q_pd, q_cf8, q_cfc, q_dev0, q_dev11, q_fcio, q_pcicf, q_iack, q_dev16, q_ncr, q_dev12, q_pcn;
 logic [1:0] q_lane;
 always_ff @(posedge clk) if (d_sel) begin
 	q_com1  <= com1_hit;
@@ -707,7 +766,9 @@ always_ff @(posedge clk) if (d_sel) begin
 	q_dev11 <= cfg_dev11;
 	q_dev14 <= cfg_dev14;
 	q_dev16 <= cfg_dev16;
+	q_dev12 <= cfg_dev12;
 	q_ncr   <= ncr_hit;
+	q_pcn   <= pcn_hit;
 	q_s3    <= s3_hit;
 	q_fcio  <= fc_io_hit;
 	q_pcicf <= s_pcicf;
@@ -734,8 +795,9 @@ always_comb begin
 	else if (q_fcio)  dev_rdata = {4{fc_io_q}};
 	else if (q_cf8)   dev_rdata = swap32(cf8);
 	else if (q_cfc)   dev_rdata = q_dev0 ? swap32(mpc_q) : q_dev11 ? swap32(fc_q) : q_dev14 ? swap32(s3_cfg_q) :
-	                              q_dev16 ? swap32(ncr_cfg_q) : 32'hFFFF_FFFF;
+	                              q_dev16 ? swap32(ncr_cfg_q) : q_dev12 ? swap32(pcn_cfg_q) : 32'hFFFF_FFFF;
 	else if (q_ncr)   dev_rdata = ncr_q;
+	else if (q_pcn)   dev_rdata = pcn_q;
 	else if (q_pcicf) dev_rdata = 32'hFFFF_FFFF;
 	else if (q_iack)  dev_rdata = {4{pic_q}};             // the vector
 	else if (d_addr[31]) dev_rdata = 32'hFFFF_FFFF;          // I/O and bus space: nothing answers
@@ -748,7 +810,7 @@ always_ff @(posedge clk) begin
 	io_ev <= w_done;
 	if (w_done) begin
 		io_we    <= d_we;
-		io_stub  <= ~(q_s3 | q_fdc | q_com1 | q_com2 | q_sio | q_planar | q_pd | q_fcio | q_cf8 | q_dev0 | q_dev11 | q_dev14 | q_dev16 | q_ncr |
+		io_stub  <= ~(q_s3 | q_fdc | q_com1 | q_com2 | q_sio | q_planar | q_pd | q_fcio | q_cf8 | q_dev0 | q_dev11 | q_dev14 | q_dev16 | q_ncr | q_dev12 | q_pcn |
 		              q_pic | q_pit | q_kbc | q_rtc | q_ee | q_ide | q_p92 | q_err | q_aud | q_audc | q_iack);
 		io_addr  <= p_a;
 		io_be    <= p_be;

@@ -74,6 +74,9 @@ module IBMRS6K7248_system
 	output logic         com1_rts_n,
 
 	// the S3's VRAM in DDR3 (the framework's DDRAM port) and its picture, in the memory's clock
+	// (shared: the S3's picture side, and the Ethernet mailbox at ARM physical 1FF0_0000;
+	// net_on, the OSD's network not None, asynchronous)
+	input  logic         net_on,
 	input  logic         ddr_busy,
 	output logic [7:0]   ddr_burstcnt,
 	output logic [28:0]  ddr_addr,
@@ -133,6 +136,16 @@ module IBMRS6K7248_system
 	output logic [31:2]  trace_daddr
 );
 
+// the PCnet's wire side (IBMRS6K7248_machine to IBMRS6K7248_enetbox), and the picture side's DDRAM port (va_*)
+logic         en_tx_pend, en_tx_done, en_rx_free, en_rx_we, en_rx_post, en_padr_ok;
+logic [10:0]  en_tx_len, en_tx_a, en_rx_a, en_rx_len;
+logic [7:0]   en_tx_q, en_rx_d;
+logic [5:0]   en_rx_hash;
+logic [47:0]  en_aprom_mac, en_padr;
+logic         va_busy, va_dout_ready, va_rd, va_we;
+logic [7:0]   va_burstcnt, va_be;
+logic [28:0]  va_addr;
+logic [63:0]  va_dout, va_din;
 logic         c_req, c_we, c_line, c_ack;
 logic [31:2]  c_addr;
 logic [3:0]   c_be;
@@ -200,6 +213,8 @@ IBMRS6K7248_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .LE_MODE(LE_MODE), .UART_F
 	.clk_v(clk_b), .h_total, .h_disp, .h_ss, .h_sl, .v_total, .v_disp, .v_ss, .v_sl, .v_start, .v_pitch,
 	.v_screen_on, .v_pix_mask, .v_pll_m, .v_pll_n, .v_cur_on, .v_cur_x, .v_cur_y, .v_cur_base, .v_cur_x11, .v_cur_fg, .v_cur_bg,
 	.pal_vaddr, .pal_vq, .vretrace_v, .disp_en_v,
+	.en_tx_pend, .en_tx_len, .en_tx_a, .en_tx_q, .en_tx_done, .en_rx_free, .en_rx_we, .en_rx_a, .en_rx_d,
+	.en_rx_post, .en_rx_len, .en_rx_hash, .en_aprom_mac, .en_padr, .en_padr_ok,
 	.com1_txd, .com1_rxd, .com1_cts_n, .com1_rts_n,
 	.io_ev, .io_we, .io_stub, .io_addr, .io_be, .io_wdata, .io_rdata
 );
@@ -233,7 +248,8 @@ IBMRS6K7248_s3video s3video (
 	.clk(clk_b), .reset(reset_b),
 	.c_req(vb_req), .c_we(vb_we), .c_addr(vb_addr[20:2]), .c_be(vb_be), .c_wdata(vb_wdata[31:0]),
 	.c_ack(vb_ack), .c_rdata(vb_rdata32),
-	.ddr_busy, .ddr_burstcnt, .ddr_addr, .ddr_dout, .ddr_dout_ready, .ddr_rd, .ddr_din, .ddr_be, .ddr_we,
+	.ddr_busy(va_busy), .ddr_burstcnt(va_burstcnt), .ddr_addr(va_addr), .ddr_dout(va_dout), .ddr_dout_ready(va_dout_ready),
+	.ddr_rd(va_rd), .ddr_din(va_din), .ddr_be(va_be), .ddr_we(va_we),
 	.h_total, .h_disp, .h_ss, .h_sl, .v_total, .v_disp, .v_ss, .v_sl,
 	.start(v_start), .pitch(v_pitch), .screen_on(v_screen_on), .pix_mask(v_pix_mask),
 	.pll_m(v_pll_m), .pll_n(v_pll_n), .cur_on(v_cur_on), .cur_x(v_cur_x), .cur_y(v_cur_y), .cur_base(v_cur_base),
@@ -248,6 +264,28 @@ DSPPC604_memcdc cdc (
 	.a_ack(m_ack), .a_rdata(m_rdata),
 	.clk_b, .reset_b,
 	.b_req, .b_we, .b_line, .b_addr, .b_be, .b_wdata, .b_ack, .b_rdata
+);
+
+// ---- the PCnet's wire: the Ethernet mailbox in DDR3, beside the picture side on the DDRAM port ----
+logic         nb_req, nb_we, nb_ack;
+logic [12:0]  nb_addr;
+logic [63:0]  nb_wdata, nb_rdata;
+logic [1:0]   net_on_s;
+always_ff @(posedge clk_b) net_on_s <= {net_on_s[0], net_on};
+IBMRS6K7248_enetbox enetbox (
+	.clk(clk_b), .reset(reset_b), .ena(net_on_s[1]),
+	.tx_pend(en_tx_pend), .tx_len(en_tx_len), .m_tx_a(en_tx_a), .m_tx_q(en_tx_q), .m_tx_done(en_tx_done),
+	.rx_free(en_rx_free), .m_rx_we(en_rx_we), .m_rx_a(en_rx_a), .m_rx_d(en_rx_d), .m_rx_post(en_rx_post),
+	.m_rx_len(en_rx_len), .m_rx_hash(en_rx_hash), .aprom_mac(en_aprom_mac), .padr(en_padr), .padr_ok(en_padr_ok),
+	.nb_req, .nb_we, .nb_addr, .nb_wdata, .nb_ack, .nb_rdata
+);
+// the picture side's port (va_*) and the mailbox's on the DDRAM port
+IBMRS6K7248_ddrarb ddrarb (
+	.clk(clk_b), .reset(reset_b),
+	.a_busy(va_busy), .a_burstcnt(va_burstcnt), .a_addr(va_addr), .a_dout(va_dout), .a_dout_ready(va_dout_ready),
+	.a_rd(va_rd), .a_din(va_din), .a_be(va_be), .a_we(va_we),
+	.nb_req, .nb_we, .nb_addr, .nb_wdata, .nb_ack, .nb_rdata,
+	.ddr_busy, .ddr_burstcnt, .ddr_addr, .ddr_dout, .ddr_dout_ready, .ddr_rd, .ddr_din, .ddr_be, .ddr_we
 );
 
 endmodule

@@ -81,3 +81,6 @@ sim/s3ge/build/
 sim/s3ge/build.log
 sim/nvsave/build/
 sim/nvsave/build.log
+sim/pcnet/build/
+sim/pcnet/build.log
+sim/pcnet/build_net/

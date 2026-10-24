@@ -93,7 +93,7 @@ and `rc.boot` give the order in which the core's gaps will be hit:
 | 16550 under AIX | small | FIFO control, modem status, interrupts; already real for the firmware |
 | Floppy | large | a full 82077 with DMA; only if a configuration diskette is ever wanted |
 | S3 for AIX (S15 driver) | large | the accelerator and the driver's register expectations; see `s3_design.md` |
-| PCnet Ethernet | large | plus the Main_MiSTer branch (M7) |
+| PCnet Ethernet | done | the core's side; the Main's bridge to merge (`mister/README.md`) |
 
 ## The inventory
 
@@ -136,7 +136,7 @@ that cannot proceed without it.
 |---|---|---|---|---|
 | S3 Vision864 + SDAC, 2 MB VRAM | dev 14 (5333:88C0), VGA I/O `3B4`-`3DF`, S3 enhanced `42E8`-`E2E8`, LFB at CPU `C2800000` | **real** for the firmware and AIX 4.3.3's X server (1024 x 768 x 8; the hardware cursor in Windows and X11 modes, its colours CR0E/CR0F; 3DB reads as 3DA; the whole 8514 engine at 8 bpp: Bresenham and radial lines, short-stroke vectors, rectangles, BitBLTs, pattern fills, the three mix selections, colour compare, image reads, PIX_TRANS on an 8-, 16- or 32-bit bus (a 32-bit transfer whole or as E2E8 then E2EA), the position after a command; `sim/s3ge/run.sh` checks each against a C++ model); **not done**: 16/24 bpp, mono image reads, register read-back of what the engine moved (CUR_X/Y), READ_SEL | the firmware's screen; AIX's desktop | the error-icon palette (dark blue on black) is open |
 | NCR 53C810 SCSI, the CD at ID 3 | dev 16 (1000:0001), I/O and memory BARs | **real** enough for the firmware's boot (SCRIPTS, the CD's reads) | the firmware's CD boot; AIX `ncr810dd` (`cfgncr_scsi`) | **the install CD's blocker (2026-10-23)**: under AIX's `ncr810dd` the bus scan (`cfgncr_scsi`, `find_sc_dev`) finds no device at ID 3, so no `cd0`, `bootinfo -b` is empty and `rc.boot` stops at LED 0x518 (`bringup_log.md` 2026-10-23); next: what the driver asks of the chip (interrupts, DMA to kernel buffers, message phases) |
-| AMD Am79C970 PCnet | dev (planar Ethernet) | **absent** (config reads return no device) | AIX networking (M7) | needs the Main_MiSTer branch for the Ethernet mailbox |
+| AMD Am79C970 PCnet | dev 12 (1022:2000, rev 10), BAR0 32 bytes of I/O, INTA to IRQ 15 | **real**: `IBMRS6K7248_pcnet` (QEMU's semantics: WIO/DWIO, the PROM, CSR/BCR, 16- and 32-bit init blocks and descriptors, chained RX, loopback with FCS, TX poll; `sim/pcnet/run.sh`, and `run.sh net` with the mailbox); the wire is `IBMRS6K7248_enetbox`'s DDR3 mailbox (`RS6ETH01`) to the Main | the firmware's network boot and SMS (I970); AIX `ent0` | the Main's bridge is `mister/Main_MiSTer/support/ibmrs6k/` (to merge: `mister/README.md`); not run on the board yet |
 | PCI configuration mechanism | `CF8`/`CFC` | **real** (devices 0, 11, 14, 16; others absent) | everything | AIX's reboot path scans devices 0-31 (`Q014288DC`) |
 
 ### Memory-mapped and other

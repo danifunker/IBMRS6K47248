@@ -80,6 +80,8 @@ localparam CONF_STR = {
 	// the RAM as the board's SIMM pairs, beside the ROM (the SDRAM's top 4 MB); a size the
 	// SDRAM cannot hold gives the most it can (24, 56 or 112 MB). 32 MB first: AIX's least
 	"O[3:1],Memory,32MB,48MB,56MB,64MB,96MB,112MB,16MB,24MB;",
+	// the Main's Ethernet bridge reads it itself (support/ibmrs6k: "[8:6]"), so it acts at once
+	"O[8:6],Network interface,eth0,None,eth1,macvlan,tap0;",
 	"-;",
 	"P2,Video;",
 	"P3,Input;",
@@ -397,6 +399,7 @@ IBMRS6K7248_system #(.CPU_HZ(CPU_MHZ * 1_000_000), .TB_HZ(TB_HZ)) system
 	.speaker, .kbc_reset,
 
 	// the S3's VRAM in DDR3 and its picture, in the memory clock
+	.net_on(status[8:6] != 3'd1),
 	.ddr_busy(DDRAM_BUSY), .ddr_burstcnt(DDRAM_BURSTCNT), .ddr_addr(DDRAM_ADDR), .ddr_dout(DDRAM_DOUT),
 	.ddr_dout_ready(DDRAM_DOUT_READY), .ddr_rd(DDRAM_RD), .ddr_din(DDRAM_DIN), .ddr_be(DDRAM_BE), .ddr_we(DDRAM_WE),
 	.vid_ce, .vid_r, .vid_g, .vid_b, .vid_hs, .vid_vs, .vid_hblank, .vid_vblank,
