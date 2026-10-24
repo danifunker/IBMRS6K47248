@@ -508,7 +508,8 @@ end
 reg  [45:0] nq [64];                      // {s3, we, be, offset, data}
 reg  [5:0]  nq_w = 0, nq_r = 0;
 wire        ncr_ev = isi_armed & io_ev & (io_addr[31:8] == 24'h810000 || io_addr[31:3] == 29'h1000_000C);
-wire        s3v_ev = isi_armed & io_ev & (io_addr[31:5] == 27'h400_001E);                  // 8000_03C0-8000_03DF
+// (not the reads of 3DA, input status 1: AIX's X server polls it without end and they filled the FIFO)
+wire        s3v_ev = isi_armed & io_ev & (io_addr[31:5] == 27'h400_001E) & ~(~io_we & io_addr[7:0] == 8'hD8);   // 8000_03C0-8000_03DF
 wire        s3e_ev = isi_armed & io_ev & io_addr[31:16] == 16'h8000 && io_addr[9:2] == 8'hBA;   // 8000_xxE8
 reg  [2:0]  pk_s = 0;                     // ps2_key[10] (it toggles once a key event) into this clock
 always @(posedge clk_cpu) pk_s <= {pk_s[1:0], ps2_key[10]};
@@ -520,7 +521,8 @@ always @(posedge clk_cpu) if ((ncr_ev || s3v_ev || s3e_ev || pk_ev) && nq_w + 6'
 	nq_w     <= nq_w + 6'd1;
 end
 wire [45:0] nq_e = nq[nq_r];
-wire        isi_go = trace_valid & trace_last & isi_armed & ~isi_done & (trace_pc == 32'h0003D830 || trace_pc == 32'h00148E24 || trace_pc == 32'h0003587C);
+// (the X build: the PC is the loop AIX's X server sits in, polling 3DA, in a shared library)
+wire        isi_go = trace_valid & trace_last & isi_armed & ~isi_done & (trace_pc == 32'hD0110B04);
 always @(posedge clk_cpu) begin
 	if (post_ev && io_wdata[31:24] == 8'h2F) isi_armed <= 1'b1;
 	if (trace_valid && trace_last && (isi_go || isi_n != 6'd0)) begin
