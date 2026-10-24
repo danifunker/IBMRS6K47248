@@ -898,3 +898,32 @@ Findings (details in `scratch/work/com1_findings.md`):
 - **Next**: on the bench from `snap24_a.bin` (clock 4.45 G, before the scan's waits) or
   earlier, `--io` over the 53C810's registers and the SCSI target's command log, to see what
   `ncr810dd` asks of the chip and where the model falls short.
+
+## 2026-10-23 evening: the 53C810 under AIX's ncr810dd (M5 begins)
+
+- **What the driver does** (bench `run26`, build10): it moves BAR0 to PCI I/O 0100_0000 and
+  addresses the chip at **BAR + 80** (the 80-FF alias of 00-7F); soft reset (ISTAT.SRST 1 then
+  0), SCNTL0 C8, SCNTL3 13, SIEN0 8F, SIEN1 04, SCID 47, RESPID, SXFER, DIEN 7F, STIME0 0C,
+  DCNTL 01, DMODE 80, STEST3 90, then DSP = its SCRIPTS (0x011C78E4 at 32 MB). The SCRIPTS
+  (decoded from RAM, `scratch/work/aix/scripts26.txt`) copy DSA and SCRATCHA/B to and from
+  memory with MEMORY MOVEs whose source or destination is the chip's own I/O BAR, under
+  DMODE.SIOM/DIOM.
+- **Two model gaps, fixed**: (1) the special register cases (the SRST release, DSTAT/SIST
+  read-clear, CTEST2's SIGP) compared all six offset bits, so at BAR + 94 the SRST release never
+  matched and the chip stayed in soft reset for good: SCRIPTS never ran and the driver waited for
+  an interrupt that never came (`run27`'s SCRIPTS trace: 1449 instructions in the firmware's
+  boot, none under AIX) (`2df9a08`); (2) memory moves in I/O space (SIOM/DIOM) to our own BAR now
+  read and write the registers; other I/O addresses are a bus fault; a SCRIPTS write of
+  SCNTL1.RST sets SIST0.RST (`1440701`). A bench-only SCRIPTS trace (`cacaae9`: "ncr ..." lines,
+  under VERILATOR, no state of its own).
+- **The board** (.92, the SCSI debug bitstream `1a02bd4` + both fixes, loaded through the OSD
+  from `_Computer`, now staged to `_Unstable`; `scratch/work/scsi92b.raw`, 112 MB, a clean
+  OSD reset with the CD mounted): **the chip runs under AIX**. The scan selects and gets STO
+  for empty IDs (SIST1 04), the interrupt reaches the driver (ISTAT 02), the driver restarts
+  SCRIPTS at +8. Then an error-recovery loop: a SELECT ATN (DCMD 41) that neither connects nor
+  times out, the driver's ABRT (ISTAT 80/81, DSTAT 90), CLF/CSF, SCNTL1.RST (SIST0 02), retry;
+  twice DSTAT A0 (a bus fault) and PCI status bit 13 (received master abort). The shell ends in
+  its loop as before (rc.boot's LED 0x518). Decoder: the debug stream drops each entry's first
+  byte (the W/R letter), so the entries read "baa=dddddddd".
+- **Next**: bench `run29.sh` (build13, both fixes, the SCRIPTS trace) from reset through the
+  scan: which SELECT hangs, and the bus fault's address.

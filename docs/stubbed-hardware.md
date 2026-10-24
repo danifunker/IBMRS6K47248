@@ -161,3 +161,4 @@ that cannot proceed without it.
   time already comes from Main (hps_io's rtc); NVRAM/CMOS persistence is for
   the Main_MiSTer branch.
 - 2026-10-23: no new stubs under AIX's `cfgmgr` on the bench (`run24`/`run25`: the 8237's `0D`/`D4`/`D6`/`DA`, `808`, `CFC` reads); the 53C810's gap under `ncr810dd` (no `cd0`) is the install CD's blocker.
+- 2026-10-23 evening: the 53C810 under `ncr810dd`: the 80-FF alias in the special register cases and the SIOM/DIOM memory moves to our own registers are fixed (`2df9a08`, `1440701`); on the board the scan now runs but ends in a SELECT that never completes and a bus fault (`bringup_log.md`).
