@@ -179,6 +179,13 @@ module IBMRS6K7248_machine
 	input  logic [24:0]  ps2_mouse,
 	input  logic         rtc_set,
 	input  logic [55:0]  rtc_time,
+	// the RTC's maintenance port (the NVRAM and CMOS kept on the SD card: IBMRS6K7248_nvsave)
+	input  logic [12:0]  nv_m_addr,
+	input  logic         nv_m_we,
+	input  logic [7:0]   nv_m_wdata,
+	output logic [7:0]   nv_m_q,
+	output logic         nv_m_ok,
+	output logic [7:0]   nv_wr_seq,
 
 	// COM1
 	output logic         com1_txd,
@@ -594,7 +601,8 @@ IBMRS6K7248_rtc #(.CLK_HZ(CPU_HZ), .FAST(RTC_FAST)) rtc (
 	.clk, .reset,
 	.sel(d_sel & rtc_hit), .we(d_we), .port(bport[2:0]), .wdata(bwd), .rdata(rtc_q),
 	.irq8, .nmi_mask,
-	.set_time(rtc_set), .time_bcd(rtc_time)
+	.set_time(rtc_set), .time_bcd(rtc_time),
+	.m_addr(nv_m_addr), .m_we(nv_m_we), .m_wdata(nv_m_wdata), .m_q(nv_m_q), .m_ok(nv_m_ok), .wr_seq(nv_wr_seq)
 );
 
 IBMRS6K7248_eeprom eeprom (

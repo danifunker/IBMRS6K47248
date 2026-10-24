@@ -73,9 +73,11 @@ localparam CONF_STR = {
 	"-;",
 	"F1,ROMBINIMG,Load firmware ROM;",
 	"-;",
-	"S0,IMGHDAVHD,SCSI disk ID 0;",
-	"S1,IMGHDAVHD,SCSI disk ID 1;",
-	"S2,ISOBINCUECHD,SCSI CD-ROM ID 3;",
+	// (SC: the Main remembers each image and mounts it again at the next core load)
+	"SC0,IMGHDAVHD,SCSI disk ID 0;",
+	"SC1,IMGHDAVHD,SCSI disk ID 1;",
+	"SC2,ISOBINCUECHD,SCSI CD-ROM ID 3;",
+	"SC3,NVR,NVRAM file;",
 	"-;",
 	// the RAM as the board's SIMM pairs, beside the ROM (the SDRAM's top 4 MB); a size the
 	// SDRAM cannot hold gives the most it can (24, 56 or 112 MB). 32 MB first: AIX's least
@@ -141,19 +143,33 @@ wire [24:0] ps2_mouse;
 wire [64:0] rtc;                      // BCD: seconds, minutes, hours, date, month, year, weekday; [64] toggles                 // the Main's SDRAM board: [15] known, [1:0] 1 32 MB, 2 64 MB, 3 128 MB
 reg   [1:0] sdram_mod = 2'd1;         // the board the ROM went into (an unknown one taken as 32 MB)
 
-// the SCSI devices' images: hps_io block devices 0-2 (8-bit, 512-byte blocks)
-wire  [2:0] img_mounted;
+// hps_io's block devices (8-bit, 512-byte blocks): 0-2 the SCSI devices' images, 3 the NVRAM file
+wire  [3:0] img_mounted;
 wire        img_readonly;
 wire [63:0] img_size;
-wire [31:0] sd_lba[3];
-wire  [5:0] sd_blk_cnt[3];
-wire  [2:0] sd_rd, sd_wr, sd_ack;
+wire [31:0] sd_lba[4];
+wire  [5:0] sd_blk_cnt[4];
+wire  [3:0] sd_rd, sd_wr, sd_ack;
 wire [13:0] sd_buff_addr;
 wire  [7:0] sd_buff_dout;
-wire  [7:0] sd_buff_din[3];
+wire  [7:0] sd_buff_din[4];
 wire        sd_buff_wr;
+// the RTC's maintenance port, to the NVRAM file's keeper (IBMRS6K7248_nvsave, below)
+wire [12:0] nv_m_addr;
+wire        nv_m_we, nv_m_ok;
+wire  [7:0] nv_m_wdata, nv_m_q, nv_wr_seq;
+// the SCSI's three (the machine's)
+wire [31:0] scsi_lba[3];
+wire  [5:0] scsi_blk_cnt[3];
+wire  [7:0] scsi_buff_din[3];
+genvar gi;
+generate for (gi = 0; gi < 3; gi++) begin : sd_scsi
+	assign sd_lba[gi]      = scsi_lba[gi];
+	assign sd_blk_cnt[gi]  = scsi_blk_cnt[gi];
+	assign sd_buff_din[gi] = scsi_buff_din[gi];
+end endgenerate
 
-hps_io #(.CONF_STR(CONF_STR), .VDNUM(3), .BLKSZ(2)) hps_io
+hps_io #(.CONF_STR(CONF_STR), .VDNUM(4), .BLKSZ(2)) hps_io
 (
 	.clk_sys(clk_sys),
 	.HPS_BUS(HPS_BUS),
@@ -358,8 +374,9 @@ IBMRS6K7248_system #(.CPU_HZ(CPU_MHZ * 1_000_000), .TB_HZ(TB_HZ)) system
 	.com1_cts_n(~UART_CTS),
 	.com1_rts_n(),
 
-	.img_present, .img_blocks, .sd_lba, .sd_blk_cnt, .sd_rd, .sd_wr, .sd_ack,
-	.sd_buff_addr, .sd_buff_dout, .sd_buff_din, .sd_buff_wr,
+	.img_present, .img_blocks, .sd_lba(scsi_lba), .sd_blk_cnt(scsi_blk_cnt), .sd_rd(sd_rd[2:0]), .sd_wr(sd_wr[2:0]),
+	.sd_ack(sd_ack[2:0]), .sd_buff_addr, .sd_buff_dout, .sd_buff_din(scsi_buff_din), .sd_buff_wr,
+	.nv_m_addr, .nv_m_we, .nv_m_wdata, .nv_m_q, .nv_m_ok, .nv_wr_seq,
 	.cd_change(|cd_change_s), .scsi_activity(scsi_act),
 
 	.io_ev, .io_we, .io_stub(), .io_addr, .io_be, .io_wdata, .io_rdata,
@@ -369,6 +386,15 @@ IBMRS6K7248_system #(.CPU_HZ(CPU_MHZ * 1_000_000), .TB_HZ(TB_HZ)) system
 );
 assign UART_RTS = 0;
 assign UART_DTR = UART_DSR;
+
+// the NVRAM and CMOS kept in the NVRAM file (block device 3)
+IBMRS6K7248_nvsave nvsave (
+	.clk_s(clk_sys), .clk_c(clk_cpu),
+	.img_mounted(img_mounted[3]), .img_readonly, .img_size,
+	.sd_lba(sd_lba[3]), .sd_blk_cnt(sd_blk_cnt[3]), .sd_rd(sd_rd[3]), .sd_wr(sd_wr[3]), .sd_ack(sd_ack[3]),
+	.sd_buff_addr, .sd_buff_dout, .sd_buff_wr, .sd_buff_din(sd_buff_din[3]),
+	.m_addr(nv_m_addr), .m_we(nv_m_we), .m_wdata(nv_m_wdata), .m_q(nv_m_q), .m_ok(nv_m_ok), .wr_seq(nv_wr_seq)
+);
 
 ///////////////////////   SDRAM   ///////////////////////////////
 

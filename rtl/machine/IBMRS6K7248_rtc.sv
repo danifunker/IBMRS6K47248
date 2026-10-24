@@ -12,9 +12,12 @@
 //  32,768 Hz time base (made from CLK_HZ by phase accumulation).
 //
 //  The NVRAM: 4,096 bytes behind 74 (address bits 7-0), 75 (bits 11-8) and
-//  76 (data), the PReP NVRAM the firmware keeps its configuration in. Not
-//  yet kept on the SD card: it starts as zeros, which the firmware takes
-//  as an NVRAM to initialise.
+//  76 (data), the PReP NVRAM the firmware keeps its configuration in. It
+//  starts as the firmware's own formatted image (below); IBMRS6K7248_nvsave
+//  keeps it and the CMOS on the SD card through the maintenance port: m_addr
+//  0-FFF the NVRAM, 1000-107F the CMOS, read a clock later, written in a
+//  cycle the CPU leaves the RTC alone (m_ok); wr_seq (Gray) counts the
+//  CPU's writes of the NVRAM and of CMOS 0E-7F.
 //
 //  The bus: one byte access a cycle by port offset, the read value in
 //  rdata the cycle after sel.
@@ -42,7 +45,15 @@ module IBMRS6K7248_rtc
 	// the time to start from (hps_io's RTC: BCD seconds, minutes, hours, date, month, year;
 	// then the weekday, 0-6 from Sunday)
 	input  logic        set_time,
-	input  logic [55:0] time_bcd
+	input  logic [55:0] time_bcd,
+
+	// the maintenance port (IBMRS6K7248_nvsave)
+	input  logic [12:0] m_addr,
+	input  logic        m_we,
+	input  logic [7:0]  m_wdata,
+	output logic [7:0]  m_q,
+	output logic        m_ok,
+	output logic [7:0]  wr_seq
 );
 
 // ---- the 32,768 Hz time base ---------------------------------------------------------
@@ -215,10 +226,13 @@ always_ff @(posedge clk) begin
 			end
 			3'd4: if (we) nv_addr[7:0]  <= wdata; else rdata <= nv_addr[7:0];
 			3'd5: if (we) nv_addr[11:8] <= wdata[3:0]; else rdata <= {4'd0, nv_addr[11:8]};
-			3'd6: if (we) nvram[nv_addr] <= wdata; else rdata <= nv_q;
+			3'd6: if (!we) rdata <= nv_q;                // (the write: below)
 			default: if (!we) rdata <= 8'hFF;
 		endcase
 	end
+
+	// the maintenance port's CMOS write (0E-7F), in a cycle the CPU leaves the RTC alone
+	if (m_we && !sel && m_addr[12] && m_addr[6:0] >= 7'h0E) cmos_ram[m_addr[6:0]] <= m_wdata;
 
 	if (set_time) begin
 		sec   <= 6'(from_bcd(time_bcd[7:0]));
@@ -238,7 +252,29 @@ always_ff @(posedge clk) begin
 		nmi_mask   <= 1'b1;
 	end
 end
-always_ff @(posedge clk) nv_q <= nvram[nv_addr];
+// the NVRAM's write: the CPU's, else the maintenance port's in a cycle the CPU leaves the RTC alone
+wire        cpu_nvw = sel & we & (port == 3'd6);
+assign      m_ok    = ~sel;
+wire        nv_we   = cpu_nvw | (m_we & m_ok & ~m_addr[12]);
+always_ff @(posedge clk) begin
+	if (nv_we) nvram[cpu_nvw ? nv_addr : m_addr[11:0]] <= cpu_nvw ? wdata : m_wdata;
+	nv_q <= nvram[nv_addr];
+end
+// the maintenance port's reads (a second read port), and its CMOS
+logic [7:0] m_nq, m_cq;
+logic       m_c;
+always_ff @(posedge clk) begin
+	m_nq <= nvram[m_addr[11:0]];
+	m_cq <= cmos_ram[m_addr[6:0]];
+	m_c  <= m_addr[12];
+end
+assign m_q = m_c ? m_cq : m_nq;
+// the CPU's writes counted (Gray, for the SD side's clock)
+logic [7:0] wr_n = 8'd0;
+always_ff @(posedge clk) begin
+	if (cpu_nvw || (sel && we && port == 3'd1 && index >= 7'h0E)) wr_n <= wr_n + 8'd1;
+	wr_seq <= wr_n ^ (wr_n >> 1);
+end
 
 assign irq8 = |(flags & reg_b[6:4]);
 

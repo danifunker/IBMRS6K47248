@@ -57,6 +57,13 @@ module IBMRS6K7248_system
 	input  logic [24:0]  ps2_mouse,
 	input  logic         rtc_set,
 	input  logic [55:0]  rtc_time,
+	// the RTC's maintenance port (IBMRS6K7248_nvsave), in clk
+	input  logic [12:0]  nv_m_addr,
+	input  logic         nv_m_we,
+	input  logic [7:0]   nv_m_wdata,
+	output logic [7:0]   nv_m_q,
+	output logic         nv_m_ok,
+	output logic [7:0]   nv_wr_seq,
 	output logic         speaker,
 	output logic         kbc_reset,
 
@@ -188,6 +195,7 @@ IBMRS6K7248_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .LE_MODE(LE_MODE), .UART_F
 	.sb_ack, .sb_idata, .sb_ackhold, .sb_atn, .sb_rst,
 	.ext_irq, .tb_tick, .kbc_reset, .speaker,
 	.ps2_key, .ps2_mouse, .rtc_set, .rtc_time,
+	.nv_m_addr, .nv_m_we, .nv_m_wdata, .nv_m_q, .nv_m_ok, .nv_wr_seq,
 	.v_req, .v_we, .v_addr, .v_be, .v_wdata, .v_ack, .v_rdata,
 	.clk_v(clk_b), .h_total, .h_disp, .h_ss, .h_sl, .v_total, .v_disp, .v_ss, .v_sl, .v_start, .v_pitch,
 	.v_screen_on, .v_pix_mask, .v_pll_m, .v_pll_n, .v_cur_on, .v_cur_x, .v_cur_y, .v_cur_base, .v_cur_x11, .v_cur_fg, .v_cur_bg,
