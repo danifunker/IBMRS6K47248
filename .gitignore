@@ -78,3 +78,4 @@ sim/tools/*.bin
 sim/tests/*.lst
 sim/tests/*.map
 sim/s3ge/build/
+sim/s3ge/build.log
