@@ -15,8 +15,8 @@
 //  copied into the buffer and the nine blocks written back.
 //
 //  Two clocks: the SD side in hps_io's (clk_s), the copy between the
-//  buffer and the RTC's maintenance port in the CPU's (clk_c); the buffer
-//  a dual-clock RAM between them, requests and answers as toggles.
+//  buffers and the RTC's maintenance port in the CPU's (clk_c); the buffers
+//  dual-clock RAMs between them, requests and answers as toggles.
 //
 //============================================================================
 
@@ -53,18 +53,20 @@ module IBMRS6K7248_nvsave
 
 localparam logic [63:0] MARKER = "IBMRS6K1";
 
-// ---- the image buffer: 9 x 512 bytes, the SD side's port and the copy's ------------------------
-logic [7:0]  ibuf [4608];
+// ---- the image buffers, 9 x 512 bytes each: one the SD side fills and the copy reads (a load), one the
+// copy fills and the SD side reads (a save): two simple dual-port RAMs, one writer each
+logic [7:0]  ibuf_in  [4608];
+logic [7:0]  ibuf_out [4608];
 logic [12:0] s_a, c_a;
 logic        s_we, c_we;
 logic [7:0]  s_d, c_d, s_q, c_q;
 always_ff @(posedge clk_s) begin
-	if (s_we) ibuf[s_a] <= s_d;
-	s_q <= ibuf[s_a];
+	if (s_we) ibuf_in[s_a] <= s_d;
+	s_q <= ibuf_out[s_a];
 end
 always_ff @(posedge clk_c) begin
-	if (c_we) ibuf[c_a] <= c_d;
-	c_q <= ibuf[c_a];
+	if (c_we) ibuf_out[c_a] <= c_d;
+	c_q <= ibuf_in[c_a];
 end
 
 // ---- the SD side ---------------------------------------------------------------------------
