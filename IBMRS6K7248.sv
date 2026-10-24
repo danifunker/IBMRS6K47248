@@ -319,6 +319,8 @@ wire [31:0]  trace_pc, trace_msr, trace_lr, trace_ctr;
 wire         trace_reg_we;
 wire [6:0]   trace_reg_idx;
 wire [63:0]  trace_reg_val;
+wire         t_dreq, t_dwe;
+wire [31:2]  t_daddr;
 wire        com1_txd;
 wire        io_ev, io_we;
 wire [31:0] io_addr, io_wdata, io_rdata;
@@ -363,7 +365,7 @@ IBMRS6K7248_system #(.CPU_HZ(CPU_MHZ * 1_000_000), .TB_HZ(TB_HZ)) system
 	.io_ev, .io_we, .io_stub(), .io_addr, .io_be, .io_wdata, .io_rdata,
 	.trace_valid, .trace_last, .trace_pc, .trace_insn(), .trace_msr, .trace_lr, .trace_ctr,
 	.trace_reg_we, .trace_reg_idx, .trace_reg_val,
-	.trace_dreq(), .trace_dwe(), .trace_daddr()
+	.trace_dreq(t_dreq), .trace_dwe(t_dwe), .trace_daddr(t_daddr)
 );
 assign UART_RTS = 0;
 assign UART_DTR = UART_DSR;
@@ -521,8 +523,17 @@ always @(posedge clk_cpu) if ((ncr_ev || s3v_ev || s3e_ev || pk_ev) && nq_w + 6'
 	nq_w     <= nq_w + 6'd1;
 end
 wire [45:0] nq_e = nq[nq_r];
-// (the X build: the PC is the loop AIX's X server sits in, polling 3DA, in a shared library)
-wire        isi_go = trace_valid & trace_last & isi_armed & ~isi_done & (trace_pc == 32'hD0110B04);
+// (the desktop build: no PC trigger; instead, once, when nothing has retired for 2^24 clocks (0.24 s) after
+// the hand-off, the header alone: "IL=" the last PC retired, " C=" the data address the CPU's access is at,
+// " M=" bit 31 a data access pending, bit 30 a write: where a stalled bus access hangs the core)
+wire        isi_go = 1'b0;
+reg  [23:0] stall_n = 0;
+reg  [31:0] stall_pc = 0;
+always @(posedge clk_cpu) begin
+	if (trace_valid & trace_last) begin stall_n <= 24'd0; stall_pc <= trace_pc; end
+	else if (stall_n != 24'hFFFFFF) stall_n <= stall_n + 24'd1;
+end
+wire        stall_go = isi_armed & ~isi_done & (stall_n == 24'hFFFFFE);
 always @(posedge clk_cpu) begin
 	if (post_ev && io_wdata[31:24] == 8'h2F) isi_armed <= 1'b1;
 	if (trace_valid && trace_last && (isi_go || isi_n != 6'd0)) begin
@@ -533,6 +544,7 @@ always @(posedge clk_cpu) begin
 		isi_n          <= isi_go ? 6'd39 : isi_n - 6'd1;
 	end
 	if (isi_go) begin isi_done <= 1'b1; isi_lr <= trace_lr; isi_ctr <= trace_ctr; isi_msr <= trace_msr; end
+	if (stall_go) begin isi_done <= 1'b1; isi_lr <= stall_pc; isi_ctr <= {t_daddr, 2'b00}; isi_msr <= {t_dreq, t_dwe, 30'd0}; end
 	if (isi_armed && trace_valid && trace_last && trace_pc[31] == 1'b0 && trace_pc[30:28] != 3'd0) usr_on <= 1'b1;
 end
 
@@ -591,7 +603,7 @@ always @(posedge clk_cpu) begin
 	if (post_ev) begin post_code <= io_wdata[31:24]; post_pc <= pc_prev[31:12] == 20'h00007 ? 32'd0 : pc_prev; end
 	if (k92_ev) k92_d <= io_wdata[15:8];
 	k92_pend   <= k92_pend | k92_ev;
-	if (isi_go) isi_hdr <= 2'd3;
+	if (isi_go | stall_go) isi_hdr <= 2'd3;
 	if (isi_armed && io_ev && io_we && io_addr[31:3] == 29'h1000_007F && !usr_pend) begin
 		usr_pend <= 1'b1; usr_we <= io_we; usr_isa <= 1'b1; usr_a <= {io_be, io_addr[11:0]};
 		usr_d <= io_wdata;
