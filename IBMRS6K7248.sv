@@ -53,8 +53,12 @@ assign HDMI_BOB_DEINT = 0;
 
 assign AUDIO_S = 1;
 wire   speaker;                         // the 8254's counter 2 through port 61, in the CPU's clock
-assign AUDIO_L = speaker ? 16'h1000 : 16'h0000;
-assign AUDIO_R = speaker ? 16'h1000 : 16'h0000;
+wire [15:0] aud_l, aud_r;                // the CS4232's codec, signed, in the CPU's clock
+// the codec, the speaker added (as the planar's amplifier mixes them), clipped
+wire [16:0] mix_l = {aud_l[15], aud_l} + (speaker ? 17'h00800 : 17'h0);
+wire [16:0] mix_r = {aud_r[15], aud_r} + (speaker ? 17'h00800 : 17'h0);
+assign AUDIO_L = (mix_l[16] != mix_l[15]) ? {mix_l[16], {15{~mix_l[16]}}} : mix_l[15:0];
+assign AUDIO_R = (mix_r[16] != mix_r[15]) ? {mix_r[16], {15{~mix_r[16]}}} : mix_r[15:0];
 assign AUDIO_MIX = 0;
 
 assign LED_POWER = 0;
@@ -396,7 +400,7 @@ IBMRS6K7248_system #(.CPU_HZ(CPU_MHZ * 1_000_000), .TB_HZ(TB_HZ)) system
 	.ps2_key(ps2_key_m), .ps2_mouse,
 	.rtc_set(rtc_set_c),
 	.rtc_time(rtc[55:0]),
-	.speaker, .kbc_reset,
+	.speaker, .aud_l, .aud_r, .kbc_reset,
 
 	// the S3's VRAM in DDR3 and its picture, in the memory clock
 	.net_on(status[8:6] != 3'd1),

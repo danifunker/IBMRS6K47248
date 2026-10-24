@@ -174,6 +174,8 @@ module IBMRS6K7248_machine
 	output logic         tb_tick,
 	output logic         kbc_reset,                 // the 8042's reset line (a pulse)
 	output logic         speaker,                   // the 8254's counter 2 through port 61
+	output logic [15:0]  aud_l,                     // the CS4232's codec, signed
+	output logic [15:0]  aud_r,
 
 	// the keyboard and mouse (hps_io's), the time to start the RTC from
 	input  logic [10:0]  ps2_key,
@@ -336,27 +338,30 @@ logic         dm_req, dm_we, dm_ack, dm_err;
 logic [31:3]  dm_addr;
 logic [7:0]   dm_be;
 logic [63:0]  dm_wdata, dm_rdata;
-// each master's request (one doubleword, held until its ack); one at a time, the 810 first
-logic         ncr_dm_req, ncr_dm_we, pcn_dm_req, pcn_dm_we;
-logic [31:3]  ncr_dm_addr, pcn_dm_addr;
-logic [7:0]   ncr_dm_be, pcn_dm_be;
-logic [63:0]  ncr_dm_wdata, pcn_dm_wdata;
-logic         dm_hold, dm_sel;                             // a request in service; whose (1: the PCnet)
+// each master's request (one doubleword, held until its ack); one at a time: the ISA DMA first (audio
+// waits on it), then the 810, then the PCnet
+logic         ncr_dm_req, ncr_dm_we, pcn_dm_req, pcn_dm_we, isa_dm_req, isa_dm_we;
+logic [31:3]  ncr_dm_addr, pcn_dm_addr, isa_dm_addr;
+logic [7:0]   ncr_dm_be, pcn_dm_be, isa_dm_be;
+logic [63:0]  ncr_dm_wdata, pcn_dm_wdata, isa_dm_wdata;
+logic         dm_hold;                                     // a request in service
+logic [1:0]   dm_sel;                                      // whose: 0 the 810, 1 the PCnet, 2 the ISA DMA
 always_ff @(posedge clk) begin
-	if (!dm_hold && !dm_ack && (ncr_dm_req || pcn_dm_req)) begin
+	if (!dm_hold && !dm_ack && (ncr_dm_req || pcn_dm_req || isa_dm_req)) begin
 		dm_hold <= 1'b1;
-		dm_sel  <= !ncr_dm_req;
+		dm_sel  <= isa_dm_req ? 2'd2 : ncr_dm_req ? 2'd0 : 2'd1;
 	end
 	else if (dm_ack) dm_hold <= 1'b0;
 	if (reset) dm_hold <= 1'b0;
 end
-assign dm_req   = dm_hold & (dm_sel ? pcn_dm_req : ncr_dm_req);
-assign dm_we    = dm_sel ? pcn_dm_we : ncr_dm_we;
-assign dm_addr  = dm_sel ? pcn_dm_addr : ncr_dm_addr;
-assign dm_be    = dm_sel ? pcn_dm_be : ncr_dm_be;
-assign dm_wdata = dm_sel ? pcn_dm_wdata : ncr_dm_wdata;
-wire          ncr_dm_ack = dm_ack & ~dm_sel;
-wire          pcn_dm_ack = dm_ack & dm_sel;
+assign dm_req   = dm_hold & (dm_sel == 2'd2 ? isa_dm_req : dm_sel == 2'd1 ? pcn_dm_req : ncr_dm_req);
+assign dm_we    = dm_sel == 2'd2 ? isa_dm_we    : dm_sel == 2'd1 ? pcn_dm_we    : ncr_dm_we;
+assign dm_addr  = dm_sel == 2'd2 ? isa_dm_addr  : dm_sel == 2'd1 ? pcn_dm_addr  : ncr_dm_addr;
+assign dm_be    = dm_sel == 2'd2 ? isa_dm_be    : dm_sel == 2'd1 ? pcn_dm_be    : ncr_dm_be;
+assign dm_wdata = dm_sel == 2'd2 ? isa_dm_wdata : dm_sel == 2'd1 ? pcn_dm_wdata : ncr_dm_wdata;
+wire          ncr_dm_ack = dm_ack & dm_sel == 2'd0;
+wire          pcn_dm_ack = dm_ack & dm_sel == 2'd1;
+wire          isa_dm_ack = dm_ack & dm_sel == 2'd2;
 wire  [31:0]  dpa     = {dm_addr, 3'b000};                 // the PCI address
 wire  [8:0]   d_dec   = ram_dec({1'b0, dpa[30:20]});
 wire          d_ok    = dpa[31] & d_dec[8];                // memory behind the MPC105's window
@@ -626,11 +631,18 @@ logic        aud_on;
 logic [15:4] sb_base;
 logic [15:2] wss_base;
 wire        aud_cfg  = s_isa && bport == 16'h0279;
+// the ISA DMA controller: 00-0F, 80-8F, C0-DF, the 82378's 40A/40B, 410-43F, 480-48F, 4D4, 4D6
+wire        dma_hit  = s_isa && (bport[15:4] == 12'h000 || bport[15:4] == 12'h008 || bport[15:5] == 11'h006 ||
+                                 bport == 16'h040A || bport == 16'h040B || (bport >= 16'h0410 && bport <= 16'h043F) ||
+                                 bport[15:4] == 12'h048 || bport == 16'h04D4 || bport == 16'h04D6);
 wire        sb_hit   = s_isa && aud_on && bport[15:4] == sb_base;
 wire        wss_hit  = s_isa && aud_on && bport[15:2] == wss_base;
 
 logic [15:0] irq;
-logic  [7:0] pic_q, pit_q, kbc_q, rtc_q, aud_q, ee_q;
+logic  [7:0] pic_q, pit_q, kbc_q, rtc_q, aud_q, ee_q, dma_q;
+logic        aud_drq, aud_irq, sg_irq, dma_dack, dma_tc;
+logic  [2:0] dma_dack_ch;
+logic [15:0] dma_dack_data;
 logic        irq0, irq1, irq8, irq12, nmi_mask;
 logic  [7:0] p92;
 
@@ -668,11 +680,23 @@ IBMRS6K7248_eeprom eeprom (
 	.sel(d_sel & ee_hit), .we(d_we), .port(bport[2:0]), .wdata(bwd), .rdata(ee_q)
 );
 
-IBMRS6K7248_cs4232 cs4232 (
+IBMRS6K7248_cs4232 #(.CLK_HZ(CPU_HZ)) cs4232 (
 	.clk, .reset,
 	.cfg_sel(d_sel & d_we & aud_cfg),
 	.sel(d_sel & (sb_hit | wss_hit)), .we(d_we), .wss(wss_hit), .off(bport[3:0]), .wdata(bwd), .rdata(aud_q),
-	.on(aud_on), .sb_base, .wss_base
+	.on(aud_on), .sb_base, .wss_base,
+	.drq(aud_drq), .dack(dma_dack), .dack_ch(dma_dack_ch), .dack_data(dma_dack_data[7:0]), .irq(aud_irq),
+	.aud_l, .aud_r
+);
+
+// the ISA DMA (Fire Coral's 8237s and the 82378's scatter/gather): the codec on channel 1
+IBMRS6K7248_dma dma (
+	.clk, .reset,
+	.sel(d_sel & dma_hit), .we(d_we), .port(bport), .wdata(bwd), .rdata(dma_q),
+	.dreq({6'd0, aud_drq, 1'b0}), .dack(dma_dack), .dack_ch(dma_dack_ch), .dack_data(dma_dack_data), .dev_data(16'h0000),
+	.tc(dma_tc), .sg_irq,
+	.dm_req(isa_dm_req), .dm_we(isa_dm_we), .dm_addr(isa_dm_addr), .dm_be(isa_dm_be), .dm_wdata(isa_dm_wdata),
+	.dm_ack(isa_dm_ack), .dm_err, .dm_rdata
 );
 
 always_ff @(posedge clk) begin
@@ -682,7 +706,8 @@ end
 
 // the request lines: COM1's INTR as a PC board gates it, with OUT2
 // IRQ 15: every PCI device's interrupt (Carolina's routing): the S3's and the 53C810's
-assign irq = {s3_irq | ncr_irq | pcn_irq, 2'b00, irq12, 3'b000, irq8, 3'b000, com1_irq & com1_out2, com2_irq & com2_out2, 1'b0, irq1, irq0} | (16'(irq6) << 6);
+// IRQ 13: the scatter/gather's list ends; IRQ 5: the codec
+assign irq = {s3_irq | ncr_irq | pcn_irq, 1'b0, sg_irq, irq12, 3'b000, irq8, 2'b00, aud_irq, com1_irq & com1_out2, com2_irq & com2_out2, 1'b0, irq1, irq0} | (16'(irq6) << 6);
 
 // the planar ID, the SIMMs' presence detect
 wire        planar_hit = s_isa && bport == 16'h0852;
@@ -740,7 +765,7 @@ IBMRS6K7248_firecoral firecoral (
 
 // the answer, the cycle after the access
 logic       q_sio, q_com2, q_dev14, q_fdc;
-logic       q_pic, q_pit, q_kbc, q_rtc, q_p92, q_err, q_aud, q_audc, q_ee, q_ide;
+logic       q_pic, q_pit, q_kbc, q_rtc, q_p92, q_err, q_aud, q_audc, q_ee, q_ide, q_dma;
 logic       q_com1, q_planar, q_pd, q_cf8, q_cfc, q_dev0, q_dev11, q_fcio, q_pcicf, q_iack, q_dev16, q_ncr, q_dev12, q_pcn;
 logic [1:0] q_lane;
 always_ff @(posedge clk) if (d_sel) begin
@@ -757,6 +782,7 @@ always_ff @(posedge clk) if (d_sel) begin
 	q_p92   <= p92_hit;
 	q_err   <= err_hit;
 	q_aud   <= sb_hit | wss_hit;
+	q_dma   <= dma_hit;
 	q_audc  <= aud_cfg;
 	q_planar <= planar_hit;
 	q_pd    <= pd_hit;
@@ -790,6 +816,7 @@ always_comb begin
 	else if (q_p92)   dev_rdata = {4{p92}};
 	else if (q_err)   dev_rdata = 32'h0000_0000;
 	else if (q_aud)   dev_rdata = {4{aud_q}};
+	else if (q_dma)   dev_rdata = {4{dma_q}};
 	else if (q_planar) dev_rdata = {4{planar_id}};
 	else if (q_pd)    dev_rdata = {4{simm_pd[q_lane]}};
 	else if (q_fcio)  dev_rdata = {4{fc_io_q}};
@@ -811,7 +838,7 @@ always_ff @(posedge clk) begin
 	if (w_done) begin
 		io_we    <= d_we;
 		io_stub  <= ~(q_s3 | q_fdc | q_com1 | q_com2 | q_sio | q_planar | q_pd | q_fcio | q_cf8 | q_dev0 | q_dev11 | q_dev14 | q_dev16 | q_ncr | q_dev12 | q_pcn |
-		              q_pic | q_pit | q_kbc | q_rtc | q_ee | q_ide | q_p92 | q_err | q_aud | q_audc | q_iack);
+		              q_pic | q_pit | q_kbc | q_rtc | q_ee | q_ide | q_p92 | q_err | q_aud | q_audc | q_dma | q_iack);
 		io_addr  <= p_a;
 		io_be    <= p_be;
 		io_wdata <= p_wd;

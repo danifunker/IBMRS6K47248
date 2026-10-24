@@ -65,6 +65,8 @@ module IBMRS6K7248_system
 	output logic         nv_m_ok,
 	output logic [7:0]   nv_wr_seq,
 	output logic         speaker,
+	output logic [15:0]  aud_l,                   // the CS4232's codec, signed, in clk
+	output logic [15:0]  aud_r,
 	output logic         kbc_reset,
 
 	// COM1, 1 when idle; asynchronous in
@@ -206,7 +208,7 @@ IBMRS6K7248_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .LE_MODE(LE_MODE), .UART_F
 	.snoop_req, .snoop_we, .snoop_addr, .snoop_ack,
 	.sb_sel, .sb_sel_id, .sb_sel_atn, .sb_sel_done, .sb_sel_fail, .sb_bsy, .sb_req, .sb_phase, .sb_tdata,
 	.sb_ack, .sb_idata, .sb_ackhold, .sb_atn, .sb_rst,
-	.ext_irq, .tb_tick, .kbc_reset, .speaker,
+	.ext_irq, .tb_tick, .kbc_reset, .speaker, .aud_l, .aud_r,
 	.ps2_key, .ps2_mouse, .rtc_set, .rtc_time,
 	.nv_m_addr, .nv_m_we, .nv_m_wdata, .nv_m_q, .nv_m_ok, .nv_wr_seq,
 	.v_req, .v_we, .v_addr, .v_be, .v_wdata, .v_ack, .v_rdata,

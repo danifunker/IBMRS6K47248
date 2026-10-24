@@ -84,3 +84,5 @@ sim/nvsave/build.log
 sim/pcnet/build/
 sim/pcnet/build.log
 sim/pcnet/build_net/
+sim/audio/build/
+sim/audio/build.log
