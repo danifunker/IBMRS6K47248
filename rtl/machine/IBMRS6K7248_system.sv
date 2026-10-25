@@ -305,6 +305,7 @@ logic [12:0]  nb_addr;
 logic [63:0]  nb_wdata, nb_rdata;
 logic [1:0]   net_on_s;
 always_ff @(posedge clk_b) net_on_s <= {net_on_s[0], net_on};
+`ifndef IBMRS6K7248_LITE
 IBMRS6K7248_enetbox enetbox (
 	.clk(clk_b), .reset(reset_b), .ena(net_on_s[1]),
 	.tx_pend(en_tx_pend), .tx_len(en_tx_len), .m_tx_a(en_tx_a), .m_tx_q(en_tx_q), .m_tx_done(en_tx_done),
@@ -312,6 +313,12 @@ IBMRS6K7248_enetbox enetbox (
 	.m_rx_len(en_rx_len), .m_rx_hash(en_rx_hash), .aprom_mac(en_aprom_mac), .padr(en_padr), .padr_ok(en_padr_ok),
 	.nb_req, .nb_we, .nb_addr, .nb_wdata, .nb_ack, .nb_rdata
 );
+`else
+// (a LITE build: no PCnet, so no mailbox: the DDRAM port is the picture side's alone)
+assign en_tx_a = '0;  assign en_tx_done = 1'b0;  assign en_rx_we = 1'b0;  assign en_rx_a = '0;  assign en_rx_d = '0;
+assign en_rx_post = 1'b0;  assign en_rx_len = '0;  assign en_rx_hash = '0;  assign en_aprom_mac = '0;
+assign nb_req = 1'b0;  assign nb_we = 1'b0;  assign nb_addr = '0;  assign nb_wdata = '0;
+`endif
 // the picture side's port (va_*) and the mailbox's on the DDRAM port
 IBMRS6K7248_ddrarb ddrarb (
 	.clk(clk_b), .reset(reset_b),

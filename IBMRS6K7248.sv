@@ -462,9 +462,15 @@ assign UART_DTR = UART_DSR;
 wire        fm_cs, fm_we;
 wire  [1:0] fm_a;
 wire  [7:0] fm_wdata, fm_rdata;
+`ifndef IBMRS6K7248_LITE
 IBMRS6K7248_opl #(.CLK_HZ(CPU_MHZ * 1_000_000)) opl (
 	.clk(clk_cpu), .reset(cpu_reset), .cs(fm_cs), .we(fm_we), .a(fm_a), .wdata(fm_wdata), .rdata(fm_rdata), .snd(fm_snd)
 );
+`else
+// (a LITE build: no FM chip)
+assign fm_rdata = 8'hFF;
+assign fm_snd   = '0;
+`endif
 
 // the MPU-401's MIDI to an MT32-pi on the user port (the framework's sys/mt32pi.sv), its synth back
 wire        midi_tx, midi_rx, mt32_available;

@@ -11,7 +11,7 @@
 static Vfdtb *t;
 static uint8_t mem[1 << 20];               // PCI 8000_0000 + n
 static std::vector<uint8_t> img(1474560);
-static int fails, dma_wait, ph, sd_state, sd_i;
+static int fails, dma_wait, ph, sd_state, sd_i, sd_len, sd_reqs;
 static uint32_t sd_blk;
 
 static void step() {
@@ -21,9 +21,12 @@ static void step() {
 	if (s_edge) {
 		t->sd_buff_wr = 0;
 		if (sd_state == 0) {
-			if (t->sd_rd || t->sd_wr) { sd_blk = t->sd_lba; sd_state = t->sd_rd ? 1 : 2; sd_i = 0; t->sd_ack = 1; }
+			if (t->sd_rd || t->sd_wr) {
+				sd_blk = t->sd_lba; sd_state = t->sd_rd ? 1 : 2; sd_i = 0; t->sd_ack = 1; sd_reqs++;
+				sd_len = (t->sd_blk_cnt + 1) * 512;           // (a read may take several blocks: a track)
+			}
 		} else if (sd_state == 1) {
-			if (sd_i < 512) { t->sd_buff_addr = sd_i; t->sd_buff_dout = img[sd_blk * 512 + sd_i]; t->sd_buff_wr = 1; sd_i++; }
+			if (sd_i < sd_len) { t->sd_buff_addr = sd_i; t->sd_buff_dout = img[sd_blk * 512 + sd_i]; t->sd_buff_wr = 1; sd_i++; }
 			else { t->sd_ack = 0; sd_state = 0; }
 		} else {
 			if (sd_i < 1024) {
@@ -208,7 +211,28 @@ int main(int argc, char **argv) {
 		else expect("VERIFY: 7 results", r.size(), 7);
 		expect("VERIFY's results read: IRQ 6 low", t->irq6, 0);
 	}
-	printf("%-46s %s\n", "READ ID then VERIFY (MT): an interrupt each", fails != f0 ? "FAIL" : "pass");
+	printf("%-46s %s\n", "READ ID then VERIFY (MT): an interrupt each", fails != f0 ? "FAIL" : "pass"); f0 = fails;
+
+	// 11. a whole cylinder (C9 H0 R1 EOT18, MT: 36 sectors) by DMA: the image read a track at a time (two
+	// requests of 18 sectors), the data whole; then a sector of the track held, with no request
+	memset(&mem[0x50000], 0, 36 * 512);
+	{
+		int r0 = sd_reqs;
+		dma2(0x46, 36 * 512, 0x50000);
+		fcmd({0xC6, 0x00, 9, 0, 1, 2, 18, 0x1B, 0xFF});
+		auto r = fres();
+		if (r.size() == 7) expect("cylinder: ST0", r[0] & 0xC0, 0x00); else expect("cylinder: 7 results", r.size(), 7);
+		expect("cylinder: the data", memcmp(&mem[0x50000], &img[9 * 36 * 512], 36 * 512), 0);
+		expect("cylinder: two requests", sd_reqs - r0, 2);
+		int r1 = sd_reqs;
+		memset(&mem[0x60000], 0, 512);
+		dma2(0x46, 512, 0x60000);
+		fcmd({0xC6, 0x04, 9, 1, 5, 2, 18, 0x1B, 0xFF});      // H1 R5: in the track held
+		fres();
+		expect("re-read: from the track held", sd_reqs - r1, 0);
+		expect("re-read: the data", memcmp(&mem[0x60000], &img[(9 * 36 + 18 + 4) * 512], 512), 0);
+	}
+	printf("%-46s %s\n", "a cylinder by DMA, a track a request", fails != f0 ? "FAIL" : "pass");
 
 	printf(fails ? "%d FAILED\n" : "ALL PASS\n", fails);
 	delete t;

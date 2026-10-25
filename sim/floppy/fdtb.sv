@@ -6,7 +6,7 @@ module fdtb (
 	output logic        dm_req, dm_we, output logic [31:3] dm_addr, output logic [7:0] dm_be, output logic [63:0] dm_wdata,
 	input  logic        dm_ack, input logic [63:0] dm_rdata,
 	input  logic        img_mounted, img_readonly, input logic [63:0] img_size,
-	output logic [31:0] sd_lba, output logic sd_rd, sd_wr, input logic sd_ack,
+	output logic [31:0] sd_lba, output logic [5:0] sd_blk_cnt, output logic sd_rd, sd_wr, input logic sd_ack,
 	input  logic [13:0] sd_buff_addr, input logic [7:0] sd_buff_dout, input logic sd_buff_wr, output logic [7:0] sd_buff_din
 );
 logic fdrq, dack, tc, sg; logic [2:0] dack_ch, dev_ch; logic [15:0] dack_data; logic [7:0] fdc_q, dma_q, fdc_byte;
@@ -18,7 +18,7 @@ IBMRS6K7248_fdc fdc (.clk, .reset, .sel(sel & fdh), .we, .off(port[2:0]), .wdata
 	.drq(fdrq), .dack, .dack_ch, .dack_data(dack_data[7:0]), .tc, .dev_byte(fdc_byte),
 	.img_in(in), .img_ro(ro), .img_blocks(blocks), .img_mounted(mnt), .sec_req(req), .sec_we(fwe), .sec_lba(lba), .sec_ack(ack),
 	.buf_a(ba), .buf_q(bq), .buf_we(bwe), .buf_d(bd));
-IBMRS6K7248_fdimg fdimg (.clk_s, .clk_c(clk), .img_mounted, .img_readonly, .img_size, .sd_lba, .sd_blk_cnt(), .sd_rd, .sd_wr,
+IBMRS6K7248_fdimg fdimg (.clk_s, .clk_c(clk), .img_mounted, .img_readonly, .img_size, .sd_lba, .sd_blk_cnt, .sd_rd, .sd_wr,
 	.sd_ack, .sd_buff_addr, .sd_buff_dout, .sd_buff_wr, .sd_buff_din,
 	.img_in(in), .img_ro(ro), .img_blocks(blocks), .mounted(mnt), .sec_req(req), .sec_we(fwe), .sec_lba(lba), .sec_ack(ack),
 	.buf_a(ba), .buf_q(bq), .buf_we(bwe), .buf_d(bd));

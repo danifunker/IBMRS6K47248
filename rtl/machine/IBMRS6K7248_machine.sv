@@ -647,6 +647,7 @@ logic [31:5] pcn_io_base;
 wire         pcn_hit = s_pciio && pcn_io_on && pcn_io_base == {2'b00, p_a[29:5]};
 logic [31:0] pcn_cfg_q, pcn_q;
 logic        pcn_irq;
+`ifndef IBMRS6K7248_LITE
 IBMRS6K7248_pcnet pcnet (
 	.clk, .reset,
 	.cfg_sel(d_go & cfg_dev12), .cfg_we(d_we), .cfg_reg(cf8[7:2]), .cfg_be(le_be), .cfg_wdata(le_wd), .cfg_rdata(pcn_cfg_q),
@@ -658,6 +659,14 @@ IBMRS6K7248_pcnet pcnet (
 	.rx_free(en_rx_free), .m_rx_we(en_rx_we), .m_rx_a(en_rx_a), .m_rx_d(en_rx_d), .m_rx_post(en_rx_post),
 	.m_rx_len(en_rx_len), .m_rx_hash(en_rx_hash), .aprom_mac(en_aprom_mac), .padr(en_padr), .padr_ok(en_padr_ok)
 );
+`else
+// (a LITE build, IBMRS6K7248_LITE, for quick debugging builds: no PCnet, device 12 absent)
+assign pcn_io_on = 1'b0;           assign pcn_io_base = '0;
+assign pcn_cfg_q = 32'hFFFF_FFFF;  assign pcn_q = 32'hFFFF_FFFF;  assign pcn_irq = 1'b0;
+assign pcn_dm_req = 1'b0;  assign pcn_dm_we = 1'b0;  assign pcn_dm_addr = '0;  assign pcn_dm_be = '0;  assign pcn_dm_wdata = '0;
+assign en_tx_pend = 1'b0;  assign en_tx_len = '0;  assign en_tx_q = '0;  assign en_rx_free = 1'b0;
+assign en_padr = '0;       assign en_padr_ok = 1'b0;
+`endif
 
 // ---- the ISA core: the 8259s, the 8254, the 8042, the RTC and NVRAM, port 92 -------------
 wire        pic_hit  = s_isa && (bport[15:1] == 15'h0010 || bport[15:1] == 15'h0050);   // 20/21, A0/A1
@@ -732,6 +741,7 @@ IBMRS6K7248_eeprom eeprom (
 	.sel(d_go & ee_hit), .we(d_we), .port(bport[2:0]), .wdata(bwd), .rdata(ee_q)
 );
 
+`ifndef IBMRS6K7248_LITE
 IBMRS6K7248_cs4232 #(.CLK_HZ(CPU_HZ)) cs4232 (
 	.clk, .reset,
 	.cfg_sel(d_go & d_we & aud_cfg),
@@ -759,6 +769,16 @@ IBMRS6K7248_joy #(.CLK_HZ(CPU_HZ)) joy (
 	.sel(d_go & joy_hit), .we(d_we), .rdata(joy_q),
 	.joy1, .joy2, .ana1, .ana2
 );
+`else
+// (a LITE build: no audio card; its Plug-and-Play port never answers, so it stays off)
+assign aud_q = 8'hFF;  assign aud_on = 1'b0;  assign sb_base = '0;  assign wss_base = '0;
+assign aud_drq = 1'b0; assign aud_irq = 1'b0; assign cap_drq = 1'b0; assign rec_byte = 8'h80;
+assign cs_l = '0;      assign cs_r = '0;
+assign sb_q = 8'hFF;   assign sb_drq = 1'b0;  assign sb_rec = 1'b0;  assign sb_irq = 1'b0;
+assign sb_l = '0;      assign sb_r = '0;      assign fm_vol = 8'h00;
+assign mpu_q = 8'hFF;  assign mpu_irq = 1'b0; assign midi_tx = 1'b1;
+assign joy_q = 8'hFF;
+`endif
 assign fm_cs    = d_go & fm_hit;
 assign fm_we    = d_we;
 assign fm_a     = (sb_win && bport[3]) ? {1'b0, bport[0]} : bport[1:0];   // (SB + 8/9: bank 0)
