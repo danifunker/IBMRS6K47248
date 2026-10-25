@@ -91,11 +91,16 @@ always_ff @(posedge clk_c) begin
 	mounted    <= c_mnt[2] != c_mnt[1];
 end
 // sectors a track (as the controller has them, IBMRS6K7248_fdc), and a request's: the track, or half of a 36-sector one
-wire  [5:0] spt = s_blocks >= 13'd5760 ? 6'd36 : s_blocks >= 13'd2880 ? 6'd18 : s_blocks >= 13'd2400 ? 6'd15 : 6'd9;
-wire  [4:0] grp = spt == 6'd36 ? 5'd18 : spt[4:0];
+// (registered: the image's size holds still while a sector is asked for)
+logic [5:0] spt;
+logic [4:0] grp;
+always_ff @(posedge clk_s) begin
+	spt <= s_blocks >= 13'd5760 ? 6'd36 : s_blocks >= 13'd2880 ? 6'd18 : s_blocks >= 13'd2400 ? 6'd15 : 6'd9;
+	grp <= spt == 6'd36 ? 5'd18 : spt[4:0];
+end
 
 // ---- a sector ---------------------------------------------------------------------------------
-typedef enum logic [2:0] {S_IDLE, S_DIV, S_LOOK, S_REQ, S_XFER} sst_t;
+typedef enum logic [2:0] {S_IDLE, S_DIV, S_GRP, S_LOOK, S_REQ, S_XFER} sst_t;
 sst_t        st = S_IDLE;
 logic [2:0]  req_s;
 logic        seen = 1'b0;
@@ -105,12 +110,10 @@ logic        t_ok = 1'b0;                 // a track is held: its first sector's
 logic [12:0] t_lba;
 logic [12:0] q_lba;                       // the sector asked for
 logic [12:0] d_rem;                       // the division: q_lba by spt
-logic [12:0] d_quo;
 logic [3:0]  d_n;
 logic [12:0] dd;
 always_comb dd = {d_rem[11:0], q_lba[d_n]};    // (a shift-subtract step, q_lba's bit d_n brought down)
-// the track (half) the sector is in: the track's first LBA, plus 18 for the second half of a 36-sector track
-wire  [12:0] g_lba = 13'(d_quo * {7'd0, spt}) + ((spt == 6'd36 && d_rem >= 13'd18) ? 13'd18 : 13'd0);
+logic [12:0] g_lba;                       // the track (half) the sector is in: its first LBA
 always_ff @(posedge clk_s) begin
 	req_s <= {req_s[1:0], sec_req};
 	ack_q <= sd_ack;
@@ -127,19 +130,21 @@ always_ff @(posedge clk_s) begin
 			end
 			else begin
 				d_rem <= 13'd0;
-				d_quo <= 13'd0;
 				d_n   <= 4'd12;
 				st    <= S_DIV;
 			end
 		end
-		S_DIV: begin                                                 // q_lba / spt, a bit a clock
-			if (dd >= {7'd0, spt}) begin d_rem <= dd - {7'd0, spt}; d_quo <= {d_quo[11:0], 1'b1}; end
-			else                   begin d_rem <= dd;                d_quo <= {d_quo[11:0], 1'b0}; end
-			d_n <= d_n - 4'd1;
-			if (d_n == 4'd0) st <= S_LOOK;
+		S_DIV: begin                                                 // q_lba mod spt, a bit a clock
+			d_rem <= dd >= {7'd0, spt} ? dd - {7'd0, spt} : dd;
+			d_n   <= d_n - 4'd1;
+			if (d_n == 4'd0) st <= S_GRP;
+		end
+		S_GRP: begin                                                 // the track's first LBA (+ 18 for a 36-sector track's second half)
+			if (spt == 6'd36 && d_rem >= 13'd18) begin g_lba <= q_lba - d_rem + 13'd18; s_slot <= 5'(d_rem - 13'd18); end
+			else                                 begin g_lba <= q_lba - d_rem;          s_slot <= 5'(d_rem); end
+			st <= S_LOOK;
 		end
 		S_LOOK: begin
-			s_slot <= 5'(q_lba - g_lba);
 			if (t_ok && t_lba == g_lba) begin ack_t <= ~ack_t; st <= S_IDLE; end   // held: at once
 			else begin
 				t_ok       <= 1'b0;

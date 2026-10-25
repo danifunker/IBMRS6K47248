@@ -34,7 +34,11 @@ module emu
 	`include "sys/emu_ports.vh"
 );
 
+`ifdef IBMRS6K7248_CPU58
+localparam int CPU_MHZ = 58;                // (a debugging build: the PLL's 58.3, the CPU's paths with room to spare)
+`else
 localparam int CPU_MHZ = 70;                // the PLL's 70 or 100: the first fit at 100 missed by 6.2 ns (the CPU's paths, as MacPPC7300's, which runs at 70)
+`endif
 localparam int TB_HZ   = 16_666_667;        // the 604's time base: a quarter of a 66 MHz bus
 
 ///////// Default values for ports not used in this core /////////
@@ -599,7 +603,9 @@ reg         pc_pend = 0;
 wire        vec_at = trace_pc[7:0] == 8'h00 && (trace_pc[31:12] == 20'd0 || trace_pc[31:12] == 20'hFFF00) &&
                      trace_pc[11:8] != 4'h0 && (trace_pc[11:8] != 4'h5 || isi_armed) && trace_pc[11:8] != 4'h9 &&
                      (trace_pc[11:8] <= 4'h8 || trace_pc[11:8] == 4'hF);
-wire        pc_hit = trace_valid & trace_last & vec_at & (pc_prev != trace_pc - 32'd4);
+// (not the firmware's DSIs from 7364, its I/O routine's probes: hundreds of them filled the stream)
+wire        pc_hit = trace_valid & trace_last & vec_at & (pc_prev != trace_pc - 32'd4) &
+                     ~(pc_prev == 32'h0000_7364 && trace_pc[11:0] == 12'h300);
 always @(posedge clk_cpu) begin
 	if (trace_valid & trace_last) pc_prev <= trace_pc;
 	if (pc_hit) begin pc_from <= pc_prev; pc_to <= trace_pc[11:0]; pc_rom <= trace_pc[31]; end
@@ -654,11 +660,33 @@ wire        s3e_ev = isi_armed & io_ev & io_addr[31:16] == 16'h8000 && io_addr[9
 reg  [2:0]  pk_s = 0;                     // ps2_key[10] (it toggles once a key event) into this clock
 always @(posedge clk_cpu) pk_s <= {pk_s[1:0], ps2_key[10]};
 wire        pk_ev = isi_armed & (pk_s[2] ^ pk_s[1]);   // (the other bits stand still long before the toggle)
-always @(posedge clk_cpu) if ((ncr_ev || s3v_ev || s3e_ev || pk_ev) && nq_w + 6'd1 != nq_r) begin
-	nq[nq_w] <= (ncr_ev | s3v_ev) ? {s3v_ev, io_we, io_be, io_addr[7:0], io_we ? io_wdata : io_rdata} :
-	            s3e_ev            ? {1'b1, io_we, io_be, io_addr[15:8], io_we ? io_wdata : io_rdata} :
-	                                {1'b0, 1'b1, 4'h0, 8'h00, 21'd0, ps2_key};
-	nq_w     <= nq_w + 6'd1;
+// and, from the start, the floppy: the controller's FIFO (3F5, "W4F4=00cc0000" / "R4F4=00rr0000": the
+// command and result bytes), the writes of the DMA controller's ports 00-0F, 80-83 and 480-483 ("W800=",
+// "W480=" ...; 480's as offset 48), and each request of the image to the Main ("W0FD=", the data
+// {write, 12'd0, blocks less one (6 bits), the LBA (13 bits)})
+wire        fdp_ev = io_ev & ((io_addr == 32'h8000_03F4 && io_be == 4'b0100) ||
+                              (io_we && (io_addr[31:4] == 28'h8000_000 || io_addr == 32'h8000_0080 || io_addr == 32'h8000_0480)));
+reg         fds_t = 1'b0, fds_q = 1'b0;
+reg  [31:0] fds_d;
+always @(posedge clk_sys) begin
+	fds_q <= sd_rd[4] | sd_wr[4];
+	if ((sd_rd[4] | sd_wr[4]) & ~fds_q) begin fds_t <= ~fds_t; fds_d <= {sd_wr[4], 12'd0, sd_blk_cnt[4], sd_lba[4][12:0]}; end
+end
+reg  [2:0]  fds_s = 0;
+reg         fds_pend = 1'b0;
+always @(posedge clk_cpu) fds_s <= {fds_s[1:0], fds_t};
+wire        nq_io = ncr_ev | s3v_ev | s3e_ev | fdp_ev;
+always @(posedge clk_cpu) begin
+	if ((nq_io || pk_ev || fds_pend) && nq_w + 6'd1 != nq_r) begin
+		nq[nq_w] <= (ncr_ev | s3v_ev) ? {s3v_ev, io_we, io_be, io_addr[7:0], io_we ? io_wdata : io_rdata} :
+		            s3e_ev            ? {1'b1, io_we, io_be, io_addr[15:8], io_we ? io_wdata : io_rdata} :
+		            fdp_ev            ? {1'b0, io_we, io_be, io_addr[10] ? 8'h48 : io_addr[7:0], io_we ? io_wdata : io_rdata} :
+		            pk_ev             ? {1'b0, 1'b1, 4'h0, 8'h00, 21'd0, ps2_key} :
+		                                {1'b0, 1'b1, 4'h0, 8'hFD, fds_d};
+		nq_w     <= nq_w + 6'd1;
+		if (!nq_io && !pk_ev) fds_pend <= 1'b0;
+	end
+	if (fds_s[2] ^ fds_s[1]) fds_pend <= 1'b1;
 end
 // (read a clock behind: a block RAM; the drain looks at the write pointer a clock late, so an entry is
 // read before it is taken, and after a take the stage is busy for 14 clocks)

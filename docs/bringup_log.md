@@ -1086,3 +1086,28 @@ The controller now also ends a multi-track transfer past head 1's EOT with H bac
 R 1), the 82077's and QEMU's (VERIFY's result is 04 00 00 01 00 01 02); sim/floppy checks it.
 The bench takes keys while it runs: `--keys FIFO` (mkfifo), each line typed and Enter, or a
 key's name (F1, ESC, ...) alone; with `--frame` to watch the screen.
+
+## 2026-10-25 later: the floppy on the board: the ISA DMA's 64 KB boundary
+
+On .92 F4 gave SMS's menu empty, or (once) the menu and then a jump into zeros: ENGLISH.6XE in
+memory had a run of zero sectors where the controller had reported a normal end. A LITE build
+(`IBMRS6K7248_lite.qsf`: no PCnet, audio card or FM chip, ~19 minutes) with the floppy in the
+debug stream (the FIFO's command and result bytes, the DMA registers, each hps_io request; from
+power-on) showed the load: ENGLISH.6XE read a cylinder (C6, MT, 36 sectors) at a time, DMA'd
+straight to consecutive addresses (3AA2F0, 3AEAF0, 3B32F0, ...), every request made, every ST0
+04. Cylinder 7's 18 KB run from 3AEAF0 crosses 3B0000, and `IBMRS6K7248_dma` stepped the 16-bit
+address alone (an 8237's wrap), so the rest went to 3A0000. The 82378 carries into the page (the
+firmware relies on it; QEMU's PReP DMA computes page + address + position): a current page per
+channel now, the page register's when it or the base address is written, read back as written.
+`sim/floppy` test 12 (a cylinder across 64 KB) failed on the old DMA, writing at the page's
+start, and passes. On the board the full menu comes up, the memory across 3B0000 matches the
+image, and a plain boot with the diskette in boots the graphical SMS from it.
+
+Ruled out on the way: the CPU clock (a 58.3 MHz LITE build, 700/12, met timing and failed the
+same; `IBMRS6K7248_CPU58` selects it) and the Main's turnaround (the image is now read a track a
+request, `fdimg`'s track cache, but ao486 asks a sector at a time and works).
+
+"Manage Configuration" still stops in the debugger (ABEND 0001000A, instruction access at
+80808080): ENGLISH.6XE's `GetPCIInfo` (3AF798) calls entry 11 of the service table the ROM hands
+SMS (at 0xF89B4: a count of 7, 7 entries, then text). `sms128.img` is the 7020-40P's SMS 1.28;
+the 7248's ROM v1.12 offers fewer services. Not the core's: a 7248 SMS diskette is needed.

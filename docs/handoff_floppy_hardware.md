@@ -1,5 +1,33 @@
 # Handoff: try the floppy controller fixes on the MiSTer (.92)
 
+## Result on the board (2026-10-25, Windows session)
+
+Done. The floppy works on .92: F4 loads the text SMS from `sms128.img` with its full menu,
+and a plain boot with the diskette in boots the graphical SMS from it. What was left after the
+three controller fixes below was not the controller:
+
+- **The ISA DMA wrapped at 64 KB.** The firmware DMAs each cylinder (36 sectors, 18 KB) straight
+  into the file it loads, and some of those transfers cross a 64 KB boundary (ENGLISH.6XE's
+  cylinder 7: 3AEAF0-3B32EF). `IBMRS6K7248_dma` stepped only the 16-bit address, as a PC's 8237
+  does, so the rest went to the page's start: a hole at the transfer's end, ST0 normal, and an
+  empty menu or a jump into zeros depending on where the buffers fell. The address now carries
+  into the page (the 82378's, as QEMU's PReP DMA). `sim/floppy` test 12 failed on the old DMA
+  and passes now; on the board the memory around 3B0000 matches the image byte for byte.
+- **The track cache** (`rtl/IBMRS6K7248_fdimg.sv`): one hps_io request a track rather than a
+  sector. Not the fix (ao486 asks a sector at a time and works), but kept: two Main round trips
+  a cylinder instead of 36.
+- **"Manage Configuration" still ends in ABEND 0001000A** (an instruction access at 80808080).
+  That is the diskette, not the core: ENGLISH.6XE's `GetPCIInfo` calls entry 11 of the ROM's
+  service table (pointer at 0xF89B4), and the 7248's v1.12 ROM has 7 entries. `sms128.img` is
+  the 7020-40P's SMS 1.28; a 7248 needs its own SMS diskette.
+- The resident monitor's `dir a:` lists the diskette: 32 files, every size as in the FAT,
+  983762 bytes used, 465408 free. (With a readable diskette in, F4 loads SMS and `eatabug`
+  never reaches the monitor: enter it with no diskette, then mount the image from the OSD.)
+- The debug build's stream now logs the floppy (FIFO bytes, the DMA registers, each request to
+  the Main); `sim/tools/fdboard.py` decodes it.
+
+The original plan follows.
+
 You are continuing work on the IBM RS/6000 43P 7248 MiSTer core
 (https://github.com/danifunker/IBMRS6K47248). Build branch `floppy-fix` in Quartus, load it on the
 MiSTer at 192.168.99.92, and check that the firmware reads a 1.44 MB FAT diskette.

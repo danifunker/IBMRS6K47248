@@ -232,7 +232,21 @@ int main(int argc, char **argv) {
 		expect("re-read: from the track held", sd_reqs - r1, 0);
 		expect("re-read: the data", memcmp(&mem[0x60000], &img[(9 * 36 + 18 + 4) * 512], 512), 0);
 	}
-	printf("%-46s %s\n", "a cylinder by DMA, a track a request", fails != f0 ? "FAIL" : "pass");
+	printf("%-46s %s\n", "a cylinder by DMA, a track a request", fails != f0 ? "FAIL" : "pass"); f0 = fails;
+
+	// 12. a cylinder DMA'd across a 64 KB boundary (as the firmware loads SMS's files: cylinder 7 to
+	// 3AEAF0-3B32EF): the address carries into the page, nothing lands at the page's start
+	memset(&mem[0x60000], 0, 0x10000);
+	memset(&mem[0x70000], 0, 0x4000);
+	dma2(0x46, 36 * 512, 0x6EAF0);
+	fcmd({0xC6, 0x00, 7, 0, 1, 2, 18, 0x1B, 0xFF});
+	{
+		auto r = fres();
+		if (r.size() == 7) expect("boundary: ST0", r[0] & 0xC0, 0x00); else expect("boundary: 7 results", r.size(), 7);
+		expect("boundary: the data", memcmp(&mem[0x6EAF0], &img[7 * 36 * 512], 36 * 512), 0);
+		expect("boundary: the page's start untouched", mem[0x60000] | mem[0x60001] | mem[0x61000], 0);
+	}
+	printf("%-46s %s\n", "a cylinder by DMA across 64 KB", fails != f0 ? "FAIL" : "pass");
 
 	printf(fails ? "%d FAILED\n" : "ALL PASS\n", fails);
 	delete t;

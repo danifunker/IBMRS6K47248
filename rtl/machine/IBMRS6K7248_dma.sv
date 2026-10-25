@@ -29,7 +29,13 @@
 //  dack with the channel (a read transfer: dack_data the byte or word
 //  memory gave; a write transfer: it gives dev_data) and tc on the last.
 //  Then the address steps, the count steps down; past 0, TC: the status
-//  bit, and the channel reloads (auto-initialise) or masks itself. Single,
+//  bit, and the channel reloads (auto-initialise) or masks itself. The
+//  address carries into the page past a 64 KB boundary (the 82378's, as
+//  QEMU's PReP DMA: the firmware's diskette reads run across them, a
+//  cylinder of 18 KB DMA'd straight into a file being loaded; an 8237's
+//  wrap put the rest at the page's start): a current page per channel, the
+//  page register's when it or the base address is written, read back as
+//  written. Single,
 //  demand and block modes alike: one transfer each time the request is
 //  seen. Verify transfers count with no memory access.
 //
@@ -73,6 +79,7 @@ module IBMRS6K7248_dma
 // ---- registers ----------------------------------------------------------------------------
 logic [15:0] base_a [8], cur_a [8], base_c [8], cur_c [8];
 logic [7:0]  page [8], hpage [8];
+logic [7:0]  cur_pg [8];                // the page a transfer is at (the page register, carried into)
 logic [5:0]  mode [8];                  // the mode register's bits 7:2
 logic [7:0]  mask;                      // 1: masked
 logic [7:0]  req_sw;                    // software requests
@@ -150,6 +157,7 @@ always_ff @(posedge clk) begin
 					if (!rn[0]) begin
 						if (!(ctl ? ff2 : ff1)) begin base_a[rch][7:0]  <= wdata; cur_a[rch][7:0]  <= wdata; end
 						else                    begin base_a[rch][15:8] <= wdata; cur_a[rch][15:8] <= wdata; end
+						cur_pg[rch] <= page[rch];
 					end
 					else begin
 						if (!(ctl ? ff2 : ff1)) begin base_c[rch][7:0]  <= wdata; cur_c[rch][7:0]  <= wdata; end
@@ -173,7 +181,7 @@ always_ff @(posedge clk) begin
 				endcase
 			end
 			else if (pg) begin
-				if (pch[3]) page[pch[2:0]] <= wdata;
+				if (pch[3]) begin page[pch[2:0]] <= wdata; cur_pg[pch[2:0]] <= wdata; end
 				// (else a scratch byte: the copy, below)
 			end
 			else if (hpg) begin
@@ -243,18 +251,21 @@ always_ff @(posedge clk) begin
 	end
 	if (go_tc) begin
 		tc_st[ch] <= 1'b1;
-		if (mode[ch][2]) begin cur_a[ch] <= base_a[ch]; cur_c[ch] <= base_c[ch]; end    // auto-initialise
+		if (mode[ch][2]) begin cur_a[ch] <= base_a[ch]; cur_c[ch] <= base_c[ch]; cur_pg[ch] <= page[ch]; end    // auto-initialise
 		else mask[ch] <= 1'b1;
 		req_sw[ch] <= 1'b0;
 	end
 	else if (go_step) begin
 		cur_a[ch] <= mode[ch][3] ? cur_a[ch] - 16'd1 : cur_a[ch] + 16'd1;
 		cur_c[ch] <= cur_c[ch] - 16'd1;
+		// past a 64 KB boundary (128 KB on 5-7: the page's bits 7:1) the page steps too
+		if (!mode[ch][3] && cur_a[ch] == 16'hFFFF) cur_pg[ch] <= cur_pg[ch] + (ch[2] ? 8'd2 : 8'd1);
+		if ( mode[ch][3] && cur_a[ch] == 16'h0000) cur_pg[ch] <= cur_pg[ch] - (ch[2] ? 8'd2 : 8'd1);
 	end
 
 	if (reset) begin
 		mask <= 8'hFF; req_sw <= 8'h0; tc_st <= 8'h0; cmd1 <= 8'h0; cmd2 <= 8'h0; ff1 <= 1'b0; ff2 <= 1'b0;
-		for (int i = 0; i < 8; i++) begin hpage[i] <= 8'h0; page[i] <= 8'h0; mode[i] <= 6'h0; end
+		for (int i = 0; i < 8; i++) begin hpage[i] <= 8'h0; page[i] <= 8'h0; cur_pg[i] <= 8'h0; mode[i] <= 6'h0; end
 		ext1 <= 8'h0; ext2 <= 8'h0;
 		sg_on <= 8'h0; sg_load <= 8'h0; sg_end <= 8'h0; sg_int <= 8'h0;
 	end
@@ -273,7 +284,7 @@ typedef enum logic [2:0] {T_IDLE, T_RD, T_WR, T_DONE, T_GAP, T_SG, T_SG_W} tst_t
 tst_t        ts;
 logic        w16;                                   // a 16-bit channel's transfer
 wire  [31:0] ta = sg_on[ch] ? sg_a[ch] :
-                  ch[2] ? {hpage[ch], page[ch][7:1], cur_a[ch], 1'b0} : {hpage[ch], page[ch], cur_a[ch]};
+                  ch[2] ? {hpage[ch], cur_pg[ch][7:1], cur_a[ch], 1'b0} : {hpage[ch], cur_pg[ch], cur_a[ch]};
 wire  [1:0]  ttype = mode[ch][1:0];                 // 00 verify, 01 write (to memory), 10 read (from memory)
 
 // (dm_addr registered with dm_req: the channel's address mux stays out of the masters' arbiter)
