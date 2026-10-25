@@ -89,6 +89,7 @@ static void usage() {
 	       "  --com1 FILE  COM1's bytes as sent, raw (tools/vt.py FILE draws the terminal's screen)\n"
 	       "  --disk0 FILE, --disk1 FILE, --cd FILE  SCSI images: disks at IDs 0 and 1, the CD-ROM at 3 (writes kept in memory)\n"
 	       "  --disk-rw    the disks' writes go to their files\n"
+	       "  --floppy FILE  a diskette image in drive A: (720 KB to 2.88 MB; writes kept in memory)\n"
 	       "  --fst FILE   write a waveform (needs a make TRACE=1 build) of clocks --from N --to M\n"
 	       "  --lat N      the bench memory answers N clocks after a request (default 6, about the SDRAM's)\n"
 	       "  --cycles N   stop after N clocks (default 50,000,000)\n"
@@ -124,6 +125,7 @@ int main(int argc, char** argv) {
 		{64, 4}, {96, 4 | 3 << 3}, {112, 4 | 3 << 3 | 2 << 6}};
 	uint64_t max_cycles = 50000000, max_instr = 0, stall_lim = 2000000;
 	bool io_print = false, post_print = true;
+	std::string fd_path;                               // --floppy
 	uint32_t io_lo = 0, io_hi = 0xFFFFFFFF;            // --io's range
 	uint64_t daddr_print = 0, daddr_from = 0;          // --daddr: the data addresses (physical) up to an instruction
 	uint64_t pcs_print = 0, pcs_from = 0, calls_print = 0, calls_from = 0;
@@ -177,6 +179,7 @@ int main(int argc, char** argv) {
 			img_path[n] = next();
 		}
 		else if (a == "--disk-rw") disk_rw = true;
+		else if (a == "--floppy") fd_path = next();
 		else if (a == "--fst") fst_path = next();
 		else if (a == "--from") fst_from = strtoull(next(), nullptr, 0);
 		else if (a == "--to") fst_to = strtoull(next(), nullptr, 0);
@@ -420,6 +423,22 @@ int main(int argc, char** argv) {
 	std::vector<uint8_t> sd_buf;
 	uint64_t sd_reads = 0, sd_writes = 0;
 	unsigned ps2_toggle = 0;
+	// the floppy image (--floppy), on the controller's sector port (IBMRS6K7248_fdimg's other side): a sector
+	// asked by toggling fd_req (fd_we, fd_lba), answered by toggling fd_ack; the 512-byte buffers by fd_buf_a
+	// (a read's byte a clock after its address, a write's byte with fd_buf_we)
+	std::vector<uint8_t> fd_img;
+	if (!fd_path.empty()) {
+		FILE* f = fopen(fd_path.c_str(), "rb");
+		if (!f) { fprintf(stderr, "cannot open %s\n", fd_path.c_str()); return 1; }
+		fseek(f, 0, SEEK_END); fd_img.resize(ftell(f)); fseek(f, 0, SEEK_SET);
+		if (fread(fd_img.data(), 1, fd_img.size(), f) != fd_img.size()) { fprintf(stderr, "short read: %s\n", fd_path.c_str()); return 1; }
+		fclose(f);
+		printf("  floppy: %s, %zu bytes\n", fd_path.c_str(), fd_img.size());
+	}
+	uint8_t fd_rbuf[512] = {0}, fd_wbuf[512] = {0};
+	unsigned fd_prev_a = 0, fd_req_seen = 0, fd_lba = 0;
+	bool fd_mount_done = false, fd_wr = false;
+	uint64_t fd_due = 0, fd_ops = 0;
 	for (cycle = cycle0; cycle < max_cycles; cycle++) {
 		if (stop_req) { why = "a signal"; break; }
 		// --key-at: the make at its clock, the break 300,000 clocks later (hps_io's ps2_key: a toggle, pressed, extended, the code)
@@ -439,6 +458,32 @@ int main(int argc, char** argv) {
 				if (cycle == b.clock) printf("  COM1 in %02X at clock %llu\n", b.byte, (unsigned long long)cycle);
 			} else if (cycle == b.clock + 16 * 10) top->com1_rxd = 1;
 		}
+#ifndef SDRAM_CHIP
+		// the floppy image: mounted at the first clock (a one-clock pulse), then its sectors
+		if (!fd_img.empty()) {
+			top->fd_mounted = 0;
+			if (!fd_mount_done) {
+				top->fd_in = 1; top->fd_ro = 0; top->fd_blocks = unsigned(fd_img.size() / 512);
+				top->fd_mounted = 1; fd_mount_done = true;
+				fd_req_seen = top->fd_req;
+			}
+			top->fd_buf_q = fd_rbuf[fd_prev_a & 511];
+			fd_prev_a = top->fd_buf_a;
+			if (top->fd_buf_we) fd_wbuf[top->fd_buf_a & 511] = top->fd_buf_d;
+			if (top->fd_req != fd_req_seen) {
+				fd_req_seen = top->fd_req; fd_wr = top->fd_we; fd_lba = top->fd_lba; fd_due = cycle + 400;
+				if (fd_ops++ < 4000)
+					printf("  floppy %s sector %u  (clock %llu, instr %llu)\n", fd_wr ? "write" : "read", fd_lba,
+					       (unsigned long long)cycle, (unsigned long long)instr);
+			}
+			if (fd_due && cycle >= fd_due) {
+				size_t o = size_t(fd_lba) * 512;
+				if (!fd_wr) { for (int i = 0; i < 512; i++) fd_rbuf[i] = o + i < fd_img.size() ? fd_img[o + i] : 0; }
+				else        { for (int i = 0; i < 512; i++) if (o + i < fd_img.size()) fd_img[o + i] = fd_wbuf[i]; }
+				top->fd_ack ^= 1; fd_due = 0;
+			}
+		}
+#endif
 		// hps_io's side of the SCSI images
 		top->sd_buff_wr = 0;
 		if (sd_n < 0) {

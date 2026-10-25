@@ -113,9 +113,6 @@ localparam CONF_STR = {
 	"P3,Input;",
 	"P4,Audio;",
 	"P5,Advanced;",
-`ifdef IBMRS6K7248_DEBUG
-	"P9,Debug;",
-`endif
 	"-;",
 	"h0-,Changes pending;",
 	"R[0],Apply and reset;",
@@ -132,10 +129,6 @@ localparam CONF_STR = {
 
 	"P5SC3,NVR,NVRAM image;",
 
-`ifdef IBMRS6K7248_DEBUG
-	// the MiSTer's UART: the bring-up log (POST codes, the debug FIFO) or COM1; a release build has COM1
-	"P9O[4],UART,POST codes,COM1;",
-`endif
 	"v,0;",
 	"V,v",`BUILD_DATE
 };
@@ -178,9 +171,11 @@ wire clk_sys = clk_mem;
 wire        forced_scandoubler;
 wire  [1:0] buttons;
 wire [127:0] status;
+wire   [7:0] uart_mode;                  // the System page's UART mode: 0 None, 1 PPP, 2 Console, 3 MIDI, 4 Modem
 // the settings the machine runs with (taken at reset: below), and "Changes pending"
 reg  [127:0] cfg = 128'd0;
-wire         pending = {status[4:1], status[122:121]} != {cfg[4:1], cfg[122:121]};
+// (status bit 4 was the UART's source: now the System page's UART mode, below)
+wire         pending = {status[3:1], status[122:121]} != {cfg[3:1], cfg[122:121]};
 
 wire [1:0] ar = cfg[122:121];
 assign VIDEO_ARX = (!ar) ? 12'd4 : (ar - 1'd1);
@@ -236,6 +231,7 @@ hps_io #(.CONF_STR(CONF_STR), .VDNUM(5), .BLKSZ(2)) hps_io
 	.forced_scandoubler(forced_scandoubler),
 	.buttons(buttons),
 	.status(status),
+	.uart_mode(uart_mode),
 	.status_menumask({14'd0, status[10], pending}),   // bit 0: "Changes pending"; bit 1: FluidSynth (SoundFont, not Munt ROM)
 	.joystick_0, .joystick_1, .joystick_l_analog_0, .joystick_l_analog_1,
 	.sdram_sz(sdram_sz),
@@ -352,7 +348,7 @@ always @(posedge clk_mem) cpu_reset_m <= reset_in[2] | ~sdram_ready | rom_dl | ~
 
 // the settings the machine runs with: the OSD's, taken while the machine is in reset (Apply and
 // reset, the board's reset, a core load, a ROM load). "Changes pending" while an OSD setting differs:
-// Memory, the UART, Aspect ratio (not Swap Alt/Win keys, an Input setting: it acts at once)
+// Memory, Aspect ratio (not Swap Alt/Win keys, an Input setting: it acts at once)
 always @(posedge clk_mem) if (cpu_reset_m) cfg <= status;
 
 // Swap Alt/Win keys (live): left Alt (11) and left Win (E0 1F), right Alt (E0 11) and right Win (E0 27)
@@ -561,7 +557,7 @@ sdramclk_ddr
 ///////////////////////   THE DEBUG UART   ///////////////////////////////
 
 // The MiSTer's UART carries either COM1 (the firmware's serial console) or, for
-// bring-up (OSD "UART", the default), a debug stream at 115200 baud, in the
+// bring-up (the System page's UART mode None, in a debug build), a debug stream at 115200 baud, in the
 // CPU's clock: "R" when the CPU leaves reset; every write of a word to port
 // 680 (the firmware's progress codes, the code in the first byte, as the bench
 // prints them) as two hex digits and a space; "." every 2^24 instructions
@@ -658,7 +654,14 @@ always @(posedge clk_cpu) if ((ncr_ev || s3v_ev || s3e_ev || pk_ev) && nq_w + 6'
 	                                {1'b0, 1'b1, 4'h0, 8'h00, 21'd0, ps2_key};
 	nq_w     <= nq_w + 6'd1;
 end
-wire [45:0] nq_e = nq[nq_r];
+// (read a clock behind: a block RAM; the drain looks at the write pointer a clock late, so an entry is
+// read before it is taken, and after a take the stage is busy for 14 clocks)
+reg  [45:0] nq_e;
+reg  [5:0]  nq_wq = 0;
+always @(posedge clk_cpu) begin
+	nq_e  <= nq[nq_r];
+	nq_wq <= nq_w;
+end
 // (the desktop build: no PC trigger; instead, once, when nothing has retired for 2^24 clocks (0.24 s) after
 // the hand-off, the header alone: "IL=" the last PC retired, " C=" the data address the CPU's access is at,
 // " M=" bit 31 a data access pending, bit 30 a write: where a stalled bus access hangs the core)
@@ -794,7 +797,7 @@ always @(posedge clk_cpu) begin
 	end
 	else if (c1_pendl) begin stage_n <= 4'd11; stage <= {8'h4C, 8'h3D, hex8(c1_minl), 8'h20, 24'h0}; c1_pendl <= 1'b0; end
 	else if (c1_pendh) begin stage_n <= 4'd11; stage <= {8'h48, 8'h3D, hex8(c1_minh), 8'h20, 24'h0}; c1_pendh <= 1'b0; end
-	else if (nq_r != nq_w) begin
+	else if (nq_r != nq_wq) begin
 		stage_n <= 4'd14;                  // (14 bytes: the stage's whole width; a pad byte had pushed the letter out)
 		stage   <= {nq_e[44] ? (nq_e[45] ? 8'h77 : 8'h57) : (nq_e[45] ? 8'h72 : 8'h52), hex(nq_e[43:40]), hex(nq_e[39:36]), hex(nq_e[35:32]), 8'h3D, hex8(nq_e[31:0]),
 		            8'h20};
@@ -843,8 +846,11 @@ always @(posedge clk_cpu) begin
 		tx_n     <= tx_n - 4'd1;
 	end else tx_div <= tx_div + 16'd1;
 end
+// the source: the System page's UART mode. Any mode (PPP, Console, MIDI, Modem) connects the MiSTer's
+// Linux to the machine's serial port, COM1; with None, a debug build sends this stream instead (read
+// /dev/ttyS1 at 115200). A release build: COM1 always
 `ifdef IBMRS6K7248_DEBUG
-assign UART_TXD = cfg[4] ? com1_txd : post_txd;
+assign UART_TXD = uart_mode != 8'd0 ? com1_txd : post_txd;
 `else
 assign UART_TXD = com1_txd;
 `endif

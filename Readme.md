@@ -75,9 +75,9 @@ Mounted images are remembered and mounted again at every core load.
 | P3 Input | `Swap Alt/Win keys` | swaps the Alt and Win keys (acts at once) |
 | P4 Audio | `Use MT32-pi`, `Synth`, `Munt ROM` / `SoundFont` | the MPU-401's MIDI to an MT32-pi on the user port, and its synth's settings (they act at once, like the Input page) |
 | P5 Advanced | `NVRAM image` | the file holding the 4 KB PReP NVRAM and the CMOS: the boot list, the console choice, SMS settings. Loaded at the mount, saved two seconds after AIX or the firmware writes them |
-| P9 Debug | `UART` | debug builds only (`IBMRS6K7248_DEBUG` in the `.qsf`): the MiSTer's UART carries the bring-up log (POST codes) or COM1. A release build carries COM1 |
+| System page | `UART mode` | the framework's own setting. Any mode (PPP, Console, MIDI, Modem) connects the MiSTer's Linux to COM1. With `None`, a debug build (`IBMRS6K7248_DEBUG` in the `.qsf`) sends the bring-up log instead (POST codes, exceptions, PCI configuration accesses: read `/dev/ttyS1` at 115200); a release build carries COM1 (watch it with `picocom -b 9600 /dev/ttyS1` over ssh) |
 
-Memory, the UART and the aspect ratio take effect at the next reset. Media, Input, the MT32-pi rows and Network interface take effect at once.
+Memory and the aspect ratio take effect at the next reset; the UART mode at once. Media, Input, the MT32-pi rows and Network interface take effect at once.
 
 The FM synthesiser is JTOPL by Jose Tejada (jotego), an OPL2, in `rtl/jtopl/` under the GPL v3. The rest of the core is GPL v2 or later, so the combined core is distributed under the GPL v3.
 

@@ -51,7 +51,7 @@ set_global_assignment -name ALM_REGISTER_PACKING_EFFORT MEDIUM
 set_global_assignment -name SEED 1
 
 # the debug build: the OSD's P9 (the UART's bring-up log) and its logging; comment out for a release
-#set_global_assignment -name VERILOG_MACRO "IBMRS6K7248_DEBUG=1"
+set_global_assignment -name VERILOG_MACRO "IBMRS6K7248_DEBUG=1"
 
 #set_global_assignment -name VERILOG_MACRO "MISTER_FB=1"
 
