@@ -237,7 +237,7 @@ module IBMRS6K7248_machine
 	output logic [11:0]  h_total, h_disp, h_ss, h_sl,
 	output logic [10:0]  v_total, v_disp, v_ss,
 	output logic [4:0]   v_sl,
-	output logic [1:0]   v_depth,
+	output logic [2:0]   v_depth,
 	output logic [20:0]  v_start,
 	output logic [11:0]  v_pitch,
 	output logic         v_screen_on,

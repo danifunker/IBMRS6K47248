@@ -42,25 +42,45 @@ module IBMRS6K7248_firecoral
 );
 
 // ---- the configuration header -------------------------------------------------------
-logic [3:0][7:0] regs [64];
+// (block RAM, zero at load; the command word and BAR0 also in registers, cleared by a reset)
+logic [31:0]     stored;
+logic [3:0][7:0] r01, r04;
+// (four byte-wide RAMs: Quartus 17 infers no RAM from a byte-enabled packed array)
+genvar bl;
+generate for (bl = 0; bl < 4; bl = bl + 1) begin : lane
+	logic [7:0] b [64];
+	initial begin
+		for (int i = 0; i < 64; i++) b[i] = 8'h00;
+	end
+	always_ff @(posedge clk) begin
+		if (sel & we & be[bl]) b[reg_n] <= wdata[8 * bl +: 8];
+		if (sel & ~we) stored[8 * bl +: 8] <= b[reg_n];
+	end
+end endgenerate
 always_ff @(posedge clk) begin
 	if (sel & we)
 		for (int k = 0; k < 4; k++)
-			if (be[k]) regs[reg_n][k] <= wdata[8 * k +: 8];
-	if (reset) for (int i = 0; i < 64; i++) regs[i] <= '0;
+			if (be[k]) begin
+				if (reg_n == 6'h01) r01[k] <= wdata[8 * k +: 8];
+				if (reg_n == 6'h04) r04[k] <= wdata[8 * k +: 8];
+			end
+	if (reset) begin r01 <= '0; r04 <= '0; end
 end
 
-wire [31:0] bar0 = {regs[6'h04][3], regs[6'h04][2], regs[6'h04][1], regs[6'h04][0][7:3], 3'b001};   // 8 bytes of I/O
-always_ff @(posedge clk) if (sel & ~we) begin
-	case (reg_n)
-		6'h00:   rdata <= 32'h000A_1014;
-		6'h01:   rdata <= {16'h0200, regs[6'h01][1], regs[6'h01][0]};     // status: medium DEVSEL
-		6'h02:   rdata <= 32'h0601_0000;                                  // ISA bridge
-		6'h04:   rdata <= bar0;
-		default: rdata <= regs[reg_n];
+wire [31:0] bar0 = {r04[3], r04[2], r04[1], r04[0][7:3], 3'b001};   // 8 bytes of I/O
+// the word a cycle after sel (rdata held until the next read)
+logic [7:2] rn_q;
+always_ff @(posedge clk) if (sel & ~we) rn_q <= reg_n;
+always_comb begin
+	case (rn_q)
+		6'h00:   rdata = 32'h000A_1014;
+		6'h01:   rdata = {16'h0200, r01[1], r01[0]};                     // status: medium DEVSEL
+		6'h02:   rdata = 32'h0601_0000;                                  // ISA bridge
+		6'h04:   rdata = bar0;
+		default: rdata = stored;
 	endcase
 end
-assign io_on   = regs[6'h01][0][0];
+assign io_on   = r01[0][0];
 assign io_base = bar0[15:3];
 
 // ---- the internal registers -----------------------------------------------------------

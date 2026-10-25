@@ -1014,3 +1014,41 @@ Findings (details in `scratch/work/com1_findings.md`):
   settings (RAM 112 MB, the UART) are saved with "Save settings" (`config/IBMRS6K7248.CFG`).
 - The debug build's one-shot capture now reports a stall (nothing retired for 0.24 s): the
   last PC and the data access the CPU waits on.
+
+## 2026-10-24 night: high colour on the board; the core made to fit again
+
+The S3 gained 15/16-, 24- (packed) and 32-bit pixels (86Box's Vision864 and SDAC: the
+depth from the SDAC command register, the CRTC in fractions of a pixel, the engine at 16
+and 32 bits by CR50, the cursor's CR4A/CR4B stacks). The full compile then did not fit:
+47,881 of 41,910 ALMs, from everything added since d0abd0e (PCnet, ISA DMA, CS4232, SB,
+OPL, the floppy). Brought back to 39,649 (95 %):
+
+- register files Quartus had built in flip-flops moved to block RAM: the MPC105's and Fire
+  Coral's configuration spaces (four byte-wide RAMs each: Quartus 17 infers none from a
+  byte-enabled packed array; the words the machine uses copied in registers), the RTC's
+  CMOS bytes (one write port), the EEPROM (ERAL/WRAL as a 64-clock sweep), the SB mixer
+  (the four registers the mixing uses in registers);
+- the S3 keeps only CUR_X/CUR_Y of its 8514 registers for reads (the 864's others but
+  GP_STAT are write-only);
+- the framework's adaptive scanlines, YC encoder and ALSA audio off (MISTER_DISABLE_*);
+- the debug UART stream off (IBMRS6K7248_DEBUG commented out in the qsf): with it the
+  core does not fit; COM1 is on the MiSTer's UART, as in a release.
+
+Timing: the 24-bit depth's divide by 3 first put the CPU clock at -10.6 ns (the S3's
+horizontal values: now three register stages and a multiply by 21846 >> 16); then the
+ISA DMA's address mux into the masters' arbiter at -3.5 ns (dm_addr now registered with
+dm_req). Left: -2.93 ns on the known d_line -> kbc path (the release had -2.7); the memory
+clock +0.05 ns.
+
+On .92 (scratch/work/IBMRS6K7248_hicolor.rbf): the firmware boots as before. In the
+resident monitor (F4 at the keyboard icon, `eatabug` typed as soon as the diskette
+animation shows; it times out after ~20 s) the depths were set by hand: the CRTC through
+`out16 3d4 IIVV` (index and data in one cycle: the firmware's vertical interrupt rewrites
+CR11, and with it the index, between two `out` commands), the SDAC through CR55 bit 0,
+display start 0x100000 and pitch 0 so every row shows row 0, and single-byte `fill`s for a
+red, green and blue line at x = 100, 200, 300 and white at 400-409. 16 (5-6-5), 32 and
+packed 24 bits all show the lines in place and in their colours, 640 pixels across the
+4:3 frame; 32 bits with f2 at 50.1 MHz (the pixel clock half the PLL's). The monitor's
+`read` (sectors to memory) fails with error 0xA from both the floppy (drive 0) and the
+SCSI disk (drive 80), so it says nothing about the floppy yet: the floppy's first real
+test is still to come (SMS from a diskette, or an OS).

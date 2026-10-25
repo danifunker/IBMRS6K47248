@@ -41,7 +41,7 @@ module IBMRS6K7248_eeprom (
 	output logic [7:0]  rdata         // the cycle after sel
 );
 
-logic [15:0] mem [64];
+logic [15:0] mem [64];                  // block RAM: one write a clock, read at addr
 logic [15:0] cmd, data;
 logic        alt, done, wen;
 logic [7:0]  size_code, lock_bound, lock_status;
@@ -49,9 +49,25 @@ logic [7:0]  size_code, lock_bound, lock_status;
 wire [2:0] op   = cmd[8:6];
 wire [5:0] addr = cmd[5:0];
 
+// the array's port: a word written (a command's, or ERAL's and WRAL's sweep, one word a clock),
+// and the word at addr (the command register written a cycle or more before)
+logic        m_we, sw_on;
+logic [5:0]  m_a, sw_i;
+logic [15:0] m_d, sw_d, m_q;
 always_ff @(posedge clk) begin
+	if (m_we) mem[m_a] <= m_d;
+	else if (sw_on) mem[sw_i] <= sw_d;
+	m_q <= mem[addr];
+end
+
+always_ff @(posedge clk) begin
+	m_we <= 1'b0;
+	if (sw_on && !m_we) begin
+		sw_i <= sw_i + 6'd1;
+		if (sw_i == 6'd63) sw_on <= 1'b0;
+	end
 	if (reset) begin
-		cmd <= '0; data <= '0; alt <= 1'b0; done <= 1'b0; wen <= 1'b0;
+		cmd <= '0; data <= '0; alt <= 1'b0; done <= 1'b0; wen <= 1'b0; sw_on <= 1'b0;
 		size_code <= 8'd9; lock_bound <= 8'd0; lock_status <= 8'd0;
 	end
 	else if (sel) begin
@@ -67,14 +83,14 @@ always_ff @(posedge clk) begin
 					if (wdata[7]) begin
 						done <= 1'b1;
 						case (op)
-							3'b110: data <= mem[addr];                                  // READ
-							3'b101: if (wen) mem[addr] <= data;                         // WRITE
-							3'b111: if (wen) mem[addr] <= 16'hFFFF;                     // ERASE
+							3'b110: data <= m_q;                                        // READ
+							3'b101: if (wen) begin m_we <= 1'b1; m_a <= addr; m_d <= data; end        // WRITE
+							3'b111: if (wen) begin m_we <= 1'b1; m_a <= addr; m_d <= 16'hFFFF; end     // ERASE
 							3'b100: case (addr[5:4])                                     // EWEN, EWDS, ERAL, WRAL
 								2'b11: wen <= 1'b1;
 								2'b00: wen <= 1'b0;
-								2'b10: if (wen) for (int i = 0; i < 64; i++) mem[i] <= 16'hFFFF;
-								2'b01: if (wen) for (int i = 0; i < 64; i++) mem[i] <= data;
+								2'b10: if (wen) begin sw_on <= 1'b1; sw_i <= 6'd0; sw_d <= 16'hFFFF; end
+								2'b01: if (wen) begin sw_on <= 1'b1; sw_i <= 6'd0; sw_d <= data; end
 							endcase
 							default: ;
 						endcase

@@ -263,7 +263,7 @@ wire  [31:0] ta = sg_on[ch] ? sg_a[ch] :
                   ch[2] ? {hpage[ch], page[ch][7:1], cur_a[ch], 1'b0} : {hpage[ch], page[ch], cur_a[ch]};
 wire  [1:0]  ttype = mode[ch][1:0];                 // 00 verify, 01 write (to memory), 10 read (from memory)
 
-assign dm_addr = ts == T_SG_W ? sg_ptr[ch][31:3] : ta[31:3];
+// (dm_addr registered with dm_req: the channel's address mux stays out of the masters' arbiter)
 
 always_ff @(posedge clk) begin
 	dack    <= 1'b0;
@@ -285,7 +285,7 @@ always_ff @(posedge clk) begin
 				if (|want) ts <= T_RD;
 			end
 		end
-		T_SG: begin dm_we <= 1'b0; dm_be <= 8'hFF; dm_req <= 1'b1; ts <= T_SG_W; end
+		T_SG: begin dm_we <= 1'b0; dm_be <= 8'hFF; dm_addr <= sg_ptr[ch][31:3]; dm_req <= 1'b1; ts <= T_SG_W; end
 		T_SG_W: if (dm_ack) begin
 			// the entry: the address (bytes 0-3), the count and the last flag (4-7), little-endian
 			dm_req    <= 1'b0;
@@ -295,7 +295,8 @@ always_ff @(posedge clk) begin
 			ts        <= T_GAP;
 		end
 		T_RD: begin
-			w16 <= ch[2];
+			w16     <= ch[2];
+			dm_addr <= ta[31:3];
 			if (ttype == 2'b10) begin                      // a read transfer: memory's byte or word
 				dm_we  <= 1'b0;
 				dm_be  <= 8'hFF;

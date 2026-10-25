@@ -51,7 +51,7 @@ set_global_assignment -name ALM_REGISTER_PACKING_EFFORT MEDIUM
 set_global_assignment -name SEED 1
 
 # the debug build: the OSD's P9 (the UART's bring-up log) and its logging; comment out for a release
-set_global_assignment -name VERILOG_MACRO "IBMRS6K7248_DEBUG=1"
+#set_global_assignment -name VERILOG_MACRO "IBMRS6K7248_DEBUG=1"
 
 #set_global_assignment -name VERILOG_MACRO "MISTER_FB=1"
 
@@ -65,16 +65,16 @@ set_global_assignment -name VERILOG_MACRO "IBMRS6K7248_DEBUG=1"
 #set_global_assignment -name VERILOG_MACRO "MISTER_DOWNSCALE_NN=1"
 
 # disable adaptive scanline filtering
-#set_global_assignment -name VERILOG_MACRO "MISTER_DISABLE_ADAPTIVE=1"
+set_global_assignment -name VERILOG_MACRO "MISTER_DISABLE_ADAPTIVE=1"
 
 #use only 1MB per frame for scaler to free ~21MB DDR3 RAM
 #set_global_assignment -name VERILOG_MACRO "MISTER_SMALL_VBUF=1"
 
 # Disable YC / Composite output to save some resources
-#set_global_assignment -name VERILOG_MACRO "MISTER_DISABLE_YC=1"
+set_global_assignment -name VERILOG_MACRO "MISTER_DISABLE_YC=1"
 
 # Disable ALSA audio output to save some resources
-#set_global_assignment -name VERILOG_MACRO "MISTER_DISABLE_ALSA=1"
+set_global_assignment -name VERILOG_MACRO "MISTER_DISABLE_ALSA=1"
 
 source sys/sys.tcl
 source sys/sys_analog.tcl

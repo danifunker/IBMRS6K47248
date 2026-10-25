@@ -61,10 +61,18 @@ module IBMRS6K7248_sb
 localparam logic [2:0] CH = 3'd1;
 
 // ---- the mixer -------------------------------------------------------------------------------
+// (every index stored and read back, in block RAM; the four the mixing uses also in registers,
+// set by a reset and the mixer's reset)
 logic [7:0] mix_idx;
 logic [7:0] mix [256];
-assign fm_vol = mix[8'h26];
-wire stereo = mix[8'h0E][1];
+logic [7:0] mix_q;                         // the byte at mix_idx
+logic [7:0] m04, m0e, m22, m26;            // voice, output (stereo), master, FM
+always_ff @(posedge clk) begin
+	if (sel && we && off == 4'h5) mix[mix_idx] <= wdata;
+	mix_q <= mix[mix_idx];
+end
+assign fm_vol = m26;
+wire stereo = m0e[1];
 
 // ---- the DSP -------------------------------------------------------------------------------
 logic        rst_hi;
@@ -133,11 +141,15 @@ always_ff @(posedge clk) begin
 		if (we) begin
 			case (off)
 				4'h4: mix_idx <= wdata;
-				4'h5: begin
-					mix[mix_idx] <= wdata;
-					if (mix_idx == 8'h00) begin                    // the mixer reset
-						mix[8'h04] <= 8'h99; mix[8'h22] <= 8'h99; mix[8'h26] <= 8'h99; mix[8'h0E] <= 8'h00;
-					end
+				4'h5: begin                                        // (the array: above)
+					case (mix_idx)
+						8'h00: begin m04 <= 8'h99; m22 <= 8'h99; m26 <= 8'h99; m0e <= 8'h00; end   // the mixer reset
+						8'h04: m04 <= wdata;
+						8'h0E: m0e <= wdata;
+						8'h22: m22 <= wdata;
+						8'h26: m26 <= wdata;
+						default: ;
+					endcase
 				end
 				4'h6: begin
 					if (wdata[0]) rst_hi <= 1'b1;
@@ -199,7 +211,8 @@ always_ff @(posedge clk) begin
 		end
 		else begin
 			case (off)
-				4'h5: rdata <= mix[mix_idx];
+				4'h5: rdata <= mix_idx == 8'h04 ? m04 : mix_idx == 8'h0E ? m0e : mix_idx == 8'h22 ? m22 :
+				               mix_idx == 8'h26 ? m26 : mix_q;
 				4'hA: begin
 					rdata <= out_n != 3'd0 ? out_q[out_r] : 8'hFF;
 					if (out_n != 3'd0) begin out_r <= out_r + 2'd1; out_n <= out_n - 3'd1; end
@@ -225,7 +238,7 @@ always_ff @(posedge clk) begin
 		rst_hi <= 1'b0; out_n <= 3'd0; out_r <= 2'd0; out_w <= 2'd0; need <= 2'd0; spk <= 1'b0; irq8 <= 1'b0;
 		dma_on <= 1'b0; dma_pause <= 1'b0; tc <= 8'h00; hz <= 17'd0; blk <= 16'h07FF; direct <= 8'h80;
 		mix_idx <= 8'h00;
-		mix[8'h04] <= 8'h99; mix[8'h22] <= 8'h99; mix[8'h26] <= 8'h99; mix[8'h0E] <= 8'h00;
+		m04 <= 8'h99; m22 <= 8'h99; m26 <= 8'h99; m0e <= 8'h00;
 	end
 end
 assign irq = irq8;
@@ -252,8 +265,8 @@ function automatic logic [15:0] vol(input logic [7:0] s, input logic [3:0] m, in
 	vol = 16'((x * $signed({1'b0, g})) >>> 8);
 endfunction
 always_ff @(posedge clk) begin
-	aud_l <= spk ? vol(sl, mix[8'h22][7:4], mix[8'h04][7:4]) : 16'd0;
-	aud_r <= spk ? vol(sr, mix[8'h22][3:0], mix[8'h04][3:0]) : 16'd0;
+	aud_l <= spk ? vol(sl, m22[7:4], m04[7:4]) : 16'd0;
+	aud_r <= spk ? vol(sr, m22[3:0], m04[3:0]) : 16'd0;
 end
 
 endmodule

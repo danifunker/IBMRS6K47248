@@ -214,7 +214,7 @@ logic [3:0]   v_be;
 logic [31:0]  v_wdata, v_rdata;
 logic [11:0]  h_total, h_disp, h_ss, h_sl;
 logic [10:0]  v_total, v_disp, v_ss, v_cur_x, v_cur_y, v_cur_base;
-logic [1:0]   v_depth;
+logic [2:0]   v_depth;
 logic [4:0]   v_sl;
 logic [20:0]  v_start;
 logic [11:0]  v_pitch;

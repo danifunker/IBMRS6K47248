@@ -76,7 +76,8 @@ logic [6:0] year;
 logic [6:0] reg_a;                      // DV, RS (UIP is made)
 logic [7:0] reg_b;
 logic [2:0] flags;                      // PF, AF, UF
-logic [7:0] cmos_ram [128];                 // 0E-7F used
+logic [7:0] cmos_ram [128];                 // 0E-7F used (block RAM)
+logic [7:0] c_q;                            // the byte at index
 
 wire        bin  = reg_b[2];
 wire        h24  = reg_b[1];
@@ -198,7 +199,7 @@ always_ff @(posedge clk) begin
 							reg_b <= wdata[7] ? {wdata[7:5], 1'b0, wdata[3:0]} : wdata;   // SET clears UIE
 						end
 						7'h0C, 7'h0D: ;                                     // read only
-						default: cmos_ram[index] <= wdata;
+						default: ;                                          // the CMOS: below
 					endcase
 				end
 				else begin
@@ -220,7 +221,7 @@ always_ff @(posedge clk) begin
 							flags <= 3'd0;
 						end
 						7'h0D: rdata <= 8'h80;                              // the battery is good
-						default: rdata <= cmos_ram[index];
+						default: rdata <= c_q;                              // (index set a cycle or more before)
 					endcase
 				end
 			end
@@ -231,8 +232,6 @@ always_ff @(posedge clk) begin
 		endcase
 	end
 
-	// the maintenance port's CMOS write (0E-7F), in a cycle the CPU leaves the RTC alone
-	if (m_we && !sel && m_addr[12] && m_addr[6:0] >= 7'h0E) cmos_ram[m_addr[6:0]] <= m_wdata;
 
 	if (set_time) begin
 		sec   <= 6'(from_bcd(time_bcd[7:0]));
@@ -265,8 +264,16 @@ logic [7:0] m_nq, m_cq;
 logic       m_c;
 always_ff @(posedge clk) begin
 	m_nq <= nvram[m_addr[11:0]];
-	m_cq <= cmos_ram[m_addr[6:0]];
 	m_c  <= m_addr[12];
+end
+// the CMOS (0E-7F): the CPU's write, else the maintenance port's in a cycle the CPU leaves the RTC
+// alone; read at the CPU's index and the maintenance port's address
+wire       cpu_cw = sel & we & (port == 3'd1) & (index >= 7'h0E);
+wire       cmos_we = cpu_cw | (m_we & ~sel & m_addr[12] & (m_addr[6:0] >= 7'h0E));
+always_ff @(posedge clk) begin
+	if (cmos_we) cmos_ram[cpu_cw ? index : m_addr[6:0]] <= cpu_cw ? wdata : m_wdata;
+	c_q  <= cmos_ram[index];
+	m_cq <= cmos_ram[m_addr[6:0]];
 end
 assign m_q = m_c ? m_cq : m_nq;
 // the CPU's writes counted (Gray, for the SD side's clock)

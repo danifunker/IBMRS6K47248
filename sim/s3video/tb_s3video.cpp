@@ -1,5 +1,5 @@
 // IBMRS6K7248 - a bench of the S3's picture side alone (IBMRS6K7248_s3video): a DDR3 model on its DDRAM port, a
-// small mode at each depth (8 bits through the palette, 15, 16 and 32 direct), the hardware cursor over it; every
+// small mode at each depth (8 bits through the palette, 15, 16, 24 packed and 32 direct), the hardware cursor over it; every
 // shown pixel of a frame checked against a model here. ./run.sh builds and runs it.
 
 #include "VIBMRS6K7248_s3video.h"
@@ -52,7 +52,7 @@ static uint32_t pcol(uint32_t e) {          // a palette entry widened
 static const int W = 40, H = 8, START = 0x108, PITCH = 256, CX = 5, CY = 2, CBASE = 1;  // the cursor at KB 1
 
 static void run_depth(int depth, const char *name, uint32_t fg, uint32_t bg) {
-	int ps = depth == 0 ? 1 : depth == 3 ? 4 : 2;
+	int ps = depth == 0 ? 1 : depth == 3 ? 4 : depth == 4 ? 3 : 2;
 	// the frame: a different value at every pixel
 	for (int y = 0; y < H; y++)
 		for (int x = 0; x < W; x++) {
@@ -119,6 +119,7 @@ int main(int argc, char **argv) {
 	run_depth(1, "15 bits a pixel (5-5-5), the cursor", 0x7C00, 0x001F);
 	run_depth(2, "16 bits a pixel (5-6-5), the cursor", 0xF800, 0x07E0);
 	run_depth(3, "32 bits a pixel (8-8-8), the cursor", 0x123456, 0xABCDEF);
+	run_depth(4, "24 bits a pixel packed, the cursor", 0x654321, 0x0F1E2D);
 	printf(fails ? "%d FAILED\n" : "ALL PASS\n", fails);
 	delete t;
 	return fails ? 1 : 0;

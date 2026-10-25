@@ -15,7 +15,9 @@
 //    - the scan-out: during each line, the next line: the hardware cursor's
 //      16 bytes of that line (when the cursor is on it), then its pixels, in
 //      bursts of up to 32 words, into one of two line buffers (4 KB each:
-//      800 pixels at 32 bits, 1152 at 16, 2048 at 8);
+//      800 pixels at 32 bits, 1024 at 24, 1152 at 16, 2048 at 8; each
+//      split in even and odd words, so that a pixel across two words, at
+//      24 bits, comes out whole);
 //    - the CPU's and the graphics engine's words (IBMRS6K7248_s3's VRAM
 //      port, through their clock crossing): one beat with byte enables.
 //
@@ -27,11 +29,12 @@
 //  IBMRS6K7248_s3, scaled there by the depth), the pixel clock the SDAC's
 //  PLL (14.31818 MHz x (M + 2) / ((N[4:0] + 2) x 2^post), post from the
 //  register side) as a clock enable of the video clock by phase
-//  accumulation. Packed pixels (the S3's enhanced mode) of 8, 16 or 32 bits
-//  (depth), little-endian; line y starts at start + y x pitch. At 8 bits
-//  the pixel mask and the palette (6 bits a component, widened); at 15, 16
-//  and 32 the SDAC's direct colour (5-5-5, 5-6-5, 8-8-8 in the low 24 bits;
-//  each widened by its top bits), not through the palette. The cursor: 64 x
+//  accumulation. Packed pixels (the S3's enhanced mode) of 8, 16, 24 or 32
+//  bits (depth), little-endian; line y starts at start + y x pitch. At 8
+//  bits the pixel mask and the palette (6 bits a component, widened); at
+//  15, 16, 24 and 32 the SDAC's direct colour (5-5-5, 5-6-5, 8-8-8, 8-8-8
+//  in the low 24 bits; each widened by its top bits), not through the
+//  palette. The cursor: 64 x
 //  64, each line 16 bytes of four groups of an AND word and an XOR word
 //  (MSB first); in Windows mode 00 the background colour, 01 the
 //  foreground, 10 the screen, 11 the screen inverted; in X11 mode (CR55 bit
@@ -75,7 +78,7 @@ module IBMRS6K7248_s3video
 	input  logic [11:0]  h_disp,
 	input  logic [11:0]  h_ss,            // horizontal sync start, pixels
 	input  logic [11:0]  h_sl,            // ... its length
-	input  logic [1:0]   depth,           // 0 8 bits a pixel, 1 15 (5-5-5), 2 16 (5-6-5), 3 32 (8-8-8)
+	input  logic [2:0]   depth,           // 0 8 bits a pixel, 1 15 (5-5-5), 2 16 (5-6-5), 3 32 (8-8-8), 4 24 (8-8-8)
 	input  logic [10:0]  v_total,         // lines
 	input  logic [10:0]  v_disp,
 	input  logic [10:0]  v_ss,
@@ -144,8 +147,15 @@ always_ff @(posedge clk) begin
 	end
 	if (reset) begin hc <= 12'd0; vc <= 11'd0; end
 end
-// bytes a pixel, as a shift
-wire  [1:0] psz = depth == 2'd0 ? 2'd0 : depth == 2'd3 ? 2'd2 : 2'd1;
+// a pixel's first byte in its line: x times 1, 2, 3 or 4
+function automatic logic [13:0] xbytes(input logic [2:0] d, input logic [11:0] x);
+	case (d)
+		3'd0:    xbytes = {2'd0, x};
+		3'd3:    xbytes = {x, 2'b00};
+		3'd4:    xbytes = {1'b0, x, 1'b0} + {2'd0, x};
+		default: xbytes = {1'b0, x, 1'b0};
+	endcase
+endfunction
 assign vretrace = vs_on;
 assign disp_en  = h_act & v_act;
 
@@ -196,7 +206,7 @@ always_ff @(posedge clk) begin
 	if (f_calc) begin
 		f_addr  <= {f_line[20:3], 3'b000};
 		f_off   <= f_line[2:0];
-		f_left  <= 12'((({2'd0, h_disp} << psz) + 14'(f_line[2:0]) + 14'd7) >> 3);
+		f_left  <= 12'((xbytes(depth, h_disp) + 14'(f_line[2:0]) + 14'd7) >> 3);
 		f_put   <= 12'd0;
 		f_calc2 <= 1'b1;
 	end
@@ -214,16 +224,19 @@ always_ff @(posedge clk) begin
 end
 
 // ---- the line buffers: two lines of up to 512 words (4 KB); the cursor's row in registers ----
-logic [63:0]  lbuf [0:1023];
-logic [63:0]  lb_q;
-logic [9:0]   lb_ra;
+logic [63:0]  lbuf_e [0:511];          // the even words of both lines, {line, word >> 1}
+logic [63:0]  lbuf_o [0:511];          // ... the odd
+logic [63:0]  lbe_q, lbo_q;
+logic [8:0]   lbe_ra, lbo_ra;
 logic [127:0] cur0, cur1;
 logic         cw;                      // the cursor's word being received
 logic         cur_has0, cur_has1;      // the line has the cursor
 logic [2:0]   off0, off1;              // each line's first lane
 always_ff @(posedge clk) begin
-	if (f_word && !f_curw) lbuf[{f_bank, f_put[8:0]}] <= ddr_dout;
-	lb_q <= lbuf[lb_ra];
+	if (f_word && !f_curw && !f_put[0]) lbuf_e[{f_bank, f_put[8:1]}] <= ddr_dout;
+	if (f_word && !f_curw &&  f_put[0]) lbuf_o[{f_bank, f_put[8:1]}] <= ddr_dout;
+	lbe_q <= lbuf_e[lbe_ra];
+	lbo_q <= lbuf_o[lbo_ra];
 	if (f_word && f_curw) begin
 		if (!f_bank) begin if (!cw) cur0[63:0] <= ddr_dout; else cur0[127:64] <= ddr_dout; end
 		else         begin if (!cw) cur1[63:0] <= ddr_dout; else cur1[127:64] <= ddr_dout; end
@@ -313,22 +326,28 @@ assign c_rdata = c_addr[2] ? {c_got[39:32], c_got[47:40], c_got[55:48], c_got[63
 
 // ---- the pixels ----------------------------------------------------------------------------------
 // stage 0: the CRTC's pixel: its first byte in the line buffer (the line's first lane added)
-wire [13:0] p_byte = ({2'd0, hc} << psz) + {11'd0, vc[0] ? off1 : off0};
-assign lb_ra = {vc[0], p_byte[11:3]};
+// (its word w and the next: the even one of the two at (w + 1) >> 1, the odd at w >> 1)
+wire [13:0] p_byte = xbytes(depth, hc) + {11'd0, vc[0] ? off1 : off0};
+wire [8:0]  p_word = p_byte[11:3];
+wire [8:0]  p_wn   = p_word + 9'd1;
+assign lbe_ra = {vc[0], p_wn[8:1]};
+assign lbo_ra = {vc[0], p_word[8:1]};
 
 // stage 1: the word comes out of the line buffer; the pixel goes to the palette, or is the colour
 logic        p1_ce, p1_de, p1_hs, p1_vs, p1_hb, p1_vb, p1_ch;
 logic [2:0]  p1_lane;
+logic        p1_odd;                   // the pixel's first word is the odd bank's
 logic [11:0] p1_x;
 logic [5:0]  p1_cr;                    // the cursor's row, low bits
-wire  [63:0] p1_w  = lb_q >> {p1_lane, 3'b000};
+wire [127:0] p1_ww = p1_odd ? {lbe_q, lbo_q} : {lbo_q, lbe_q};    // the word and the next
+wire  [63:0] p1_w  = 64'(p1_ww >> {p1_lane, 3'b000});
 wire  [7:0]  pix8  = p1_w[7:0];
 wire  [31:0] pix32 = p1_w[31:0];
 // a direct colour's 24 bits (each component widened by its top bits)
-function automatic logic [23:0] dcol(input logic [1:0] d, input logic [31:0] p);
+function automatic logic [23:0] dcol(input logic [2:0] d, input logic [31:0] p);
 	case (d)
-		2'd1:    dcol = {p[14:10], p[14:12], p[9:5], p[9:7], p[4:0], p[4:2]};
-		2'd2:    dcol = {p[15:11], p[15:13], p[10:5], p[10:9], p[4:0], p[4:2]};
+		3'd1:    dcol = {p[14:10], p[14:12], p[9:5], p[9:7], p[4:0], p[4:2]};
+		3'd2:    dcol = {p[15:11], p[15:13], p[10:5], p[10:9], p[4:0], p[4:2]};
 		default: dcol = p[23:0];
 	endcase
 endfunction
@@ -368,6 +387,7 @@ always_ff @(posedge clk) begin
 	p1_hb   <= ~h_act;
 	p1_vb   <= ~v_act;
 	p1_lane <= p_byte[2:0];
+	p1_odd  <= p_word[0];
 	p1_x    <= hc;
 	p1_ch   <= vc[0] ? cur_has1 : cur_has0;
 
@@ -378,7 +398,7 @@ always_ff @(posedge clk) begin
 	p2_hb  <= p1_hb;
 	p2_vb  <= p1_vb;
 	p2_inv <= c_inv;
-	p2_dir <= depth != 2'd0;
+	p2_dir <= depth != 3'd0;
 	p2_d   <= dcol(depth, c_col ? {8'd0, c_fg ? cur_fg : cur_bg} : pix32);
 
 	{r, g, b} <= p2_out;

@@ -51,9 +51,10 @@
 //  it (pt_valid / pt_ready) or to have it (rd_valid / rd_take); GP_STAT
 //  shows the FIFO empty and the engine busy (bit 9) until it is done.
 //
-//  Not drawn: polygon fills (the 8514's CMD 6000; the 864 has none), 24
-//  bits a pixel packed (CR50 bits 5:4 = 10: taken as 8), mono image reads
-//  (PIX_CNTL's pack bit).
+//  Not drawn: polygon fills (the 8514's CMD 6000; the 864 has none), mono
+//  image reads (PIX_CNTL's pack bit). 24 bits a pixel packed has no engine
+//  mode on the 864 (CR50 bits 5:4 = 10 is taken as 8): drivers draw it at 8
+//  bits, three bytes a pixel.
 //
 //============================================================================
 

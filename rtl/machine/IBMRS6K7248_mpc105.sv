@@ -52,42 +52,59 @@ module IBMRS6K7248_mpc105
 	output logic [31:0]      picr1
 );
 
-// ---- the stored registers ----------------------------------------------------------
-logic [3:0][7:0] regs [64];
-
+// ---- the stored registers: block RAM (zero at load; the ROM writes what it uses first) ----
+logic [31:0]     stored;
+// (four byte-wide RAMs: Quartus 17 infers no RAM from a byte-enabled packed array)
+genvar bl;
+generate for (bl = 0; bl < 4; bl = bl + 1) begin : lane
+	logic [7:0] b [64];
+	initial begin
+		for (int i = 0; i < 64; i++) b[i] = 8'h00;
+	end
+	always_ff @(posedge clk) begin
+		if (sel & we & be[bl]) b[reg_n] <= wdata[8 * bl +: 8];
+		if (sel & ~we) stored[8 * bl +: 8] <= b[reg_n];
+	end
+end endgenerate
+// ... and the ones the machine uses, copied in registers: 80-9C the banks, A0 the enables, A8 PICR1
+logic [3:0][7:0] bk [8];
+logic [3:0][7:0] r28, r2a;
 always_ff @(posedge clk) begin
 	if (sel & we)
 		for (int k = 0; k < 4; k++)
-			if (be[k]) regs[reg_n][k] <= wdata[8 * k +: 8];
+			if (be[k]) begin
+				if (reg_n[7:5] == 3'b100) bk[reg_n[4:2]][k] <= wdata[8 * k +: 8];
+				if (reg_n == 6'h28) r28[k] <= wdata[8 * k +: 8];
+				if (reg_n == 6'h2A) r2a[k] <= wdata[8 * k +: 8];
+			end
 	if (reset) begin
-		for (int i = 0; i < 64; i++) regs[i] <= '0;
-		// the MCCR1/PICR1 power-up values matter only as read back; the ROM writes them first
+		for (int i = 0; i < 8; i++) bk[i] <= '0;
+		r28 <= '0; r2a <= '0;
 	end
 end
 
-// ---- read ---------------------------------------------------------------------------
-logic [31:0] stored;
-always_comb stored = regs[reg_n];
-
-always_ff @(posedge clk) if (sel & ~we) begin
-	case (reg_n)
-		6'h00:   rdata <= 32'h0001_1057;
-		6'h01:   rdata <= {16'h0000, stored[15:0]};                 // status: nothing to report
-		6'h02:   rdata <= 32'h0600_0000;                            // host bridge, revision 0
-		6'h30:   rdata <= stored & 32'h00FF_00FF;                    // C0-C3: the detection and status bytes 0
-		6'h31:   rdata <= stored & 32'h00FF_00FF;                    // C4-C7: likewise
-		default: rdata <= stored;
+// ---- read: the word a cycle after sel (rdata held until the next read) ----------------
+logic [7:2] rn_q;
+always_ff @(posedge clk) if (sel & ~we) rn_q <= reg_n;
+always_comb begin
+	case (rn_q)
+		6'h00:   rdata = 32'h0001_1057;
+		6'h01:   rdata = {16'h0000, stored[15:0]};                  // status: nothing to report
+		6'h02:   rdata = 32'h0600_0000;                             // host bridge, revision 0
+		6'h30:   rdata = stored & 32'h00FF_00FF;                     // C0-C3: the detection and status bytes 0
+		6'h31:   rdata = stored & 32'h00FF_00FF;                     // C4-C7: likewise
+		default: rdata = stored;
 	endcase
 end
 
 // ---- the banks ----------------------------------------------------------------------
 always_comb begin
 	for (int n = 0; n < 8; n++) begin
-		bank_start[n] = {regs[34 + n / 4][n % 4][1:0], regs[32 + n / 4][n % 4]};
-		bank_end[n]   = {regs[38 + n / 4][n % 4][1:0], regs[36 + n / 4][n % 4]};
+		bank_start[n] = {bk[2 + n / 4][n % 4][1:0], bk[n / 4][n % 4]};
+		bank_end[n]   = {bk[6 + n / 4][n % 4][1:0], bk[4 + n / 4][n % 4]};
 	end
-	bank_en = regs[6'h28][0];
-	picr1   = regs[6'h2A];
+	bank_en = r28[0];
+	picr1   = r2a;
 end
 
 endmodule
