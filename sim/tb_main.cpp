@@ -657,8 +657,9 @@ int main(int argc, char** argv) {
 			uint8_t be = top->io_be;
 			bool we = top->io_we;
 			if (io_print && a >= io_lo && a <= io_hi)
-				printf("  io %s %08X be %X %08X%s  (pc %08X)\n", we ? "W" : "R", a, be,
-				       we ? uint32_t(top->io_wdata) : uint32_t(top->io_rdata), top->io_stub ? "  stub" : "", last_pc);
+				printf("  io %s %08X be %X %08X%s  (pc %08X lr %08X instr %llu)\n", we ? "W" : "R", a, be,
+				       we ? uint32_t(top->io_wdata) : uint32_t(top->io_rdata), top->io_stub ? "  stub" : "", last_pc,
+				       uint32_t(top->trace_lr), (unsigned long long)instr);
 			// COM1: the byte written to THR, LCR followed for DLAB
 			if (we && (a & ~3u) == 0x800003F8 && (be & 8) && !(lcr & 0x80)) {
 				char c = char(top->io_wdata >> 24);

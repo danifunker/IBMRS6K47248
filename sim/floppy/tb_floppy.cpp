@@ -176,7 +176,34 @@ int main(int argc, char **argv) {
 	{ auto r = fres(); if (r.size() == 7) { expect("RO ST0", r[0] & 0xC0, 0x40); expect("RO ST1", r[1], 0x02); } else expect("RO: 7 results", r.size(), 7); }
 	fcmd({0x04, 0x00});
 	{ auto r = fres(); if (r.size() == 1) expect("sense drive: write protected", r[0] & 0x40, 0x40); }
-	printf("%-46s %s\n", "write-protected image", fails != f0 ? "FAIL" : "pass");
+	printf("%-46s %s\n", "write-protected image", fails != f0 ? "FAIL" : "pass"); f0 = fails;
+
+	// 9. the data rate: a 1.44 MB diskette at 1 Mbps (CCR 03) has no address marks to find; at 500 kbps
+	// (CCR 00) READ ID finds one (the firmware probes the density this way, 1 Mbps first)
+	out8(0x3F7, 0x03);
+	fcmd({0x4A, 0x00});
+	{ auto r = fres(); if (r.size() == 7) { expect("1 Mbps: ST0", r[0] & 0xC0, 0x40); expect("1 Mbps: ST1", r[1], 0x01); } else expect("1 Mbps: 7 results", r.size(), 7); }
+	out8(0x3F7, 0x00);
+	fcmd({0x4A, 0x00});
+	{ auto r = fres(); if (r.size() == 7) { expect("500 kbps: ST0", r[0] & 0xC0, 0x00); expect("500 kbps: N", r[6], 2); } else expect("500 kbps: 7 results", r.size(), 7); }
+	printf("%-46s %s\n", "the data rate (READ ID at 1 Mbps, 500 kbps)", fails != f0 ? "FAIL" : "pass"); f0 = fails;
+
+	// 10. the firmware's density check: READ ID, its results read (no SENSE INTERRUPT), then VERIFY of the
+	// track's last sector with MT (D6): each command's result phase must raise IRQ 6 afresh (the 8259 takes
+	// edges), and reading the first result byte drops it
+	fcmd({0x4A, 0x00});
+	{ int n = 0; while (!t->irq6 && n++ < 100000) tick(); expect("READ ID: IRQ 6", t->irq6, 1); }
+	fres();
+	expect("READ ID's results read: IRQ 6 low", t->irq6, 0);
+	fcmd({0xD6, 0x00, 0, 0, 18, 2, 18, 0x1B, 0xFF});
+	{
+		int n = 0; while (!t->irq6 && n++ < 3000000) tick();
+		expect("VERIFY: IRQ 6", t->irq6, 1);
+		auto r = fres();
+		if (r.size() == 7) expect("VERIFY ST0", r[0] & 0xC0, 0x00); else expect("VERIFY: 7 results", r.size(), 7);
+		expect("VERIFY's results read: IRQ 6 low", t->irq6, 0);
+	}
+	printf("%-46s %s\n", "READ ID then VERIFY (MT): an interrupt each", fails != f0 ? "FAIL" : "pass");
 
 	printf(fails ? "%d FAILED\n" : "ALL PASS\n", fails);
 	delete t;

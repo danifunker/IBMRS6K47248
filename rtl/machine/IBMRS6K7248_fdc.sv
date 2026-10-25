@@ -74,6 +74,7 @@ module IBMRS6K7248_fdc
 );
 
 logic [7:0] dor, tdr, ccr;
+logic [1:0] rate;                       // the data rate (DSR or CCR bits 1:0): 0 500 kbps, 1 300, 2 250, 3 1 Mbps
 logic [7:0] cmdb [9];                 // the command's bytes
 logic [3:0] ncmd, need;               // received, and how many it takes
 logic [7:0] res [10];                 // the result
@@ -90,6 +91,11 @@ logic       dchg;                     // the disk change line
 
 // the medium's sectors a track
 wire  [5:0] spt = img_blocks >= 13'd5760 ? 6'd36 : img_blocks >= 13'd2880 ? 6'd18 : img_blocks >= 13'd2400 ? 6'd15 : 6'd9;
+// the medium's data rate: 2.88 MB 1 Mbps, 1.44 MB and 1.2 MB 500 kbps, 720 KB 250 kbps. At another rate the
+// controller finds no address marks (QEMU's fdc: ST0 40, ST1 01, as with no medium): a driver probing the
+// density (the firmware tries 1 Mbps first) needs that answer
+wire  [1:0] mrate = spt == 6'd36 ? 2'd3 : spt == 6'd9 ? 2'd2 : 2'd0;
+wire        no_marks = !img_in || rate != mrate;
 wire        nd  = spec2[0];           // SPECIFY's non-DMA
 
 // the command's length by its first byte (0: invalid)
@@ -176,8 +182,11 @@ always_ff @(posedge clk) begin
 					dor <= wdata;
 				end
 				3'd3: tdr <= wdata;
-				3'd4: if (wdata[7]) begin    // DSR: software reset
-					ncmd <= 4'd0; in_result <= 1'b0; intp <= 1'b1; sensei <= 3'd4; st0 <= 8'hC0; xs <= X_IDLE;
+				3'd4: begin                  // DSR: the data rate; bit 7 a software reset
+					rate <= wdata[1:0];
+					if (wdata[7]) begin
+						ncmd <= 4'd0; in_result <= 1'b0; intp <= 1'b1; sensei <= 3'd4; st0 <= 8'hC0; xs <= X_IDLE;
+					end
 				end
 				3'd5: if (!in_result && !exec && dor[2]) begin
 					cmdb[ncmd] <= wdata;
@@ -239,14 +248,14 @@ always_ff @(posedge clk) begin
 								end
 								else if (cmdb[0][4:0] == 5'h0A) begin                       // READ ID
 									cur <= wdata[1:0];
-									if (!img_in) no_medium(wdata[1:0], wdata[2], track[wdata[0]], {7'd0, wdata[2]}, 8'd1, 8'd2);
+									if (no_marks) no_medium(wdata[1:0], wdata[2], track[wdata[0]], {7'd0, wdata[2]}, 8'd1, 8'd2);
 									else begin
 										res[0] <= {5'd0, wdata[2], wdata[1:0]}; res[1] <= 8'h00; res[2] <= 8'h00;
 										res[3] <= track[wdata[0]]; res[4] <= {7'd0, wdata[2]}; res[5] <= 8'd1; res[6] <= 8'd2;
 										nres <= 4'd7; rpos <= 4'd0; in_result <= 1'b1; intp <= 1'b1;
 									end
 								end
-								else if (!img_in) begin                                     // no medium
+								else if (no_marks) begin                                    // no medium, or another data rate
 									if (cmdb[0][4:0] == 5'h0D) begin
 										cur <= cmdb[1][1:0];
 										no_medium(cmdb[1][1:0], cmdb[1][2], track[cmdb[1][0]], {7'd0, cmdb[1][2]}, 8'd1, cmdb[2]);
@@ -288,7 +297,7 @@ always_ff @(posedge clk) begin
 					end
 					else ncmd <= ncmd + 4'd1;
 				end
-				3'd7: ccr <= wdata;
+				3'd7: begin ccr <= wdata; rate <= wdata[1:0]; end   // CCR: the data rate too
 				default: ;
 			endcase
 		end
@@ -298,7 +307,10 @@ always_ff @(posedge clk) begin
 				3'd3: rdata <= tdr;
 				3'd4: rdata <= msr;
 				3'd5: if (in_result) begin
+					// (a result byte read clears the interrupt, as the 82077's: READ ID's left set would leave
+					// the next command's completion no edge for the 8259; SENSE INTERRUPT clears it at the command)
 					rdata <= res[rpos];
+					intp  <= 1'b0;
 					if (rpos + 4'd1 == nres) in_result <= 1'b0;
 					else rpos <= rpos + 4'd1;
 				end
@@ -383,7 +395,7 @@ always_ff @(posedge clk) begin
 	endcase
 
 	if (reset) begin
-		dor <= 8'h00; tdr <= 8'h00; ccr <= 8'h00; ncmd <= 4'd0; in_result <= 1'b0; intp <= 1'b0;
+		dor <= 8'h00; tdr <= 8'h00; ccr <= 8'h00; rate <= 2'd0; ncmd <= 4'd0; in_result <= 1'b0; intp <= 1'b0;
 		sensei <= 3'd0; st0 <= 8'hC0; track[0] <= 8'd0; track[1] <= 8'd0; cur <= 2'd0;
 		spec1 <= 8'h00; spec2 <= 8'h00; config_r <= 8'h20; precomp <= 8'h00; perp <= 8'h00; lock <= 1'b0;
 		xs <= X_IDLE; dchg <= 1'b1; sec_req <= 1'b0; pf_ok <= 1'b0;
