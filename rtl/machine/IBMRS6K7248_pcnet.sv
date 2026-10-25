@@ -197,7 +197,11 @@ logic [31:0] rdra, tdra;
 logic [9:0]  rlen, tlen;                               // ring lengths, 1-512
 logic [8:0]  rx_idx, tx_idx;                           // the current descriptors
 logic [3:0]  rlen_c, tlen_c;                           // CSR6's codes
-logic [15:0] csr_st [16:47];                           // CSR16-47 as written
+logic [15:0] csr_st [32];                              // CSR16-47 as written, only read back: block RAM
+logic [15:0] cst_q;                                    // the one at RAP (RAP set by an earlier access)
+logic        cst_we;                                   // a write of one, a clock after the access
+logic [4:0]  cst_a;
+logic [15:0] cst_d;
 logic [15:0] bcr2, bcr4, bcr5, bcr6, bcr7, bcr9, bcr19, bcr22;
 logic [7:0]  swstyle;                                  // BCR20 7:0
 logic        ssize32;                                  // BCR20 bit 8
@@ -265,7 +269,7 @@ function automatic logic [15:0] csr_rd(input logic [6:0] n);
 		7'd88:  csr_rd = 16'h1003;                             // the chip ID: 79C970A (QEMU's)
 		7'd89:  csr_rd = 16'h0262;
 		7'd112: csr_rd = csr112;
-		default: csr_rd = (n >= 7'd16 && n <= 7'd47) ? csr_st[n[5:0]] : 16'h0;
+		default: csr_rd = (n >= 7'd16 && n <= 7'd47) ? cst_q : 16'h0;      // (n is RAP: csr_v)
 	endcase
 endfunction
 function automatic logic [15:0] bcr_rd(input logic [6:0] n);
@@ -454,11 +458,20 @@ task automatic csr_write(input logic [6:0] n, input logic [15:0] v);
 		7'd112: if (stop_b) csr112 <= v;
 		default: ;
 	endcase
-	if (n >= 7'd16 && n <= 7'd47) csr_st[n[5:0]] <= v;
+	if (n >= 7'd16 && n <= 7'd47) begin cst_we <= 1'b1; cst_a <= 5'(n - 7'd16); cst_d <= v; end
 endtask
+
+initial begin
+	for (int i = 0; i < 32; i++) csr_st[i] = 16'h0000;
+end
+always_ff @(posedge clk) begin
+	if (cst_we) csr_st[cst_a] <= cst_d;
+	cst_q <= csr_st[5'(rap - 7'd16)];
+end
 
 always_ff @(posedge clk) begin
 	set_ma  <= 1'b0;
+	cst_we  <= 1'b0;
 	txb_we  <= 1'b0;
 	s_reset <= 1'b0;
 

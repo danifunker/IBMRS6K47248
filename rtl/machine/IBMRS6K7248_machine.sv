@@ -470,26 +470,33 @@ logic [3:0]   d_be;
 logic [255:0] d_wdata;
 logic [2:0]   d_k;                      // the word of the line
 logic         d_sel;                    // the word's access, this cycle
-logic         d_sel_q;
 logic [31:0]  line_buf [8];
 
 wire          dev_take = c_req & ~to_mem & ~dev_busy & ~dev_ack;
-wire  [31:0]  p_a  = {d_addr[31:5], d_line ? d_k : d_addr[4:2], 2'b00};
-wire  [31:0]  p_wd = d_line ? d_wdata[255 - 32 * d_k -: 32] : d_wdata[31:0];
-wire  [3:0]   p_be = d_line ? 4'hF : d_be;
+// the word's address, data and byte enables, registered: the devices see them, and d_go, a clock
+// after d_sel (the line's word mux stays out of their decoding)
+logic [31:0]  p_a, p_wd;
+logic [3:0]   p_be;
+logic         d_go, d_go_q;
+always_ff @(posedge clk) begin
+	p_a    <= {d_addr[31:5], d_line ? d_k : d_addr[4:2], 2'b00};
+	p_wd   <= d_line ? d_wdata[255 - 32 * d_k -: 32] : d_wdata[31:0];
+	p_be   <= d_line ? 4'hF : d_be;
+	d_go   <= d_sel & ~reset;
+	d_go_q <= d_go & ~reset;
+end
 
-// A word is done the cycle after its access (d_sel_q), or, for the S3, when it answers
+// A word is done the cycle after the devices see it (d_go_q), or, for the S3, when it answers
 // (its engine may hold the bus: docs/s3_design.md 4.2)
 logic         s3_sel, q_s3, s3_ack;
 logic [31:0]  s3_rdata;
-wire          w_done  = (d_sel_q & ~q_s3) | s3_ack;
+wire          w_done  = (d_go_q & ~q_s3) | s3_ack;
 logic [31:0]  dev_rdata;
 wire  [31:0]  w_rdata = s3_ack ? s3_rdata : dev_rdata;
 
 always_ff @(posedge clk) begin
 	dev_ack <= 1'b0;
 	d_sel   <= 1'b0;
-	d_sel_q <= d_sel;
 	if (dev_take) begin
 		dev_busy <= 1'b1;
 		d_we     <= c_we;
@@ -513,13 +520,12 @@ always_ff @(posedge clk) begin
 		dev_busy <= 1'b0;
 		dev_ack  <= 1'b0;
 		d_sel    <= 1'b0;
-		d_sel_q  <= 1'b0;
 	end
 end
 
 // the S3's request: from the word's access until its answer
 always_ff @(posedge clk) begin
-	if (d_sel & s3_hit) s3_sel <= 1'b1;
+	if (d_go & s3_hit) s3_sel <= 1'b1;
 	if (s3_ack)         s3_sel <= 1'b0;
 	if (reset)          s3_sel <= 1'b0;
 end
@@ -553,7 +559,7 @@ wire         sio_hit  = s_isa && bport[15:1] == 15'h01CC;                       
 wire         lpt_hit  = s_isa && lpt_on && bport[15:2] == lpt_base && bport[1:0] != 2'd3;
 IBMRS6K7248_sio sio (
 	.clk, .reset,
-	.sel(d_sel & sio_hit), .lpt_sel(d_sel & lpt_hit), .we(d_we), .off(bport[1:0]), .wdata(bwd), .rdata(sio_q),
+	.sel(d_go & sio_hit), .lpt_sel(d_go & lpt_hit), .we(d_we), .off(bport[1:0]), .wdata(bwd), .rdata(sio_q),
 	.lpt_on, .lpt_base, .uart1_on, .uart1_base, .uart2_on, .uart2_base, .fdc_on, .fdc_alt, .ide_on, .ide_alt
 );
 
@@ -566,7 +572,7 @@ logic [15:0] dma_dack_data;
 wire        fdc_hit = s_isa && fdc_on && bport[15:3] == (fdc_alt ? 13'h006E : 13'h007E) && bport[2:0] != 3'd6;
 IBMRS6K7248_fdc fdc (
 	.clk, .reset,
-	.sel(d_sel & fdc_hit), .we(d_we), .off(bport[2:0]), .wdata(bwd), .rdata(fdc_q),
+	.sel(d_go & fdc_hit), .we(d_we), .off(bport[2:0]), .wdata(bwd), .rdata(fdc_q),
 	.irq6,
 	.drq(fdc_drq), .dack(dma_dack), .dack_ch(dma_dack_ch), .dack_data(dma_dack_data[7:0]), .tc(dma_tc), .dev_byte(fdc_byte),
 	.img_in(fd_in), .img_ro(fd_ro), .img_blocks(fd_blocks), .img_mounted(fd_mounted),
@@ -580,7 +586,7 @@ wire  [7:0] com1_q;
 logic       com1_irq, com1_out2;
 IBMRS6K7248_uart #(.CLK_HZ(CPU_HZ), .FAST(UART_FAST)) com1 (
 	.clk, .reset,
-	.sel(d_sel & com1_hit), .we(d_we), .addr(bport[2:0]), .wdata(bwd), .rdata(com1_q),
+	.sel(d_go & com1_hit), .we(d_we), .addr(bport[2:0]), .wdata(bwd), .rdata(com1_q),
 	.irq(com1_irq), .out2(com1_out2),
 	.txd(com1_txd), .rxd(com1_rxd),
 	.cts_n(com1_cts_n), .dsr_n(1'b0), .dcd_n(1'b0), .ri_n(1'b1),
@@ -592,7 +598,7 @@ wire        com2_hit = s_isa && uart2_on && bport[15:3] == uart2_base;
 logic       com2_irq, com2_out2;
 IBMRS6K7248_uart #(.CLK_HZ(CPU_HZ), .FAST(UART_FAST)) com2 (
 	.clk, .reset,
-	.sel(d_sel & com2_hit), .we(d_we), .addr(bport[2:0]), .wdata(bwd), .rdata(com2_q),
+	.sel(d_go & com2_hit), .we(d_we), .addr(bport[2:0]), .wdata(bwd), .rdata(com2_q),
 	.irq(com2_irq), .out2(com2_out2),
 	.txd(), .rxd(1'b1),
 	.cts_n(1'b1), .dsr_n(1'b1), .dcd_n(1'b1), .ri_n(1'b1),
@@ -607,7 +613,7 @@ logic [31:0] s3_cfg_q;
 logic        s3_irq;
 IBMRS6K7248_s3 #(.CLK_HZ(CPU_HZ)) s3 (
 	.clk, .reset,
-	.cfg_sel(d_sel & cfg_dev14), .cfg_we(d_we), .cfg_reg(cf8[7:2]), .cfg_be(le_be), .cfg_wdata(le_wd), .cfg_rdata(s3_cfg_q),
+	.cfg_sel(d_go & cfg_dev14), .cfg_we(d_we), .cfg_reg(cf8[7:2]), .cfg_be(le_be), .cfg_wdata(le_wd), .cfg_rdata(s3_cfg_q),
 	.port({p_a[15:2], 2'b00}), .pci_addr({2'b00, p_a[29:0]}), .io_hit(s3_io_hit), .mem_hit(s3_mem_hit),
 	.sel(s3_sel & ~s3_ack), .we(d_we), .is_mem(s_pcimem), .be(p_be), .wdata(p_wd), .rdata(s3_rdata), .ack(s3_ack),
 	.v_req, .v_we, .v_addr, .v_be, .v_wdata, .v_ack, .v_rdata,
@@ -626,9 +632,9 @@ logic [31:0] ncr_cfg_q, ncr_q;
 logic        ncr_irq;
 IBMRS6K7248_ncr810 #(.STO_UNIT(STO_UNIT)) ncr810 (
 	.clk, .reset,
-	.cfg_sel(d_sel & cfg_dev16), .cfg_we(d_we), .cfg_reg(cf8[7:2]), .cfg_be(le_be), .cfg_wdata(le_wd), .cfg_rdata(ncr_cfg_q),
+	.cfg_sel(d_go & cfg_dev16), .cfg_we(d_we), .cfg_reg(cf8[7:2]), .cfg_be(le_be), .cfg_wdata(le_wd), .cfg_rdata(ncr_cfg_q),
 	.io_on(ncr_io_on), .io_base(ncr_io_base),
-	.sel(d_sel & ncr_hit), .we(d_we), .off(p_a[7:2]), .be(p_be), .wdata(p_wd), .rdata(ncr_q), .irq(ncr_irq),
+	.sel(d_go & ncr_hit), .we(d_we), .off(p_a[7:2]), .be(p_be), .wdata(p_wd), .rdata(ncr_q), .irq(ncr_irq),
 	.dm_req(ncr_dm_req), .dm_we(ncr_dm_we), .dm_addr(ncr_dm_addr), .dm_be(ncr_dm_be), .dm_wdata(ncr_dm_wdata),
 	.dm_ack(ncr_dm_ack), .dm_err, .dm_rdata,
 	.sb_sel, .sb_sel_id, .sb_sel_atn, .sb_sel_done, .sb_sel_fail, .sb_bsy, .sb_req, .sb_phase, .sb_tdata,
@@ -643,9 +649,9 @@ logic [31:0] pcn_cfg_q, pcn_q;
 logic        pcn_irq;
 IBMRS6K7248_pcnet pcnet (
 	.clk, .reset,
-	.cfg_sel(d_sel & cfg_dev12), .cfg_we(d_we), .cfg_reg(cf8[7:2]), .cfg_be(le_be), .cfg_wdata(le_wd), .cfg_rdata(pcn_cfg_q),
+	.cfg_sel(d_go & cfg_dev12), .cfg_we(d_we), .cfg_reg(cf8[7:2]), .cfg_be(le_be), .cfg_wdata(le_wd), .cfg_rdata(pcn_cfg_q),
 	.io_on(pcn_io_on), .io_base(pcn_io_base),
-	.sel(d_sel & pcn_hit), .we(d_we), .off(p_a[4:2]), .be(p_be), .wdata(p_wd), .rdata(pcn_q), .irq(pcn_irq),
+	.sel(d_go & pcn_hit), .we(d_we), .off(p_a[4:2]), .be(p_be), .wdata(p_wd), .rdata(pcn_q), .irq(pcn_irq),
 	.dm_req(pcn_dm_req), .dm_we(pcn_dm_we), .dm_addr(pcn_dm_addr), .dm_be(pcn_dm_be), .dm_wdata(pcn_dm_wdata),
 	.dm_ack(pcn_dm_ack), .dm_err, .dm_rdata,
 	.clk_m(clk_v), .tx_pend(en_tx_pend), .tx_len(en_tx_len), .m_tx_a(en_tx_a), .m_tx_q(en_tx_q), .m_tx_done(en_tx_done),
@@ -694,7 +700,7 @@ logic  [7:0] p92;
 
 IBMRS6K7248_pic pic (
 	.clk, .reset,
-	.sel(d_sel & (pic_hit | elcr_hit | (s_iack & ~d_we))), .we(d_we),
+	.sel(d_go & (pic_hit | elcr_hit | (s_iack & ~d_we))), .we(d_we),
 	.slave(elcr_hit ? bport[0] : bport[7]), .a0(bport[0]), .elcr_sel(elcr_hit), .iack(s_iack),
 	.wdata(bwd), .rdata(pic_q),
 	.irq, .intr(ext_irq)
@@ -702,20 +708,20 @@ IBMRS6K7248_pic pic (
 
 IBMRS6K7248_pit #(.CLK_HZ(CPU_HZ)) pit (
 	.clk, .reset,
-	.sel(d_sel & pit_hit), .we(d_we), .p61(bport == 16'h0061), .a(bport[1:0]), .wdata(bwd), .rdata(pit_q),
+	.sel(d_go & pit_hit), .we(d_we), .p61(bport == 16'h0061), .a(bport[1:0]), .wdata(bwd), .rdata(pit_q),
 	.irq0, .spk(speaker)
 );
 
 IBMRS6K7248_kbc #(.CLK_HZ(CPU_HZ)) kbc (
 	.clk, .reset,
-	.sel(d_sel & kbc_hit), .we(d_we), .cmd(bport[2]), .wdata(bwd), .rdata(kbc_q),
+	.sel(d_go & kbc_hit), .we(d_we), .cmd(bport[2]), .wdata(bwd), .rdata(kbc_q),
 	.irq1, .irq12, .rst(kbc_reset),
 	.ps2_key, .ps2_mouse
 );
 
 IBMRS6K7248_rtc #(.CLK_HZ(CPU_HZ), .FAST(RTC_FAST)) rtc (
 	.clk, .reset,
-	.sel(d_sel & rtc_hit), .we(d_we), .port(bport[2:0]), .wdata(bwd), .rdata(rtc_q),
+	.sel(d_go & rtc_hit), .we(d_we), .port(bport[2:0]), .wdata(bwd), .rdata(rtc_q),
 	.irq8, .nmi_mask,
 	.set_time(rtc_set), .time_bcd(rtc_time),
 	.m_addr(nv_m_addr), .m_we(nv_m_we), .m_wdata(nv_m_wdata), .m_q(nv_m_q), .m_ok(nv_m_ok), .wr_seq(nv_wr_seq)
@@ -723,13 +729,13 @@ IBMRS6K7248_rtc #(.CLK_HZ(CPU_HZ), .FAST(RTC_FAST)) rtc (
 
 IBMRS6K7248_eeprom eeprom (
 	.clk, .reset,
-	.sel(d_sel & ee_hit), .we(d_we), .port(bport[2:0]), .wdata(bwd), .rdata(ee_q)
+	.sel(d_go & ee_hit), .we(d_we), .port(bport[2:0]), .wdata(bwd), .rdata(ee_q)
 );
 
 IBMRS6K7248_cs4232 #(.CLK_HZ(CPU_HZ)) cs4232 (
 	.clk, .reset,
-	.cfg_sel(d_sel & d_we & aud_cfg),
-	.sel(d_sel & wss_hit), .we(d_we),  .off(bport[3:0]), .wdata(bwd), .rdata(aud_q),
+	.cfg_sel(d_go & d_we & aud_cfg),
+	.sel(d_go & wss_hit), .we(d_we),  .off(bport[3:0]), .wdata(bwd), .rdata(aud_q),
 	.on(aud_on), .sb_base, .wss_base,
 	.drq(aud_drq), .dack(dma_dack), .dack_ch(dma_dack_ch), .dack_data(dma_dack_data[7:0]), .irq(aud_irq),
 	.cap_drq, .rec_byte,
@@ -739,21 +745,21 @@ IBMRS6K7248_cs4232 #(.CLK_HZ(CPU_HZ)) cs4232 (
 // its Sound Blaster Pro (the DSP, the mixer), MPU-401 and joystick port; the FM chip is the top's
 IBMRS6K7248_sb #(.CLK_HZ(CPU_HZ)) sb (
 	.clk, .reset,
-	.sel(d_sel & sb_hit), .we(d_we), .off(bport[3:0]), .wdata(bwd), .rdata(sb_q),
+	.sel(d_go & sb_hit), .we(d_we), .off(bport[3:0]), .wdata(bwd), .rdata(sb_q),
 	.drq(sb_drq), .rec(sb_rec), .dack(dma_dack), .dack_ch(dma_dack_ch), .dack_data(dma_dack_data[7:0]), .irq(sb_irq),
 	.aud_l(sb_l), .aud_r(sb_r), .fm_vol
 );
 IBMRS6K7248_mpu401 #(.CLK_HZ(CPU_HZ)) mpu (
 	.clk, .reset,
-	.sel(d_sel & mpu_hit), .we(d_we), .a0(bport[0]), .wdata(bwd), .rdata(mpu_q), .irq(mpu_irq),
+	.sel(d_go & mpu_hit), .we(d_we), .a0(bport[0]), .wdata(bwd), .rdata(mpu_q), .irq(mpu_irq),
 	.midi_tx, .midi_rx
 );
 IBMRS6K7248_joy #(.CLK_HZ(CPU_HZ)) joy (
 	.clk, .reset,
-	.sel(d_sel & joy_hit), .we(d_we), .rdata(joy_q),
+	.sel(d_go & joy_hit), .we(d_we), .rdata(joy_q),
 	.joy1, .joy2, .ana1, .ana2
 );
-assign fm_cs    = d_sel & fm_hit;
+assign fm_cs    = d_go & fm_hit;
 assign fm_we    = d_we;
 assign fm_a     = (sb_win && bport[3]) ? {1'b0, bport[0]} : bport[1:0];   // (SB + 8/9: bank 0)
 assign fm_wdata = bwd;
@@ -768,7 +774,7 @@ end
 // the ISA DMA (Fire Coral's 8237s and the 82378's scatter/gather): the codec on channel 1
 IBMRS6K7248_dma dma (
 	.clk, .reset,
-	.sel(d_sel & dma_hit), .we(d_we), .port(bport), .wdata(bwd), .rdata(dma_q),
+	.sel(d_go & dma_hit), .we(d_we), .port(bport), .wdata(bwd), .rdata(dma_q),
 	// channel 2: the floppy; channel 1: the codec's playback or the Sound Blaster's (never both); channel 0: the
 	// codec's capture. A write's byte from the channel being served
 	.dreq({5'd0, fdc_drq, aud_drq | sb_drq, cap_drq}), .dack(dma_dack), .dack_ch(dma_dack_ch), .dack_data(dma_dack_data),
@@ -779,7 +785,7 @@ IBMRS6K7248_dma dma (
 );
 
 always_ff @(posedge clk) begin
-	if (d_sel & d_we & p92_hit) p92 <= bwd;
+	if (d_go & d_we & p92_hit) p92 <= bwd;
 	if (reset) p92 <= 8'h00;
 end
 
@@ -798,7 +804,7 @@ logic [31:0] mem_bus;
 always_ff @(posedge clk) begin
 	if (m_ack & m_we & ~m_line) mem_bus <= m_wdata[31:0];
 	if (m_ack & m_we &  m_line) mem_bus <= m_wdata[31:0];          // a line's last word
-	if (d_sel & d_we & ~d_addr[31]) mem_bus <= p_wd;
+	if (d_go & d_we & ~d_addr[31]) mem_bus <= p_wd;
 end
 
 // ---- PCI configuration: CONFIG_ADDR (CF8) and CONFIG_DATA (CFC), little-endian ----------
@@ -818,7 +824,7 @@ wire        cfg_dev14 = cfc_hit && cfg_on && cf8[15:11] == 5'd14;
 wire        cfg_dev16 = cfc_hit && cfg_on && cf8[15:11] == 5'd16;
 wire        cfg_dev12 = cfc_hit && cfg_on && cf8[15:11] == 5'd12;
 always_ff @(posedge clk) begin
-	if (d_sel & d_we & cf8_hit)
+	if (d_go & d_we & cf8_hit)
 		for (int k = 0; k < 4; k++) if (le_be[k]) cf8[8 * k +: 8] <= le_wd[8 * k +: 8];
 	if (reset) cf8 <= 32'h0;
 end
@@ -826,7 +832,7 @@ end
 logic [31:0] mpc_q, fc_q;
 IBMRS6K7248_mpc105 mpc105 (
 	.clk, .reset,
-	.sel(d_sel & cfg_dev0), .we(d_we), .reg_n(cf8[7:2]), .be(le_be), .wdata(le_wd), .rdata(mpc_q),
+	.sel(d_go & cfg_dev0), .we(d_we), .reg_n(cf8[7:2]), .be(le_be), .wdata(le_wd), .rdata(mpc_q),
 	.bank_en, .bank_start, .bank_end, .picr1
 );
 
@@ -837,9 +843,9 @@ logic  [7:0] fc_io_q;
 wire         fc_io_hit = s_isa && fc_io_on && bport[15:3] == fc_io_base;
 IBMRS6K7248_firecoral firecoral (
 	.clk, .reset,
-	.sel(d_sel & cfg_dev11), .we(d_we), .reg_n(cf8[7:2]), .be(le_be), .wdata(le_wd), .rdata(fc_q),
+	.sel(d_go & cfg_dev11), .we(d_we), .reg_n(cf8[7:2]), .be(le_be), .wdata(le_wd), .rdata(fc_q),
 	.io_on(fc_io_on), .io_base(fc_io_base),
-	.io_sel(d_sel & fc_io_hit), .io_we(d_we), .io_off(bport[2:0]), .io_wdata(bwd), .io_rdata(fc_io_q)
+	.io_sel(d_go & fc_io_hit), .io_we(d_we), .io_off(bport[2:0]), .io_wdata(bwd), .io_rdata(fc_io_q)
 );
 
 // the answer, the cycle after the access
@@ -847,7 +853,7 @@ logic       q_sio, q_com2, q_dev14, q_fdc;
 logic       q_pic, q_pit, q_kbc, q_rtc, q_p92, q_err, q_aud, q_audc, q_ee, q_ide, q_dma, q_sb, q_fm, q_mpu, q_joy;
 logic       q_com1, q_planar, q_pd, q_cf8, q_cfc, q_dev0, q_dev11, q_fcio, q_pcicf, q_iack, q_dev16, q_ncr, q_dev12, q_pcn;
 logic [1:0] q_lane;
-always_ff @(posedge clk) if (d_sel) begin
+always_ff @(posedge clk) if (d_go) begin
 	q_com1  <= com1_hit;
 	q_com2  <= com2_hit;
 	q_fdc   <= fdc_hit;
@@ -885,37 +891,44 @@ always_ff @(posedge clk) if (d_sel) begin
 	q_lane  <= lane;
 end
 
+// (an AND-OR of the answers: one device answers an access; nothing that answers: I/O and bus space
+// read all ones, memory no bank holds the bus's last value)
+wire [31:0] cfc_q = q_dev0 ? swap32(mpc_q) : q_dev11 ? swap32(fc_q) : q_dev14 ? swap32(s3_cfg_q) :
+                    q_dev16 ? swap32(ncr_cfg_q) : q_dev12 ? swap32(pcn_cfg_q) : 32'hFFFF_FFFF;
+wire        q_any = q_com1 | q_com2 | q_fdc | q_sio | q_pic | q_pit | q_kbc | q_rtc | q_ee | q_ide | q_p92 | q_err |
+                    q_aud | q_sb | q_fm | q_mpu | q_joy | q_dma | q_planar | q_pd | q_fcio | q_cf8 | q_cfc | q_ncr |
+                    q_pcn | q_pcicf | q_iack;
+function automatic logic [31:0] when(input logic q, input logic [31:0] v);
+	when = {32{q}} & v;
+endfunction
 always_comb begin
-	if      (q_com1)  dev_rdata = {4{com1_q}};               // every lane: the byte reaches whichever one was asked
-	else if (q_com2)  dev_rdata = {4{com2_q}};
-	else if (q_fdc)   dev_rdata = {4{fdc_q}};
-	else if (q_sio)   dev_rdata = {4{sio_q}};
-	else if (q_pic)   dev_rdata = {4{pic_q}};
-	else if (q_pit)   dev_rdata = {4{pit_q}};
-	else if (q_kbc)   dev_rdata = {4{kbc_q}};
-	else if (q_rtc)   dev_rdata = {4{rtc_q}};
-	else if (q_ee)    dev_rdata = {4{ee_q}};
-	else if (q_ide)   dev_rdata = 32'hFFFF_FFFF;
-	else if (q_p92)   dev_rdata = {4{p92}};
-	else if (q_err)   dev_rdata = 32'h0000_0000;
-	else if (q_aud)   dev_rdata = {4{aud_q}};
-	else if (q_sb)    dev_rdata = {4{sb_q}};
-	else if (q_fm)    dev_rdata = {4{fm_rdata}};
-	else if (q_mpu)   dev_rdata = {4{mpu_q}};
-	else if (q_joy)   dev_rdata = {4{joy_q}};
-	else if (q_dma)   dev_rdata = {4{dma_q}};
-	else if (q_planar) dev_rdata = {4{planar_id}};
-	else if (q_pd)    dev_rdata = {4{simm_pd[q_lane]}};
-	else if (q_fcio)  dev_rdata = {4{fc_io_q}};
-	else if (q_cf8)   dev_rdata = swap32(cf8);
-	else if (q_cfc)   dev_rdata = q_dev0 ? swap32(mpc_q) : q_dev11 ? swap32(fc_q) : q_dev14 ? swap32(s3_cfg_q) :
-	                              q_dev16 ? swap32(ncr_cfg_q) : q_dev12 ? swap32(pcn_cfg_q) : 32'hFFFF_FFFF;
-	else if (q_ncr)   dev_rdata = ncr_q;
-	else if (q_pcn)   dev_rdata = pcn_q;
-	else if (q_pcicf) dev_rdata = 32'hFFFF_FFFF;
-	else if (q_iack)  dev_rdata = {4{pic_q}};             // the vector
-	else if (d_addr[31]) dev_rdata = 32'hFFFF_FFFF;          // I/O and bus space: nothing answers
-	else              dev_rdata = mem_bus;                   // memory no bank holds: the bus floats
+	dev_rdata = when(q_com1,   {4{com1_q}})       |    // every lane: the byte reaches whichever one was asked
+	            when(q_com2,   {4{com2_q}})       |
+	            when(q_fdc,    {4{fdc_q}})        |
+	            when(q_sio,    {4{sio_q}})        |
+	            when(q_pic,    {4{pic_q}})        |
+	            when(q_pit,    {4{pit_q}})        |
+	            when(q_kbc,    {4{kbc_q}})        |
+	            when(q_rtc,    {4{rtc_q}})        |
+	            when(q_ee,     {4{ee_q}})         |
+	            when(q_ide,    32'hFFFF_FFFF)     |
+	            when(q_p92,    {4{p92}})          |
+	            when(q_aud,    {4{aud_q}})        |
+	            when(q_sb,     {4{sb_q}})         |
+	            when(q_fm,     {4{fm_rdata}})     |
+	            when(q_mpu,    {4{mpu_q}})        |
+	            when(q_joy,    {4{joy_q}})        |
+	            when(q_dma,    {4{dma_q}})        |
+	            when(q_planar, {4{planar_id}})    |
+	            when(q_pd,     {4{simm_pd[q_lane]}}) |
+	            when(q_fcio,   {4{fc_io_q}})      |
+	            when(q_cf8,    swap32(cf8))       |
+	            when(q_cfc,    cfc_q)             |
+	            when(q_ncr,    ncr_q)             |
+	            when(q_pcn,    pcn_q)             |
+	            when(q_pcicf,  32'hFFFF_FFFF)     |
+	            when(q_iack,   {4{pic_q}})        |    // the vector
+	            when(!q_any,   d_addr[31] ? 32'hFFFF_FFFF : mem_bus);
 end
 
 

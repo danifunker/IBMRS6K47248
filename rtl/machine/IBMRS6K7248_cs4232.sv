@@ -143,13 +143,36 @@ logic       int_st;                       // R2 bit 0
 wire        mode2 = dr[12][6];
 wire  [4:0] ia    = mode2 ? idx[4:0] : {1'b0, idx[3:0]};
 
+// the registers as written, for reads (block RAM: the logic's own copies are the ones it uses), and
+// which have been written since a reset (else a read gives the reset value)
+logic [7:0]  dr_rb [32];
+logic [7:0]  dr_q;                        // the one at ia (ia set by an earlier access)
+logic [31:0] dr_wr;
+function automatic logic [7:0] dr_rst(input logic [4:0] n);
+	case (n)
+		5'd2, 5'd3, 5'd4, 5'd5, 5'd18, 5'd19: dr_rst = 8'h88;
+		5'd6, 5'd7: dr_rst = 8'h80;
+		5'd9:       dr_rst = 8'h08;
+		5'd26:      dr_rst = 8'hA0;
+		default:    dr_rst = 8'h00;
+	endcase
+endfunction
+initial begin
+	for (int i = 0; i < 32; i++) dr_rb[i] = 8'h00;
+end
+always_ff @(posedge clk) begin
+	if (sel && we && off[1:0] == 2'd1) dr_rb[ia] <= wdata;
+	dr_q <= dr_rb[ia];
+end
+
 // a register's read value
 function automatic logic [7:0] dreg(input logic [4:0] n);
 	case (n)
 		5'd11:   dreg = 8'h00;                                   // no errors, no autocalibration running
 		5'd12:   dreg = {1'b1, dr[12][6], 2'b00, 4'hA};          // MODE2, the codec's ID
+		5'd24:   dreg = dr[24];                                  // (the engines set its bits)
 		5'd25:   dreg = 8'hA2;                                   // the version: a CS4232
-		default: dreg = dr[n];
+		default: dreg = dr_wr[n] ? dr_q : dr_rst(n);              // (n is ia)
 	endcase
 endfunction
 
@@ -167,7 +190,7 @@ always_ff @(posedge clk) begin
 						dr[24] <= wdata;
 						if (dr[24][4] && !wdata[4]) int_st <= 1'b0;     // PI cleared
 					end
-					else if (ia != 5'd11 && ia != 5'd25) dr[ia] <= wdata;
+					else if (ia != 5'd11 && ia != 5'd25) begin dr[ia] <= wdata; dr_wr[ia] <= 1'b1; end
 				end
 				2'd2: begin int_st <= 1'b0; dr[24][6:4] <= 3'b000; end  // the status: INT, PI/CI/TI clear
 				default: ;
@@ -183,7 +206,7 @@ always_ff @(posedge clk) begin
 	if (pl_end) begin int_st <= 1'b1; dr[24][4] <= 1'b1; end      // PI
 	if (cp_end) begin int_st <= 1'b1; dr[24][5] <= 1'b1; end      // CI
 	if (reset) begin
-		idx <= 8'h40; int_st <= 1'b0;
+		idx <= 8'h40; int_st <= 1'b0; dr_wr <= 32'd0;
 		for (int i = 0; i < 32; i++) dr[i] <= 8'h00;
 		dr[2] <= 8'h88; dr[3] <= 8'h88; dr[4] <= 8'h88; dr[5] <= 8'h88;
 		dr[6] <= 8'h80; dr[7] <= 8'h80;                         // the DACs muted

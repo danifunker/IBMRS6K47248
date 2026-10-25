@@ -1052,3 +1052,18 @@ packed 24 bits all show the lines in place and in their colours, 640 pixels acro
 `read` (sectors to memory) fails with error 0xA from both the floppy (drive 0) and the
 SCSI disk (drive 80), so it says nothing about the floppy yet: the floppy's first real
 test is still to come (SMS from a diskette, or an OS).
+
+## 2026-10-24 late: the area-optimizations branch (the framework's features back on)
+
+Without turning anything off: the S3's CR and SR read-back from block-RAM copies (the logic's 34
+CRs stay registers; CR00-07 and the straps CR36/37 read from them), the 8042's queues fed a byte a
+clock through a registered stage (single-port RAMs; the E9 status and F0 00 answers through the
+same pushes), the device bus registered (p_a, p_wd, p_be and d_go a clock after d_sel: one clock
+more per device access), the answer mux an AND-OR, the ISA DMA's scatter/gather and scratch bytes,
+the PCnet's CSR16-47 and the CS4232's indexed registers (read-back, with each register's reset value
+until written) in block RAM. With MISTER_DISABLE_ADAPTIVE/YC/ALSA off again: 38,273 ALMs (91 %; the
+release, with them on, would not fit). The 8042 and S3 decode paths are gone from the CPU clock's
+worst; what is left is the CPU core's own (-3.18 ns, the return stack pointer; then its caches, the
+FPU) and the floppy's decode (-1.98 ns). The bench boots the firmware as before (the snapshot ~700
+clocks later). On .92: the firmware, then AIX from disk to the CDE login; the keyboard and the mouse
+answer there.

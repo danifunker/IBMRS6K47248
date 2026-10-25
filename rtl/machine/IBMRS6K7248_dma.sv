@@ -80,8 +80,11 @@ logic [7:0]  tc_st;                     // the status's TC bits (read clears)
 logic [7:0]  cmd1, cmd2;
 logic        ff1, ff2;                  // the byte pointers
 logic [7:0]  ext1, ext2;                // the extended mode registers (40B, 4D6)
-logic [7:0]  sg [48];                   // 410-43F
-logic [7:0]  scratch [16];              // 80-8F
+// 410-43F and the scratch bytes 80-8F as written, only read back: one block RAM (0-2F, 30-3F)
+logic [7:0]  rb [64];
+logic [7:0]  rb_q;                       // a read of one, a clock later
+logic        rb_rd;                      // ... the read was one of them
+logic [7:0]  rdata_r;                    // the other reads' answers
 logic [7:0]  temp;                      // the last byte read (the temporary register)
 // the engine's (below): the channel served, its step or its TC
 logic [2:0]  ch;
@@ -121,6 +124,18 @@ wire        pg      = port[15:4] == 12'h008;                               // 80
 wire        hpg     = port[15:4] == 12'h048;                               // 480-48F
 wire        sg_p    = port >= 16'h0410 && port <= 16'h043F;
 wire [3:0]  pch     = port_ch(port[3:0]);
+wire        rb_p    = (sg_p && port[5:3] != 3'b011) || (pg && !pch[3]);      // a byte the RAM keeps (not 418-41F, the page registers)
+wire  [5:0] rb_a    = sg_p ? 6'(port - 16'h0410) : {2'b11, port[3:0]};
+initial begin
+	for (int i = 0; i < 64; i++) rb[i] = 8'h00;
+end
+always_ff @(posedge clk) begin
+	if (sel && we && rb_p) rb[rb_a] <= wdata;
+	rb_q  <= rb[rb_a];
+	if (sel) rb_rd <= !we && rb_p;
+	if (reset) rb_rd <= 1'b0;
+end
+assign rdata = rb_rd ? rb_q : rdata_r;
 // a register access: the controller (0 or 1) and its register number (0-15)
 wire        ctl     = d2;
 wire [3:0]  rn      = d2 ? d2r : port[3:0];
@@ -159,7 +174,7 @@ always_ff @(posedge clk) begin
 			end
 			else if (pg) begin
 				if (pch[3]) page[pch[2:0]] <= wdata;
-				else scratch[port[3:0]] <= wdata;
+				// (else a scratch byte: the copy, below)
 			end
 			else if (hpg) begin
 				if (pch[3]) hpage[pch[2:0]] <= wdata;
@@ -167,7 +182,6 @@ always_ff @(posedge clk) begin
 			else if (port == 16'h040B) ext1 <= wdata;
 			else if (port == 16'h04D6) ext2 <= wdata;
 			else if (sg_p) begin
-				sg[6'(port - 16'h0410)] <= wdata;
 				if (port[5:3] == 3'b010) begin             // 410-417: a channel's command
 					if (wdata[1:0] == 2'b01) begin sg_load[port[2:0]] <= 1'b1; sg_on[port[2:0]] <= 1'b1; sg_end[port[2:0]] <= 1'b0; end
 					if (wdata[1:0] == 2'b10) begin sg_on[port[2:0]] <= 1'b0; sg_load[port[2:0]] <= 1'b0; end
@@ -180,31 +194,30 @@ always_ff @(posedge clk) begin
 			end
 		end
 		else begin
-			rdata <= 8'h00;
+			rdata_r <= 8'h00;
 			if (d1 || d2) begin
 				if (rn < 4'd8) begin
-					if (!rn[0]) rdata <= (ctl ? ff2 : ff1) ? cur_a[rch][15:8] : cur_a[rch][7:0];
-					else        rdata <= (ctl ? ff2 : ff1) ? cur_c[rch][15:8] : cur_c[rch][7:0];
+					if (!rn[0]) rdata_r <= (ctl ? ff2 : ff1) ? cur_a[rch][15:8] : cur_a[rch][7:0];
+					else        rdata_r <= (ctl ? ff2 : ff1) ? cur_c[rch][15:8] : cur_c[rch][7:0];
 					if (ctl) ff2 <= ~ff2; else ff1 <= ~ff1;
 				end
 				else case (rn)
 					4'h8: begin                                    // status: requests, TC (cleared by the read)
-						rdata <= ctl ? {dreq[7:4] | req_sw[7:4], tc_st[7:4]} : {dreq[3:0] | req_sw[3:0], tc_st[3:0]};
+						rdata_r <= ctl ? {dreq[7:4] | req_sw[7:4], tc_st[7:4]} : {dreq[3:0] | req_sw[3:0], tc_st[3:0]};
 						if (ctl) tc_st[7:4] <= 4'h0; else tc_st[3:0] <= 4'h0;
 					end
-					4'hD: rdata <= temp;
-					4'hF: rdata <= {4'hF, ctl ? mask[7:4] : mask[3:0]};
-					default: rdata <= 8'h00;
+					4'hD: rdata_r <= temp;
+					4'hF: rdata_r <= {4'hF, ctl ? mask[7:4] : mask[3:0]};
+					default: rdata_r <= 8'h00;
 				endcase
 			end
-			else if (pg)  rdata <= pch[3] ? page[pch[2:0]] : scratch[port[3:0]];
-			else if (hpg) rdata <= pch[3] ? hpage[pch[2:0]] : 8'h00;
-			else if (port == 16'h040B) rdata <= ext1;
-			else if (port == 16'h04D6) rdata <= ext2;
-			else if (sg_p && port[5:3] == 3'b011) rdata <= {4'h0, sg_on[port[2:0]], sg_end[port[2:0]], 2'b00};   // 418-41F: status
-			else if (sg_p) rdata <= sg[6'(port - 16'h0410)];
-			else if (port == 16'h040A) begin rdata <= {4'h0, sg_int[3:0]}; sg_int[3:0] <= 4'h0; end
-			else if (port == 16'h04D4) begin rdata <= {sg_int[7:4], 4'h0}; sg_int[7:4] <= 4'h0; end
+			else if (pg)  rdata_r <= pch[3] ? page[pch[2:0]] : 8'h00;
+			else if (hpg) rdata_r <= pch[3] ? hpage[pch[2:0]] : 8'h00;
+			else if (port == 16'h040B) rdata_r <= ext1;
+			else if (port == 16'h04D6) rdata_r <= ext2;
+			else if (sg_p && port[5:3] == 3'b011) rdata_r <= {4'h0, sg_on[port[2:0]], sg_end[port[2:0]], 2'b00};   // 418-41F: status
+			else if (port == 16'h040A) begin rdata_r <= {4'h0, sg_int[3:0]}; sg_int[3:0] <= 4'h0; end
+			else if (port == 16'h04D4) begin rdata_r <= {sg_int[7:4], 4'h0}; sg_int[7:4] <= 4'h0; end
 		end
 	end
 

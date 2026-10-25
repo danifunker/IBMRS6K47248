@@ -249,6 +249,10 @@ localparam int QN = 16;
 logic [7:0] kq [QN], mq [QN];
 logic [3:0] kq_r, kq_w, mq_r, mq_w;
 logic [4:0] kq_n, mq_n;
+logic [2:0] kp_n, mp_n;                 // the pushes registered (below)
+logic [7:0] kp [4], mp [4];
+logic [7:0] ks [8], ms [8];             // ... and staged for the queues
+logic [3:0] ks_n, ms_n;
 
 logic [7:0] obuf;
 logic       obf, ob_aux;
@@ -280,16 +284,18 @@ end
 wire key_ev   = kt[2] != kt[1];
 wire mouse_ev = mt[2] != mt[1];
 
-// queue pushes: up to three bytes into one queue in a cycle, from these
+// queue pushes: up to four bytes for one queue in a cycle, from these (registered, then fed into the
+// queue a byte a clock through a small stage: the queues are single-port RAMs)
 logic [2:0] kpush_n, mpush_n;
-logic [7:0] kpush [3], mpush [3];
+logic [7:0] kpush [4], mpush [4];
 
 always_comb begin
-	kpush_n = 3'd0; kpush[0] = 8'h00; kpush[1] = 8'h00; kpush[2] = 8'h00;
-	mpush_n = 3'd0; mpush[0] = 8'h00; mpush[1] = 8'h00; mpush[2] = 8'h00;
+	kpush_n = 3'd0; kpush[0] = 8'h00; kpush[1] = 8'h00; kpush[2] = 8'h00; kpush[3] = 8'h00;
+	mpush_n = 3'd0; mpush[0] = 8'h00; mpush[1] = 8'h00; mpush[2] = 8'h00; mpush[3] = 8'h00;
 	// the keyboard's answer to a byte written to 60 (no controller command pending)
 	if (sel & we & ~cmd & pend == 8'h00) begin
-		if (k_wait == 8'hF0 && wdata == 8'h00) begin end      // the scan set, asked: below
+		// the scan set, asked (F0 00): the keyboard answers its set (2 or 3) after its FA
+		if (k_wait == 8'hF0 && wdata == 8'h00) begin kpush_n = 3'd2; kpush[0] = 8'hFA; kpush[1] = k_set3 ? 8'h03 : 8'h02; end
 		else if (k_wait != 8'h00) begin kpush_n = 3'd1; kpush[0] = 8'hFA; end
 		else if (k_list && !k_cmd(wdata)) begin kpush_n = 3'd1; kpush[0] = 8'hFA; end   // a key code after FB/FC/FD
 		else case (wdata)
@@ -303,7 +309,7 @@ always_comb begin
 		endcase
 	end
 	// a key
-	else if (key_ev && k_on && kq_n <= 5'(QN - 3)) begin
+	else if (key_ev && k_on && kq_n + 5'(ks_n) <= 5'(QN - 3)) begin
 		if (k_set3 && !cbyte[6]) begin
 			// set 3 (AIX): the code, F0 before it for a release; keys without a set 3 code are dropped
 			logic [7:0] c3;
@@ -334,12 +340,14 @@ always_comb begin
 		else case (wdata)
 			8'hFF:   begin mpush_n = 3'd3; mpush[0] = 8'hFA; mpush[1] = 8'hAA; mpush[2] = 8'h00; end
 			8'hF2:   begin mpush_n = 3'd2; mpush[0] = 8'hFA; mpush[1] = 8'h00; end
-			8'hE9:   begin mpush_n = 3'd1; mpush[0] = 8'hFA; end    // the status bytes follow (below)
-			8'hEB:   begin mpush_n = 3'd1; mpush[0] = 8'hFA; end
+			// the status bytes after E9's FA, a packet after EB's
+			8'hE9:   begin mpush_n = 3'd4; mpush[0] = 8'hFA; mpush[1] = {1'b0, ~m_on, m_on, m_scale, 4'h0};
+			               mpush[2] = m_res; mpush[3] = m_rate; end
+			8'hEB:   begin mpush_n = 3'd4; mpush[0] = 8'hFA; mpush[1] = 8'h08; mpush[2] = 8'h00; mpush[3] = 8'h00; end
 			default: begin mpush_n = 3'd1; mpush[0] = 8'hFA; end
 		endcase
 	end
-	else if (mouse_ev && m_on && mq_n <= 5'(QN - 3)) begin
+	else if (mouse_ev && m_on && mq_n + 5'(ms_n) <= 5'(QN - 3)) begin
 		mpush_n = 3'd3;
 		mpush[0] = ps2_mouse[7:0] | 8'h08;
 		mpush[1] = ps2_mouse[15:8];
@@ -368,16 +376,38 @@ always_comb begin
 	end
 end
 
+// the pushes registered, then staged (up to 8 bytes a queue) and written a byte a clock
+wire        k_pop = ks_n != 4'd0;
+wire        m_pop = ms_n != 4'd0;
+wire  [3:0] ks_b  = ks_n - {3'd0, k_pop};       // where the new bytes go, after this clock's pop
+wire  [3:0] ms_b  = ms_n - {3'd0, m_pop};
+always_ff @(posedge clk) begin
+	kp_n <= kpush_n; mp_n <= mpush_n;
+	for (int i = 0; i < 4; i++) begin kp[i] <= kpush[i]; mp[i] <= mpush[i]; end
+	for (int i = 0; i < 8; i++) begin
+		ks[i] <= k_pop ? (i < 7 ? ks[i + 1] : 8'h00) : ks[i];
+		ms[i] <= m_pop ? (i < 7 ? ms[i + 1] : 8'h00) : ms[i];
+	end
+	for (int j = 0; j < 4; j++) begin
+		if (3'(j) < kp_n) ks[3'(ks_b + 4'(j))] <= kp[j];
+		if (3'(j) < mp_n) ms[3'(ms_b + 4'(j))] <= mp[j];
+	end
+	ks_n <= ks_b + {1'b0, kp_n};
+	ms_n <= ms_b + {1'b0, mp_n};
+	if (reset) begin kp_n <= 3'd0; mp_n <= 3'd0; ks_n <= 4'd0; ms_n <= 4'd0; end
+end
+// the queues: one write a clock (the stage's first byte), one read
+always_ff @(posedge clk) begin
+	if (k_pop) kq[kq_w] <= ks[0];
+	if (m_pop) mq[mq_w] <= ms[0];
+end
+
 always_ff @(posedge clk) begin
 	rst <= 1'b0;
 
 	// queues in
-	for (int i = 0; i < 3; i++) begin
-		if (i[2:0] < kpush_n) kq[kq_w + i[3:0]] <= kpush[i];
-		if (i[2:0] < mpush_n) mq[mq_w + i[3:0]] <= mpush[i];
-	end
-	kq_w <= kq_w + 4'(kpush_n);
-	mq_w <= mq_w + 4'(mpush_n);
+	if (k_pop) kq_w <= kq_w + 4'd1;
+	if (m_pop) mq_w <= mq_w + 4'd1;
 
 	// the output buffer: a controller answer at once; else the next queued byte after the gap
 	if (gap != 16'd0) gap <= gap - 16'd1;
@@ -465,19 +495,6 @@ always_ff @(posedge clk) begin
 		end
 	end
 
-	// the mouse's status bytes after E9's FA, its packet after EB's
-	if (sel & we & ~cmd & pend == 8'hD4 & m_wait == 8'h00 & (wdata == 8'hE9 | wdata == 8'hEB)) begin
-		mq[4'(mq_w + 4'd1)] <= wdata == 8'hE9 ? {1'b0, ~m_on, m_on, m_scale, 4'h0} : 8'h08;
-		mq[4'(mq_w + 4'd2)] <= wdata == 8'hE9 ? m_res : 8'h00;
-		mq[4'(mq_w + 4'd3)] <= wdata == 8'hE9 ? m_rate : 8'h00;
-		mq_w <= mq_w + 4'd4;
-	end
-	// the scan set, asked (F0 00): the keyboard answers its set (2 or 3) after its FA
-	if (sel & we & ~cmd & pend == 8'h00 & k_wait == 8'hF0 & wdata == 8'h00) begin
-		kq[kq_w] <= 8'hFA;
-		kq[4'(kq_w + 4'd1)] <= k_set3 ? 8'h03 : 8'h02;
-		kq_w <= kq_w + 4'd2;
-	end
 
 	if (reset) begin
 		kq_r <= '0; kq_w <= '0; mq_r <= '0; mq_w <= '0;

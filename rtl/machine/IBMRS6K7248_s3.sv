@@ -124,7 +124,10 @@ wire mem_on = pci_cmd[1];
 logic [7:0] misc;                   // 3C2 / 3CC
 logic [7:0] sr [32];
 logic [4:0] sr_idx;
-logic [7:0] cr [128];
+logic [7:0] cr [128];               // (the ones the logic reads stay registers; the rest are only read back:)
+logic [7:0] cr_rb [128];            // every CR's value for reads, in block RAM
+logic [7:0] sr_rb [32];             // ... and every SR's
+logic [7:0] cr_q, sr_q;             // the CR at cr_idx, the SR at sr_idx (a clock after either changes)
 logic [6:0] cr_idx;
 logic [7:0] gr [16];
 logic [3:0] gr_idx;
@@ -293,7 +296,7 @@ always_comb begin
 	else if (bp == 16'h03C2)            rb = {vint, 7'h00};                    // input status 0
 	else if (bp == 16'h03C3)            rb = 8'h01;
 	else if (bp == 16'h03C4)            rb = {3'd0, sr_idx};
-	else if (bp == 16'h03C5)            rb = sr[sr_idx];
+	else if (bp == 16'h03C5)            rb = sr_q;
 	// (3C6 with RS2 the command register; without, the mask, or after four reads in a row of it 00 00 70
 	// (the SDAC's ID) and then the command register: the ATT20C490 family's hidden access, 86Box's)
 	else if (bp == 16'h03C6)            rb = cr[7'h55][0] ? sdac_cmd :
@@ -307,7 +310,10 @@ always_comb begin
 	else if (bp == 16'h03CE)            rb = {4'd0, gr_idx};
 	else if (bp == 16'h03CF)            rb = gr[gr_idx];
 	else if (bp == crt_base + 16'h4)    rb = {1'b0, cr_idx};
-	else if (bp == crt_base + 16'h5)    rb = cr_idx == 7'h30 ? 8'hC0 : cr[cr_idx];
+	// (CR00-07 and the straps CR36/37 from their registers: a reset sets them, and CR11's protect bit
+	// can refuse a write; the rest from the copy)
+	else if (bp == crt_base + 16'h5)    rb = cr_idx == 7'h30 ? 8'hC0 : cr_idx <= 7'h07 ? cr[{4'd0, cr_idx[2:0]}] :
+	                                         cr_idx == 7'h36 ? cr[7'h36] : cr_idx == 7'h37 ? cr[7'h37] : cr_q;
 	// input status 1; 3DB, not decoded, answers the same (the chip's one read byte on every lane): AIX's
 	// X server polls the retrace with a halfword read of 3DA and tests the low byte, 3DB's
 	else if (bp == crt_base + 16'hA ||
@@ -369,6 +375,19 @@ assign e_ack   = v_ack & own_e;
 
 // palette reads: the colour at the read index
 always_ff @(posedge clk) pal_q <= palette[dac_ridx];
+
+// the CR and SR copies for reads: written with the registers (a byte of an I/O write in A_IO), read at
+// the index (set by an earlier access)
+initial begin
+	for (int i = 0; i < 128; i++) cr_rb[i] = 8'h00;
+	for (int i = 0; i < 32; i++) sr_rb[i] = 8'h00;
+end
+always_ff @(posedge clk) begin
+	if (ast == A_IO && we && bp == crt_base + 16'h5) cr_rb[cr_idx] <= bw;
+	if (ast == A_IO && we && bp == 16'h03C5)         sr_rb[sr_idx] <= bw;
+	cr_q <= cr_rb[cr_idx];
+	sr_q <= sr_rb[sr_idx];
+end
 
 always_ff @(posedge clk) begin
 	ack   <= 1'b0;
