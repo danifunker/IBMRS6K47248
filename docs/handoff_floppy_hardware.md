@@ -31,9 +31,13 @@ good 1.44 MB diskette. Three controller changes are on `floppy-fix`, all in
   - the boot record (sector 0), the FAT (1-9) and the root directory (19-32);
   - all of DIAGS.6XE (33-214) and SETDIAG.PPC (557-946), each exactly its cluster chain.
 
-  Every READ DATA (C6) ends with ST0 00 or 04. The SMS diskette animation shows, and SETDIAG.PPC
-  runs from RAM. The bench was stopped there (at ~550,000 clocks a second it is too slow to wait
-  for the SMS menu).
+  Every READ DATA (C6) ends with ST0 00 or 04. These reads are the new evidence. The screen
+  itself (the "insert a diskette" animation) is the same one the board always showed, so it
+  proves nothing.
+- **After SETDIAG.PPC is read**, the firmware stops the motor (clock 1.41G) and runs code at
+  0x2xxxxx and in the firmware (progress FE) for 800M more clocks (~8 s at 100 MHz). It doesn't
+  touch the floppy again or change the screen in that time, and ENGLISH.6XE is never read. Whether
+  that is SMS starting slowly or a hang is unknown; the bench was stopped there.
 - The controller's own bench `sim/floppy/run.sh` passes all 10 tests.
 
 Not yet seen anywhere: the SMS menu itself, and the resident monitor's `dir a:`. Both need the
@@ -50,8 +54,10 @@ board.
 ## Tests on the board, in order
 
 1. **SMS from diskette.** Reset, press F1 while the POST icons are drawn (keyboard … speaker).
-   Expect the diskette animation and then the System Management Services menu. Note how long it
-   takes, and whether it hangs on the animation (the bench got as far as SETDIAG.PPC running).
+   The diskette animation shows first, as it always has. The question is what comes after it:
+   the System Management Services menu, an error code, or the animation forever. On the bench the
+   firmware read DIAGS.6XE and SETDIAG.PPC and then went quiet. If the board stays on the
+   animation, wait at least a minute, and note whether the floppy activity stops.
 2. **The resident monitor.** Reset, press F4 at the icons, and type `eatabug` as soon as the
    diskette animation shows (it times out after ~20 s). Then:
    - `dir a:`: expect a listing including DIAGS.6XE (92968), ENGLISH.6XE (133312), FLASH.6XE
