@@ -28,11 +28,14 @@ typedef VIBMRS6K7248_system Top;
 #include "verilated_fst_c.h"
 #endif
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <csignal>
 #include <cstring>
+#include <fcntl.h>
+#include <unistd.h>
 #include <map>
 #include <string>
 #include <vector>
@@ -103,6 +106,9 @@ static void usage() {
 	       "  --daddr N    print the data accesses (D R/W physical address, pc, instr) up to instruction N (--daddr-from M: from M)\n"
 	       "  --exc N      print the first N exceptions (X vector from PC instr msr; --exc-from M: from instruction M)\n"
 	       "  --key-at CLOCK:CODE[:e]  press a PS/2 key (set 2 code, hex; e: extended) at that clock, release it 300,000 later; repeatable\n"
+	       "  --keys FIFO  type while it runs: each line written to FIFO (mkfifo; e.g. echo 'dir a:' > FIFO) is typed and\n"
+	       "               Enter pressed; a line that is a key's name (F1-F12 ESC ENTER BKSP TAB UP DOWN LEFT RIGHT) or #CODE\n"
+	       "               (set 2, hex; #eCODE extended) presses that key alone. With --frame FILE to watch the screen\n"
 	       "  --cpu-mhz A --mem-mhz B  the two clocks at their own rates, as on the board (70 and 100); default both one clock\n"
 	       "  --com1-at CLOCK:BYTE     a byte (hex) into COM1 at that clock, at the bench's line rate (16 clocks a bit); repeatable\n"
 	       "  --stall N    stop when no new PC was retired in the last N instructions (default 2,000,000; 0 never)\n");
@@ -132,7 +138,7 @@ int main(int argc, char** argv) {
 	uint32_t prev_insn = 0, prev_pc = 0;
 	uint64_t exc_left = 0, exc_from = 0;
 	unsigned cpu_mhz = 0, mem_mhz = 0;               // 0: the two clocks as one
-	struct KeyAt { uint64_t clock; unsigned code; bool ext; };
+	struct KeyAt { uint64_t clock; unsigned code; bool ext; uint64_t hold = 300000; };
 	std::vector<KeyAt> keys;                      // --key-at
 	struct ByteAt { uint64_t clock; unsigned byte; };
 	std::vector<ByteAt> com1_in;                  // --com1-at
@@ -144,6 +150,7 @@ int main(int argc, char** argv) {
 	const char* restore_path = nullptr;            // start from a snapshot instead of from reset
 	const char* vram_path = nullptr;               // the S3's VRAM at the end, raw
 	const char* frame_path = nullptr;              // the latest whole frame of the picture (PPM)
+	const char* keys_path = nullptr;               // --keys: a FIFO read while running, its lines typed
 	const char* com1_path = nullptr;               // COM1's bytes as sent (tools/vt.py draws the screen)
 	const char* img_path[3] = {nullptr, nullptr, nullptr};   // the SCSI images
 	bool disk_rw = false;
@@ -170,6 +177,7 @@ int main(int argc, char** argv) {
 		else if (a == "--com1") com1_path = next();
 		else if (a == "--vram") vram_path = next();
 		else if (a == "--frame") frame_path = next();
+		else if (a == "--keys") keys_path = next();
 		else if (a == "--save") save_path = next();
 		else if (a == "--save-pc") save_pc = strtoul(next(), nullptr, 16);
 		else if (a == "--save-clock") save_clock = strtoull(next(), nullptr, 0);
@@ -439,11 +447,71 @@ int main(int argc, char** argv) {
 	unsigned fd_prev_a = 0, fd_req_seen = 0, fd_lba = 0;
 	bool fd_mount_done = false, fd_wr = false;
 	uint64_t fd_due = 0, fd_ops = 0;
+	// --keys: the FIFO opened read-write (no writer needed, never at EOF), read without blocking
+	int keys_fd = -1;
+	std::string keys_line;
+	uint64_t keys_next = 0;                         // the clock the next typed key may go at
+	if (keys_path) {
+		keys_fd = open(keys_path, O_RDWR | O_NONBLOCK);
+		if (keys_fd < 0) { fprintf(stderr, "cannot open %s (mkfifo it first)\n", keys_path); return 1; }
+		printf("  keys from %s\n", keys_path);
+	}
 	for (cycle = cycle0; cycle < max_cycles; cycle++) {
 		if (stop_req) { why = "a signal"; break; }
+		// --keys: every 1M clocks, the FIFO's whole lines as keys, 600,000 clocks apart (a shifted one with the
+		// left shift held around it)
+		if (keys_fd >= 0 && cycle % 1000000 == 0) {
+			char b[256];
+			ssize_t n;
+			while ((n = read(keys_fd, b, sizeof b)) > 0) keys_line.append(b, size_t(n));
+			size_t nl;
+			while ((nl = keys_line.find('\n')) != std::string::npos) {
+				std::string l = keys_line.substr(0, nl);
+				keys_line.erase(0, nl + 1);
+				while (!l.empty() && (l.back() == '\r' || l.back() == ' ')) l.pop_back();
+				if (keys_next < cycle) keys_next = cycle;
+				auto key = [&](unsigned code, bool ext, bool shift) {
+					if (shift) { keys.push_back({keys_next, 0x12, false, 900000}); keys_next += 300000; }
+					keys.push_back({keys_next, code, ext});
+					keys_next += shift ? 600000 + 300000 : 600000;
+				};
+				static const std::map<std::string, unsigned> names = {
+					{"F1", 0x05}, {"F2", 0x06}, {"F3", 0x04}, {"F4", 0x0C}, {"F5", 0x03}, {"F6", 0x0B}, {"F7", 0x83},
+					{"F8", 0x0A}, {"F9", 0x01}, {"F10", 0x09}, {"F11", 0x78}, {"F12", 0x07}, {"ESC", 0x76},
+					{"ENTER", 0x5A}, {"BKSP", 0x66}, {"TAB", 0x0D}, {"UP", 0x175}, {"DOWN", 0x172}, {"LEFT", 0x16B},
+					{"RIGHT", 0x174}};
+				auto nm = names.find(l);
+				if (nm != names.end()) key(nm->second & 0xFF, nm->second > 0xFF, false);
+				else if (l.size() > 1 && l[0] == '#') {
+					bool ext = l[1] == 'e';
+					key(unsigned(strtoul(l.c_str() + (ext ? 2 : 1), nullptr, 16)), ext, false);
+				}
+				else {
+					// set 2 codes: unshifted, then the shifted characters by the unshifted key
+					static const char* plain = "abcdefghijklmnopqrstuvwxyz1234567890 -=[]\\;',./`";
+					static const unsigned pcode[] = {0x1C, 0x32, 0x21, 0x23, 0x24, 0x2B, 0x34, 0x33, 0x43, 0x3B, 0x42, 0x4B,
+						0x3A, 0x31, 0x44, 0x4D, 0x15, 0x2D, 0x1B, 0x2C, 0x3C, 0x2A, 0x1D, 0x22, 0x35, 0x1A, 0x16, 0x1E,
+						0x26, 0x25, 0x2E, 0x36, 0x3D, 0x3E, 0x46, 0x45, 0x29, 0x4E, 0x55, 0x54, 0x5B, 0x5D, 0x4C, 0x52,
+						0x41, 0x49, 0x4A, 0x0E};
+					static const char* shifted = "!@#$%^&*()_+{}|:\"<>?~";
+					static const char* unshift = "1234567890-=[]\\;',./`";
+					for (char ch : l) {
+						bool sh = false;
+						if (ch >= 'A' && ch <= 'Z') { ch = char(ch - 'A' + 'a'); sh = true; }
+						else if (const char* q = strchr(shifted, ch); q && ch) { ch = unshift[q - shifted]; sh = true; }
+						const char* q = ch ? strchr(plain, ch) : nullptr;
+						if (q) key(pcode[q - plain], false, sh);
+					}
+					key(0x5A, false, false);
+				}
+				printf("  keys: \"%s\" from clock %llu\n", l.c_str(), (unsigned long long)cycle);
+			}
+			// the keys long done
+			keys.erase(std::remove_if(keys.begin(), keys.end(), [&](const KeyAt& k) { return k.clock + k.hold < cycle; }), keys.end());
+		}
 		// --key-at: the make at its clock, the break 300,000 clocks later (hps_io's ps2_key: a toggle, pressed, extended, the code)
 		for (auto& k : keys) {
-			if (cycle == k.clock || cycle == k.clock + 300000) {
+			if (cycle == k.clock || cycle == k.clock + k.hold) {
 				ps2_toggle ^= 1;
 				bool make = cycle == k.clock;
 				top->ps2_key = (ps2_toggle << 10) | (make ? 1u << 9 : 0) | (k.ext ? 1u << 8 : 0) | (k.code & 0xFF);

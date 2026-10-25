@@ -1067,3 +1067,22 @@ worst; what is left is the CPU core's own (-3.18 ns, the return stack pointer; t
 FPU) and the floppy's decode (-1.98 ns). The bench boots the firmware as before (the snapshot ~700
 clocks later). On .92: the firmware, then AIX from disk to the CDE login; the keyboard and the mouse
 answer there.
+
+## 2026-10-25: the floppy on the bench: SMS loads from the diskette
+
+`floppy-fix` (the data rate checked, a result byte read clearing the interrupt) with the
+7020-40P SMS 1.28 diskette (`sms128.img`, 1.44 MB) in drive A:, built on macOS (Verilator
+5.052, `make machine_tb BUILD=build GCC_MEM=`; ~550,000 clocks a second). The boot probe
+(`detmedia`, RAM 1573C): READ ID at 1 Mbps fails (40 01), at 500 kbps passes, then VERIFY of
+track 0's last sector with MT (D6) answers at once (04 00 00 01 01 01 02) and the drive keeps
+type 2 (1.44 MB); `read_floppy_cmd_check` wants 7 results with ST0 bits 7:6 clear. The ~19,800
+MSR polls after each result phase are `wait_for_result_byte` (RAM 169D8) waiting its 50 ms for an
+eighth byte: the firmware reads results until none come, harmless. With F1 pressed at the
+icons (`--key-at`, clocks 720-960 M) the firmware reads the boot record (sector 0), the FAT
+(1-9), the root directory (19-32), then the SMS files (to sector 946 by 1.41 G clocks), every
+READ DATA (C6) ending ST0 00/04, and shows the SMS diskette animation.
+
+The controller now also ends a multi-track transfer past head 1's EOT with H back to 0 (C+1,
+R 1), the 82077's and QEMU's (VERIFY's result is 04 00 00 01 00 01 02); sim/floppy checks it.
+The bench takes keys while it runs: `--keys FIFO` (mkfifo), each line typed and Enter, or a
+key's name (F1, ESC, ...) alone; with `--frame` to watch the screen.

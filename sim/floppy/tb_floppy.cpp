@@ -200,7 +200,12 @@ int main(int argc, char **argv) {
 		int n = 0; while (!t->irq6 && n++ < 3000000) tick();
 		expect("VERIFY: IRQ 6", t->irq6, 1);
 		auto r = fres();
-		if (r.size() == 7) expect("VERIFY ST0", r[0] & 0xC0, 0x00); else expect("VERIFY: 7 results", r.size(), 7);
+		if (r.size() == 7) {
+			expect("VERIFY ST0", r[0] & 0xC0, 0x00);
+			// past head 1's EOT: C+1, H back to 0, R 1
+			expect("VERIFY C", r[3], 1); expect("VERIFY H", r[4], 0); expect("VERIFY R", r[5], 1);
+		}
+		else expect("VERIFY: 7 results", r.size(), 7);
 		expect("VERIFY's results read: IRQ 6 low", t->irq6, 0);
 	}
 	printf("%-46s %s\n", "READ ID then VERIFY (MT): an interrupt each", fails != f0 ? "FAIL" : "pass");
