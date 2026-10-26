@@ -1,8 +1,20 @@
 # What this core needs from Main_MiSTer
 
 Most of the core runs on a stock Main. Its image entries are `SC` rows, which stock Main remembers
-and mounts again at every core load. The NVRAM file is one of those mounts. Only the Ethernet bridge
-needs code in Main.
+and mounts again at every core load. The NVRAM file is one of those mounts.
+
+**Main_MiSTer branch `ibmrs6k`** (cut from master `8328d9f`, commit `4043afc`) has this core's own
+`support/ibmrs6k/`, its hooks beside hp9k's in `user_io.cpp` and `support.h`:
+
+- the Ethernet bridge below (`ibmrs6k_enet`);
+- the CD-ROM slot (SC2): ISO, CUE/BIN and CHD, with the track table and CD-audio windows the SCSI
+  target reads (`ibmrs6k_cdrom`, a copy of `support/hp9k`'s CD layer). With a stock Main the CD is
+  one data track and only flat images work;
+- the hard-disk write buffer for SC0 and SC1 (`ibmrs6k_disk`, a copy of `support/hp9k`'s).
+
+Each hook is gated on the RBF name `IBMRS6K7248`. The branch builds clean with the ARM toolchain;
+it hasn't been run on a board yet. The files here are the bridge as first written; the branch is
+the reference.
 
 ## The Ethernet bridge (`Main_MiSTer/support/ibmrs6k/`)
 
