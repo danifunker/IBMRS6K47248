@@ -54,7 +54,7 @@ The core is `releases/IBMRS6K7248_<date>.rbf` (the newest date); copy it to `_Un
 
 Put the files in `games/IBMRS6K7248/`:
 
-- `boot.rom`: the 7248's firmware (512 KB). It loads at every start.
+- `boot.rom`: the 7248's firmware (512 KB, v1.12, P93H7075; `releases/boot.rom`). It loads at every start.
 - A disk image for AIX, made with `dd if=/dev/zero of=AIX.img bs=1M count=4096`.
 - `IBMRS6K7248.nvr`: the NVRAM image, made with `dd if=/dev/zero of=IBMRS6K7248.nvr bs=512 count=9`.
   The core fills it on first mount.
