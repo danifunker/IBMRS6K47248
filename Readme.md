@@ -49,6 +49,9 @@ Work in progress: just started (2026-10-16).
 
 ## Using it on the MiSTer
 
+The core is `releases/IBMRS6K7248_<date>.rbf` (the newest date); copy it to `_Unstable/` (or
+`_Computer/`) on the SD card.
+
 Put the files in `games/IBMRS6K7248/`:
 
 - `boot.rom`: the 7248's firmware (512 KB). It loads at every start.
@@ -56,6 +59,16 @@ Put the files in `games/IBMRS6K7248/`:
 - `IBMRS6K7248.nvr`: the NVRAM image, made with `dd if=/dev/zero of=IBMRS6K7248.nvr bs=512 count=9`.
   The core fills it on first mount.
 - The AIX install CD, as an ISO.
+- For the System Management Services: `releases/7248_SMS_v1.07.img`, the 7248's SMS diskette,
+  version 1.07 (a raw 1.44 MB FAT12 image, MD5 `77a5682c00c610c18341ea6dbb776a16`). Mount it as
+  `Floppy`. F4 at the POST icons (after the keyboard icon, before the speaker) gives the text SMS;
+  F1 at the icons, or a plain boot with the diskette in, the graphical SMS. It is `sms107.dd` from
+  IBM's firmware 1.11 package for the 7248 (`7248100.bin`, mirrored at
+  http://ps-2.kev009.com/rs6000-firmware/; the ZIP password is the one IBM published,
+  `**RS/6000**`). Don't use the 7020-40P's SMS diskettes: SMS 1.28 calls ROM services the 7248's
+  firmware (v1.12) lacks, and its configuration menus stop in the firmware's debugger (ABEND
+  0001000A). The same package's `fw-111.dd` is a flash update diskette (firmware 1.11, older
+  than the core's 1.12): don't boot it.
 
 ### The OSD
 
@@ -67,7 +80,7 @@ Mounted images are remembered and mounted again at every core load.
 | top | `Pri. disk (ID 0)` | the SCSI disk at ID 0, hdisk0 under AIX. "Pri." is the usual boot disk; the firmware's boot list (SMS) can boot another device |
 | top | `Disk (ID 1)` | a second SCSI disk |
 | top | `CD-ROM (ID 3)` | the CD image (the AIX install CD) |
-| top | `Floppy` | drive A:'s diskette image (720 KB, 1.2 MB, 1.44 MB or 2.88 MB); a read-only image is write-protected; the 7248's SMS diskette is `releases/7248_SMS_v1.07.img` (`releases/README.md`) |
+| top | `Floppy` | drive A:'s diskette image (720 KB, 1.2 MB, 1.44 MB or 2.88 MB); a read-only image is write-protected; the 7248's SMS diskette is `releases/7248_SMS_v1.07.img` (above) |
 | top | `Load ROM` | another firmware ROM for this session (a normal start loads `boot.rom`); it resets the machine |
 | top | `Memory` | the RAM as SIMM pairs. AIX needs 32 MB at least. A size the SDRAM can't hold gives the most it can: 24, 56 or 112 MB on a 32, 64 or 128 MB module |
 | top | `Apply and reset` | resets the machine with the OSD's settings. "Changes pending" shows while they differ from the running ones |
