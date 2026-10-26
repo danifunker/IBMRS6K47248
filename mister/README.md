@@ -12,9 +12,14 @@ and mounts again at every core load. The NVRAM file is one of those mounts.
   one data track and only flat images work;
 - the hard-disk write buffer for SC0 and SC1 (`ibmrs6k_disk`, a copy of `support/hp9k`'s).
 
-Each hook is gated on the RBF name `IBMRS6K7248`. The branch builds clean with the ARM toolchain;
-it hasn't been run on a board yet. The files here are the bridge as first written; the branch is
-the reference.
+Each hook is gated on the RBF name `IBMRS6K7248`. The branch builds clean with the ARM toolchain
+(WSL: `/opt/gcc-arm-10.2-2020.11-x86_64-arm-none-linux-gnueabihf/bin`, `make -j`). On .92
+(2026-10-25): the bridge writes the PROM MAC (`08:00:5A` + eth0's last three bytes, here
+`08:00:5A:61:56:F1`), the firmware's SMS shows it as the integrated Ethernet's hardware address,
+and SMS's ping (Utilities, Remote Initial Program Load Setup) from 192.168.99.243 to a PC on the
+LAN succeeds; the AIX 4.3.3 install CD (ISO) boots from the CD slot to AIX's console prompt. Not
+yet run: CUE/BIN and CHD images, CD audio, the write buffer under heavy writes. The files here are
+the bridge as first written; the branch is the reference.
 
 ## The Ethernet bridge (`Main_MiSTer/support/ibmrs6k/`)
 
