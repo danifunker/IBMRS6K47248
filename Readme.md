@@ -56,6 +56,11 @@ Put the files in `games/IBMRS6K7248/`:
 
 - `boot.rom`: the 7248's firmware (512 KB, v1.12, P93H7075; `releases/boot.rom`). It loads at every start.
 - A disk image for AIX, made with `dd if=/dev/zero of=AIX.img bs=1M count=4096`.
+- For Windows NT: a disk made with `python3 tools/mk_ntdisk.py rs6karc151.img NT4.img 2048` from IBM's ARC
+  boot diskette (ARC 2.11 EC): ARC in a PReP boot partition (the machine boots it from the disk, no
+  diskette), a 5 MB FAT16 system partition for NT's OS loader, the rest left for NT setup (NTFS). Boot it,
+  then `Run a program`: `cd:\ppc\setupldr` with the NT 4.0 CD in; the computer type is "IBM Power Series
+  6050,6070 and RS/6000 Model 7248", the SCSI driver Symbios Logic C810.
 - `IBMRS6K7248.nvr`: the NVRAM image, made with `dd if=/dev/zero of=IBMRS6K7248.nvr bs=512 count=9`.
   The core fills it on first mount. Or start from `releases/IBMRS6K7248_default.nvr` (copy it to
   `IBMRS6K7248.nvr`): the boot sequence floppy, CD-ROM, the disk at ID 0, the disk the boot device,
