@@ -87,7 +87,18 @@ setup:
 	mtmsr	r3
 	isync
 
-	# the block into RAM (the data cache is still off)
+	.ifdef	DIRTY
+	# (variant: the data cache on for the copy, so the block sits dirty in it when ARC's HID0
+	# write turns the cache off without a flush)
+	mfspr	r3, 1008
+	ori	r3, r3, 0x4400		# DCE, DCFI
+	mtspr	1008, r3
+	isync
+	rlwinm	r3, r3, 0, 22, 20	# DCFI off
+	mtspr	1008, r3
+	isync
+	.endif
+	# the block into RAM (the data cache is off, unless DIRTY)
 	li32	r5, 0xFFF00000 + (block - _start)
 	li32	r6, BLOCK
 	li	r7, (block_end - block) / 4

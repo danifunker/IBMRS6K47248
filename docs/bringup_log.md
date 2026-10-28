@@ -1111,3 +1111,43 @@ request, `fdimg`'s track cache, but ao486 asks a sector at a time and works).
 80808080): ENGLISH.6XE's `GetPCIInfo` (3AF798) calls entry 11 of the service table the ROM hands
 SMS (at 0xF89B4: a count of 7, 7 entries, then text). `sms128.img` is the 7020-40P's SMS 1.28;
 the 7248's ROM v1.12 offers fewer services. Not the core's: a 7248 SMS diskette is needed.
+
+## 2026-10-28 night: little-endian through port 92; AIX 5.1, OS/2; SCSI requests of 16 KB
+
+- **The bridge's swap follows port 92 too** (`c9a718a`). The ARC diskette (`rs6karc151.img`,
+  2.11 EC) switches to little-endian through PReP port 92 bit 1 only (it never touches PICR1),
+  so the bus stayed big-endian under its little-endian code (the old loop at 806F8864-807011B8).
+  Now either switch swaps. ARC's own switch, from the image (loaded so that disk offset X runs at
+  6DFF00 + X): HID0 with the I-cache invalidated and on and the D-cache **off**; port 92 read and
+  written back twice (the first pass only caches the loop), a 16 M-iteration `bdnz` wait,
+  progress 47, `rfi` to 006E11C8 with MSR = 00011001 (ILE, ME, LE). There a **sled** of
+  `38 01 01 38` words (the same `addi r0,r1,0x138` in either byte order) runs to 006E1270; the
+  little-endian code starts at 006E1274 (progress 38 to port 80).
+- **On .92 it now hangs right after the sled**: the debug build's new ring (the last 64 PCs and
+  instruction words from the switch on) shows 006E11C8-006E126C retired, then nothing retires
+  for good and no data access is pending. That is the signature of an exception loop: if the
+  line 006E1260-7F reaches the I-cache in big-endian layout (filled unswapped, or stale in
+  memory), the fetch of 006E1270 (munged to 1274) reads `00000060`, an illegal instruction,
+  whose vector faults the same way. The sled before it reads the same in any layout.
+- **The bench passes ARC's sequence**: `sim/tests/le_sled.S` (the I-cache on, the D-cache off,
+  port 92, the rfi into a sled, little-endian code in RAM) prints `LE OK`, at one clock and at
+  70/100 MHz. With the block left dirty in the D-cache when HID0 turns it off, the bench hangs
+  the same way the board does (memory never got the block, as on a real 604). So the board's
+  line is suspect; the whole ARC boot is running on the bench (`run_arc1`, `--hang`, the ring,
+  `--memdump`) to see the line and what the firmware did to it.
+- **AIX 5.1** (LCD4-1061-06, volume 1: the CD has a type-41 PReP boot partition): the firmware
+  loads it, the kernel runs, user processes run, then the kernel idles with the logo (grey: the
+  palette touched) on screen and nothing on COM1. AIX's NVRAM error log (OS area A00) holds an
+  `ER01` entry for `scsi0` (error id 0BA49C99). Next: the bench or a RAM look at `rc.boot`'s
+  LED, as for 4.3.3 (`2026-10-23`).
+- **OS/2 Warp PPC**: its CD also has a type-41 boot partition (the firmware boots it without ARC).
+  After the hand-off it sets up COM1 and the DMA controller, then loops at 000DC88C before any
+  switch to little-endian (a 2^n-instruction loop or a halt). OS/2 PPC was made for the Power
+  Series 830/850; likely its machine check.
+- **SCSI requests of up to 16 KB**: the target asked the Main for at most 4 blocks (2 KB) a
+  request; now up to 32 (16 KB, hps_io's limit) with a 16 KB sector buffer. The Main's write
+  buffer (`support/ibmrs6k/ibmrs6k_disk.cpp`, the same as the Mac PPC and SGI Indy cores') was
+  already in the Main on .92 (3a4c7f4c, scsi-consolidated) and takes runs up to 64 KB.
+- Board handling learnt: the Main tells a core its UART mode from `/tmp/uartmode<n>`;
+  removing that file (to stop the mode's agetty) also disconnects COM1 from the core. To talk to
+  COM1 yourself, kill the respawn loop and its agetty but leave the file.

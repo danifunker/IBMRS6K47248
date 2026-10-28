@@ -92,12 +92,13 @@ module IBMRS6K7248_scsitgt #(
                            P_MOUT = 3'b110, P_MIN = 3'b111;
 
     // ----------------------------------------------------- sector buffer
-    // 2 KB, byte-wide; port A hps_io's (clk_h), port B the engine's (clk)
+    // 16 KB, byte-wide (a request to the Main is up to 32 blocks, hps_io's limit: each round trip
+    // through the Main costs about as much as the data); port A hps_io's (clk_h), port B the engine's (clk)
     // (written from both clocks: a true dual-port, dual-clock M10K)
     /* verilator lint_off MULTIDRIVEN */
-    (* ramstyle = "M10K, no_rw_check" *) logic [7:0] buf_mem [0:2047];
+    (* ramstyle = "M10K, no_rw_check" *) logic [7:0] buf_mem [0:16383];
     /* verilator lint_on MULTIDRIVEN */
-    logic [10:0] b_addr;        // byte address, engine side
+    logic [13:0] b_addr;        // byte address, engine side
     logic        b_we;
     logic [7:0]  b_wdata, b_q;
     logic [7:0]  h_q;
@@ -107,8 +108,8 @@ module IBMRS6K7248_scsitgt #(
     always @(posedge clk)   begin ack_s1 <= sd_ack; ack_c <= ack_s1; end
     always @(posedge clk_h) begin rd_s1 <= e_rd; sd_rd <= rd_s1; wr_s1 <= e_wr; sd_wr <= wr_s1; end
     always @(posedge clk_h) begin         // port A: hps_io
-        if (sd_buff_wr && |sd_ack) buf_mem[sd_buff_addr[10:0]] <= sd_buff_dout;
-        h_q <= buf_mem[sd_buff_addr[10:0]];
+        if (sd_buff_wr && |sd_ack) buf_mem[sd_buff_addr[13:0]] <= sd_buff_dout;
+        h_q <= buf_mem[sd_buff_addr[13:0]];
     end
     always @(posedge clk) begin           // port B: the engine, one byte
         if (b_we) buf_mem[b_addr] <= b_wdata;
@@ -143,7 +144,7 @@ module IBMRS6K7248_scsitgt #(
     logic [15:0] d_idx;                  // byte index into the synthesised response
     logic [31:0] x_lba;                  // next block of a READ/WRITE
     logic [31:0] x_blocks;               // 512-byte blocks left
-    logic [11:0] chunk;                  // bytes left in the buffer chunk
+    logic [14:0] chunk;                  // bytes left in the buffer chunk
     logic        pending;                // waiting for the buffer byte
     logic        hold_seen;
 
@@ -586,7 +587,7 @@ module IBMRS6K7248_scsitgt #(
                                 d_left <= (op == 8'h15) ? {8'd0, cdb[4]} : {cdb[7], cdb[8]};
                                 x_blocks <= 32'd0;
                                 if (((op == 8'h15) ? cdb[4] : cdb[8]) == 8'd0 && (op == 8'h15 || cdb[7] == 8'd0)) go_status(8'h00);
-                                else begin st <= T_DOUT; phase <= P_DOUT; req <= 1'b1; chunk <= 12'd0; end
+                                else begin st <= T_DOUT; phase <= P_DOUT; req <= 1'b1; chunk <= 15'd0; end
                             end else if (is_cd) begin
                                 skey[dev] <= 4'h7; sasc[dev] <= 8'h27; go_status(8'h02);   // write protected
                             end else if ((lba + cnt) > blocks) begin
@@ -594,8 +595,8 @@ module IBMRS6K7248_scsitgt #(
                             end else if (cnt == 0) go_status(8'h00);
                             else begin
                                 x_lba <= lba; x_blocks <= cnt; d_left <= 16'd0;
-                                chunk <= (cnt >= 4) ? 12'd2048 : {cnt[2:0], 9'd0};
-                                b_addr <= 11'd0;
+                                chunk <= (cnt >= 32) ? 15'd16384 : {cnt[5:0], 9'd0};
+                                b_addr <= 14'd0;
                                 st <= T_DOUT; phase <= P_DOUT; req <= 1'b1;
                             end
                         end
@@ -603,17 +604,17 @@ module IBMRS6K7248_scsitgt #(
                     endcase
                 end
 
-                // read the next chunk (up to 2 KB) from the image
+                // read the next chunk (up to 16 KB) from the image
                 T_FETCH: if (!sd_busy) begin
                     if (x_blocks == 0) go_status(8'h00);
                     else begin
                         logic [31:0] n;
-                        n = (x_blocks >= 4) ? 32'd4 : x_blocks;
+                        n = (x_blocks >= 32) ? 32'd32 : x_blocks;
                         sd_lba[dev] <= x_lba; sd_blk_cnt[dev] <= 6'(n - 1); e_rd[dev] <= 1'b1; sd_busy <= 1'b1;
                         sd_dev <= dev;
                         x_lba <= x_lba + n; x_blocks <= x_blocks - n;
-                        chunk <= {n[2:0], 9'd0};
-                        b_addr <= 11'd0; pending <= 1'b1;
+                        chunk <= {n[5:0], 9'd0};
+                        b_addr <= 14'd0; pending <= 1'b1;
                         st <= T_DIN;
                     end
                 end
@@ -623,10 +624,10 @@ module IBMRS6K7248_scsitgt #(
                     if (ack && req) begin
                         req <= 1'b0; pending <= 1'b1;
                         if (din_synth) begin d_idx <= d_idx + 16'd1; d_left <= d_left - 16'd1; end
-                        else begin b_addr <= b_addr + 11'd1; chunk <= chunk - 12'd1; end
+                        else begin b_addr <= b_addr + 14'd1; chunk <= chunk - 15'd1; end
                     end else if (!req && !sd_busy) begin
                         if (din_synth && d_left == 16'd0) go_status(8'h00);
-                        else if (!din_synth && chunk == 12'd0) st <= T_FETCH;
+                        else if (!din_synth && chunk == 15'd0) st <= T_FETCH;
                         else if (pending) pending <= 1'b0;           // b_q / syn valid the cycle after
                         else begin req <= 1'b1; tdata <= din_synth ? syn : b_q; end
                     end
@@ -653,14 +654,14 @@ module IBMRS6K7248_scsitgt #(
                             if (is_cd && ms_pg == 6'h0E && ms_i == po + 16'd11) vol1 <= idata;
                             ms_i <= ms_i + 16'd1;
                         end
-                        else begin b_we <= 1'b1; b_wdata <= idata; chunk <= chunk - 12'd1; end
+                        else begin b_we <= 1'b1; b_wdata <= idata; chunk <= chunk - 15'd1; end
                     end else if (!req) begin
-                        if (b_we) b_addr <= b_addr + 11'd1;
+                        if (b_we) b_addr <= b_addr + 14'd1;
                         if (x_blocks == 0 && d_left == 0 && chunk == 0 && !b_we) go_status(8'h00);
                         else if (x_blocks == 0 && d_left != 0) req <= 1'b1;
-                        else if (chunk == 12'd0 && !b_we) begin
+                        else if (chunk == 15'd0 && !b_we) begin
                             logic [31:0] n;
-                            n = (x_blocks >= 4) ? 32'd4 : x_blocks;
+                            n = (x_blocks >= 32) ? 32'd32 : x_blocks;
                             sd_lba[dev] <= x_lba; sd_blk_cnt[dev] <= 6'(n - 1); e_wr[dev] <= 1'b1;
                             sd_busy <= 1'b1; sd_dev <= dev;
                             x_lba <= x_lba + n; x_blocks <= x_blocks - n;
@@ -671,8 +672,8 @@ module IBMRS6K7248_scsitgt #(
                 T_STORE: if (!sd_busy && !(|e_wr)) begin
                     if (x_blocks == 0) go_status(8'h00);
                     else begin
-                        st <= T_DOUT; b_addr <= 11'd0; req <= 1'b1;
-                        chunk <= (x_blocks >= 4) ? 12'd2048 : {x_blocks[2:0], 9'd0};
+                        st <= T_DOUT; b_addr <= 14'd0; req <= 1'b1;
+                        chunk <= (x_blocks >= 32) ? 15'd16384 : {x_blocks[5:0], 9'd0};
                     end
                 end
 
@@ -685,7 +686,7 @@ module IBMRS6K7248_scsitgt #(
                 end
                 T_TOCW: if (!sd_busy) begin cp_b <= 11'd0; cp_s <= 2'd0; st <= T_TOCCP; end
                 T_TOCCP: case (cp_s)
-                    2'd0: begin b_addr <= cp_b; cp_s <= 2'd1; end
+                    2'd0: begin b_addr <= {3'd0, cp_b}; cp_s <= 2'd1; end
                     2'd1: cp_s <= 2'd2;
                     2'd2: begin
                         logic last_e;
