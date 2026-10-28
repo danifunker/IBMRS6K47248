@@ -61,11 +61,6 @@
 	eieio
 	.endm
 
-	# a little-endian instruction word, as it sits in memory
-	.macro	le w
-	.byte	(\w) & 0xFF, ((\w) >> 8) & 0xFF, ((\w) >> 16) & 0xFF, ((\w) >> 24) & 0xFF
-	.endm
-
 	.text
 	.globl	_start
 _start:
@@ -138,31 +133,32 @@ setup:
 2:	bdnz	2b
 	rfi
 
-	# the block: the sled, then little-endian code
+	# the block: the sled, then little-endian code, stored as ARC stores it: in RAM each doubleword
+	# reversed (the bridge does not swap memory; the CPU's munging finds each word at the other half)
 	.balign	32
 block:
 	.rept	42
 	.long	0x38010138
 	.endr
-	le	0x60000000		# nop
-	le	0x3F008000		# lis r24, 0x8000
-	le	0x63180080		# ori r24, r24, 0x80
-	le	0x3AE00038		# li r23, 0x38
-	le	0x9AF80000		# stb r23, 0(r24): progress 38
-	le	0x3C608000		# lis r3, 0x8000
-	le	0x606303F8		# ori r3, r3, 0x3F8
-	le	0x3880004C		# li r4, 'L'
-	le	0x98830000		# stb r4, 0(r3)
-	le	0x38800045		# li r4, 'E'
-	le	0x98830000		# stb r4, 0(r3)
-	le	0x38800020		# li r4, ' '
-	le	0x98830000		# stb r4, 0(r3)
-	le	0x3880004F		# li r4, 'O'
-	le	0x98830000		# stb r4, 0(r3)
-	le	0x3880004B		# li r4, 'K'
-	le	0x98830000		# stb r4, 0(r3)
-	le	0x3880000A		# li r4, '\n'
-	le	0x98830000		# stb r4, 0(r3)
-	le	0x48000000		# b .
+	.long	0x3F008000		# +4: lis r24, 0x8000
+	.long	0x60000000		# +0: nop
+	.long	0x3AE00038		# +4: li r23, 0x38
+	.long	0x63180080		# +0: ori r24, r24, 0x80
+	.long	0x3C608000		# +4: lis r3, 0x8000
+	.long	0x9AF80000		# +0: stb r23, 0(r24): progress 38
+	.long	0x3880004C		# +4: li r4, 'L'
+	.long	0x606303F8		# +0: ori r3, r3, 0x3F8
+	.long	0x38800045		# +4: li r4, 'E'
+	.long	0x98830000		# +0: stb r4, 0(r3)
+	.long	0x38800020		# +4: li r4, ' '
+	.long	0x98830000		# +0: stb r4, 0(r3)
+	.long	0x3880004F		# +4: li r4, 'O'
+	.long	0x98830000		# +0: stb r4, 0(r3)
+	.long	0x3880004B		# +4: li r4, 'K'
+	.long	0x98830000		# +0: stb r4, 0(r3)
+	.long	0x3880000A		# +4: li r4, '\n'
+	.long	0x98830000		# +0: stb r4, 0(r3)
+	.long	0x48000000		# +4: b .
+	.long	0x98830000		# +0: stb r4, 0(r3)
 	.balign	32
 block_end:

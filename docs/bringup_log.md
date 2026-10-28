@@ -1151,3 +1151,27 @@ the 7248's ROM v1.12 offers fewer services. Not the core's: a 7248 SMS diskette 
 - Board handling learnt: the Main tells a core its UART mode from `/tmp/uartmode<n>`;
   removing that file (to stop the mode's agetty) also disconnects COM1 from the core. To talk to
   COM1 yourself, kill the respawn loop and its agetty but leave the file.
+
+## 2026-10-28 morning: the MPC105 does not swap memory in little-endian mode
+
+- **The bench reproduced the board's ARC hang** (`run_arc1`, build16, ~2.35 G clocks: the sled
+  006E11C8-006E126C retires, then nothing) and dumped RAM (`--memdump`). Against the diskette
+  image (loaded so that disk offset X is at 6DFF00 + X), memory holds ARC's big-endian loader
+  (006E0500-006E1270) unchanged and **everything from 006E1270 to the end (~950 KB) with each
+  doubleword reversed**. ARC's loader reverses its own little-endian part before it sets port 92:
+  on a real 7248 the bridge does **not** swap memory in little-endian mode; the 604's munging alone
+  makes the reversed image read right. Our bridge swapped memory too, so the CPU read the code
+  reversed twice: `00000060` and the like after the palindromic sled, an illegal instruction whose
+  vector faulted the same way, for good.
+- **Fixed in the bridge**: in little-endian mode only the device side (8000_0000-FEFF_FFFF: PCI and
+  ISA I/O, PCI memory) is swapped and unmunged, as before; RAM and the ROM (FF00_0000 up) pass as the
+  CPU munges them. The DMA masters (the 53C810, the PCnet, the ISA DMA) have each doubleword's bytes
+  and enables reversed in little-endian mode, both ways, so what a device writes reads right to the
+  munged CPU (the MPC105's PCI-to-memory swap).
+- `sim/tests/le_sled.S` now stores its little-endian code as ARC does (each doubleword reversed):
+  `LE OK`. The old `le_test.rom`/`le_test_dc.rom` encode the swap-everything model (little-endian code
+  in ROM unreversed, the checks' expected values) and hang at their switch now: to be rewritten for
+  this model (they need binutils for PowerPC, or clang for their little-endian half).
+- **On .92 (07:52) the ARC diskette boots**: "PowerPC Portable Boot Loader Ver. 1.51" on the S3,
+  little-endian with translation on (0x806Fxxxx), the SCSI scan, then ARC's language menu ("Use ARC in US
+  English" ...). CPU clock slack -2.73 ns.

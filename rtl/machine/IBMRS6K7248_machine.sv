@@ -87,13 +87,16 @@
 //  as cacheable, so early firmware may reach devices through the cache.
 //
 //  Little-endian mode (LE_MODE): while the MPC105's PICR1 LE_MODE bit (5)
-//  is set, the bridge swaps the byte lanes of each doubleword between the
-//  CPU's bus and everything behind it (memory, ROM, PCI, ISA), which undoes
-//  the 604's address munging (DSPPC604, LE_MODE): a word access reaches the
-//  other word of its doubleword with its bytes reversed, a line has the
-//  bytes of each of its doublewords reversed. Memory then holds what the
-//  little-endian program meant. (To be checked against the MPC105 manual:
-//  docs/plan.md, the little-endian track.)
+//  or PReP port 92 bit 1 is set, the bridge swaps the byte lanes of each
+//  doubleword between the CPU's bus and the devices (PCI and ISA I/O, PCI
+//  memory: 8000_0000-FEFF_FFFF), which undoes the 604's address munging
+//  (DSPPC604, LE_MODE): a word access reaches the other word of its
+//  doubleword with its bytes reversed, a line has the bytes of each of its
+//  doublewords reversed, so a device sees its registers as on a PC. RAM and
+//  the ROM are not swapped: memory holds the munged image, each doubleword
+//  reversed. The ARC diskette (2.11 EC) shows it: its big-endian loader
+//  reverses every doubleword of its little-endian part in memory before it
+//  sets port 92 (2026-10-28).
 //
 //  The 53C810's DMA (one doubleword a request, PCI address 8000_0000 + n
 //  for memory n, the MPC105's map; anything else a master abort) shares the
@@ -101,9 +104,10 @@
 //  the CPU's snoop port (the caches write it back if dirty, and drop it for
 //  a write), then the access takes the port when it is free, before any new
 //  CPU access (a read: the line; a write: one or two words), then a write's
-//  line is snooped again (a copy fetched in between is dropped). No byte
-//  swapping: the bridge keeps bytes at their addresses for PCI masters in
-//  either mode.
+//  line is snooped again (a copy fetched in between is dropped). In
+//  little-endian mode the bridge reverses each doubleword of a PCI master's
+//  (and the ISA DMA's) bytes, as memory holds the CPU's munged image; in
+//  big-endian mode bytes stay at their addresses.
 //
 //  Also made here: tb_tick for the CPU's time base and decrementer, at
 //  TB_HZ on average (the 604 counts every fourth bus clock: 16.67 MHz on a
@@ -346,9 +350,11 @@ endfunction
 // HAL) writes on the 7248.
 logic  [7:0] p92;
 wire          le_bus  = (LE_MODE != 0) & (picr1[5] | p92[1]);
-wire  [31:2]  x_addr  = le_bus & ~c_line ? {c_addr[31:3], ~c_addr[2]} : c_addr;
-wire  [3:0]   x_be    = le_bus ? {c_be[0], c_be[1], c_be[2], c_be[3]} : c_be;
-wire  [255:0] x_wdata = ~le_bus ? c_wdata : c_line ? swap_line(c_wdata) : {224'h0, rev32(c_wdata[31:0])};
+// (the swap for the devices only: RAM below 8000_0000 and the ROM from FF00_0000 are left as the CPU munges them)
+wire          le_dev  = le_bus & c_addr[31] & (c_addr[31:24] != 8'hFF);
+wire  [31:2]  x_addr  = le_dev & ~c_line ? {c_addr[31:3], ~c_addr[2]} : c_addr;
+wire  [3:0]   x_be    = le_dev ? {c_be[0], c_be[1], c_be[2], c_be[3]} : c_be;
+wire  [255:0] x_wdata = ~le_dev ? c_wdata : c_line ? swap_line(c_wdata) : {224'h0, rev32(c_wdata[31:0])};
 
 wire [31:0] a      = {x_addr, 2'b00};
 
@@ -392,8 +398,17 @@ end
 assign dm_req   = dm_hold & (dm_sel == 2'd2 ? isa_dm_req : dm_sel == 2'd1 ? pcn_dm_req : ncr_dm_req);
 assign dm_we    = dm_sel == 2'd2 ? isa_dm_we    : dm_sel == 2'd1 ? pcn_dm_we    : ncr_dm_we;
 assign dm_addr  = dm_sel == 2'd2 ? isa_dm_addr  : dm_sel == 2'd1 ? pcn_dm_addr  : ncr_dm_addr;
-assign dm_be    = dm_sel == 2'd2 ? isa_dm_be    : dm_sel == 2'd1 ? pcn_dm_be    : ncr_dm_be;
-assign dm_wdata = dm_sel == 2'd2 ? isa_dm_wdata : dm_sel == 2'd1 ? pcn_dm_wdata : ncr_dm_wdata;
+// (little-endian mode: a doubleword's bytes and their enables reversed, both ways)
+function automatic logic [63:0] rev64(input logic [63:0] x);
+	for (int i = 0; i < 8; i++) rev64[8 * i +: 8] = x[56 - 8 * i +: 8];
+endfunction
+function automatic logic [7:0] rev8(input logic [7:0] x);
+	for (int i = 0; i < 8; i++) rev8[i] = x[7 - i];
+endfunction
+wire  [7:0]   dm_be_m    = dm_sel == 2'd2 ? isa_dm_be    : dm_sel == 2'd1 ? pcn_dm_be    : ncr_dm_be;
+wire  [63:0]  dm_wdata_m = dm_sel == 2'd2 ? isa_dm_wdata : dm_sel == 2'd1 ? pcn_dm_wdata : ncr_dm_wdata;
+assign dm_be    = le_bus ? rev8(dm_be_m)     : dm_be_m;
+assign dm_wdata = le_bus ? rev64(dm_wdata_m) : dm_wdata_m;
 wire          ncr_dm_ack = dm_ack & dm_sel == 2'd0;
 wire          pcn_dm_ack = dm_ack & dm_sel == 2'd1;
 wire          isa_dm_ack = dm_ack & dm_sel == 2'd2;
@@ -447,7 +462,7 @@ always_ff @(posedge clk) begin
 		end
 		DQ_SNOOP: if (snoop_ack) dq <= DQ_MEM;
 		DQ_MEM: if (m_ack && own_dma) begin
-			dm_rdata <= m_rdata[255 - 64 * dpa[4:3] -: 64];
+			dm_rdata <= le_bus ? rev64(m_rdata[255 - 64 * dpa[4:3] -: 64]) : m_rdata[255 - 64 * dpa[4:3] -: 64];
 			if (dm_we && !dm_hi && dm_be[3:0] != 4'h0) dq_w1 <= 1'b1;      // the second word next
 			else if (dm_we) begin snoop_gap <= 1'b1; dq <= DQ_SNOOP2; end
 			else begin dm_ack <= 1'b1; dq <= DQ_DONE; end
@@ -973,7 +988,7 @@ end
 // ---- to the CPU -------------------------------------------------------------------------
 assign c_ack   = cpu_m_ack | dev_ack;
 logic [255:0] x_rdata;
-assign c_rdata = ~le_bus ? x_rdata : c_line ? swap_line(x_rdata) : {224'h0, rev32(x_rdata[31:0])};
+assign c_rdata = ~le_dev ? x_rdata : c_line ? swap_line(x_rdata) : {224'h0, rev32(x_rdata[31:0])};
 assign x_rdata = ~dev_ack ? m_rdata :
                  d_line   ? {line_buf[0], line_buf[1], line_buf[2], line_buf[3],
                              line_buf[4], line_buf[5], line_buf[6], line_buf[7]} :
