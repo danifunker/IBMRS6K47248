@@ -666,8 +666,11 @@ wire        pk_ev = isi_armed & (pk_s[2] ^ pk_s[1]);   // (the other bits stand 
 // command and result bytes), the writes of the DMA controller's ports 00-0F, 80-83 and 480-483 ("W800=",
 // "W480=" ...; 480's as offset 48), and each request of the image to the Main ("W0FD=", the data
 // {write, 12'd0, blocks less one (6 bits), the LBA (13 bits)})
-wire        fdp_ev = io_ev & ((io_addr == 32'h8000_03F4 && io_be == 4'b0100) ||
-                              (io_we && (io_addr[31:4] == 28'h8000_000 || io_addr == 32'h8000_0080 || io_addr == 32'h8000_0480)));
+// (and 3F7 both ways, the DIR's disk change line and the CCR, and the reads of the DMA controller's
+// ports 00-0F too: its status and current counts)
+wire        fdp_ev = io_ev & ((io_addr == 32'h8000_03F4 && (io_be == 4'b0100 || io_be == 4'b0001)) ||
+                              (io_addr[31:4] == 28'h8000_000) ||
+                              (io_we && (io_addr == 32'h8000_0080 || io_addr == 32'h8000_0480)));
 reg         fds_t = 1'b0, fds_q = 1'b0;
 reg  [31:0] fds_d;
 always @(posedge clk_sys) begin
@@ -701,7 +704,7 @@ end
 // (the desktop build: no PC trigger; instead, once, when nothing has retired for 2^24 clocks (0.24 s) after
 // the hand-off, the header alone: "IL=" the last PC retired, " C=" the data address the CPU's access is at,
 // " M=" bit 31 a data access pending, bit 30 a write: where a stalled bus access hangs the core)
-wire        isi_go = 1'b0;
+wire        isi_go;                       // (assigned below: the first program exception after the switch to little-endian)
 // (little-endian bring-up) from the switch to little-endian (a port 92 write with bit 1 set) on, the last 64
 // instructions retired, PC and word, in a ring; at the stall they follow its header, the oldest first,
 // "pppppppp:iiiiiiii ". The stall's " M=" then also carries the MSR in bits 29-0.
@@ -722,6 +725,9 @@ always @(posedge clk_cpu) begin
 	le_pc_q <= le_pc[le_r];
 	le_in_q <= le_in[le_r];
 end
+// the first program exception (vector 700) after the switch to little-endian: its LR, CTR and MSR, then the 40
+// instructions retired from the vector on with the GPR each wrote (NT's handler reads SRR0 and SRR1 into GPRs)
+assign isi_go = le_arm & ~isi_done & trace_valid & trace_last & (trace_pc == 32'h0000_0700);
 reg  [23:0] stall_n = 0;
 reg  [31:0] stall_pc = 0;
 always @(posedge clk_cpu) begin
