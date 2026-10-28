@@ -72,7 +72,7 @@
 //    0880-0882  SIMM presence detect (read only)
 //    Fire Coral's BAR0 (1000 as the firmware sets it): its index/data pair
 //    PCI device 12: the AMD Am79C970 PCnet (IBMRS6K7248_pcnet) at its BAR0, IRQ 15
-//    PCI device 16: the NCR 53C810 (IBMRS6K7248_ncr810) at its BAR0, IRQ 15
+//    PCI device 16: the NCR 53C810 (IBMRS6K7248_ncr810) at its BAR0 (I/O) and BAR1 (memory), IRQ 15
 //               with the S3's; its DMA through the CPU's snoop port (below)
 //    0852       planar ID (read only): the model, which the firmware reads to
 //               choose its personality (F4-F7 a 7248, with SCSI: F5 100 MHz,
@@ -646,17 +646,19 @@ IBMRS6K7248_s3 #(.CLK_HZ(CPU_HZ)) s3 (
 	.irq(s3_irq), .monitor_id(4'hF)
 );
 
-// ---- the NCR 53C810 (PCI device 16): its registers at BAR0 in PCI I/O space -------------------
+// ---- the NCR 53C810 (PCI device 16): its registers at BAR0 in PCI I/O space, and at BAR1 in PCI
+// memory space (NT's symc810.sys uses that one only) -----------------------------------------------
 wire         s_pciio = p_a[31:30] == 2'b10 && !s_pcicf && !s_iack;      // 80000000-BF7FFFFF less the above
-logic        ncr_io_on;
-logic [31:8] ncr_io_base;
-wire         ncr_hit = s_pciio && ncr_io_on && ncr_io_base == {2'b00, p_a[29:8]};
+logic        ncr_io_on, ncr_mem_on;
+logic [31:8] ncr_io_base, ncr_mem_base;
+wire         ncr_hit = (s_pciio && ncr_io_on && ncr_io_base == {2'b00, p_a[29:8]}) ||
+                       (s_pcimem && ncr_mem_on && ncr_mem_base == {2'b00, p_a[29:8]});
 logic [31:0] ncr_cfg_q, ncr_q;
 logic        ncr_irq;
 IBMRS6K7248_ncr810 #(.STO_UNIT(STO_UNIT)) ncr810 (
 	.clk, .reset,
 	.cfg_sel(d_go & cfg_dev16), .cfg_we(d_we), .cfg_reg(cf8[7:2]), .cfg_be(le_be), .cfg_wdata(le_wd), .cfg_rdata(ncr_cfg_q),
-	.io_on(ncr_io_on), .io_base(ncr_io_base),
+	.io_on(ncr_io_on), .io_base(ncr_io_base), .mem_on(ncr_mem_on), .mem_base(ncr_mem_base),
 	.sel(d_go & ncr_hit), .we(d_we), .off(p_a[7:2]), .be(p_be), .wdata(p_wd), .rdata(ncr_q), .irq(ncr_irq),
 	.dm_req(ncr_dm_req), .dm_we(ncr_dm_we), .dm_addr(ncr_dm_addr), .dm_be(ncr_dm_be), .dm_wdata(ncr_dm_wdata),
 	.dm_ack(ncr_dm_ack), .dm_err, .dm_rdata,

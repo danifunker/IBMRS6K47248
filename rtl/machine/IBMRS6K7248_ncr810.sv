@@ -17,12 +17,14 @@
 //      table entries, the memory move's; data bytes keep their addresses;
 //    - DFIFO reads DBC's low 7 bits (no FIFO: what is in flight is always
 //      0, as the driver's residual arithmetic wants), DSTAT.DFE always 1.
-//  Phase 1 (docs/scsi_design.md 5.8): no LOAD/STORE, no memory BAR (its
-//  register writes are stored, nothing decodes it), no reselection, no
-//  timers but the selection's, no single step, no target mode.
+//  Phase 1 (docs/scsi_design.md 5.8): no LOAD/STORE, no reselection, no
+//  timers but the selection's, no single step, no target mode. The memory
+//  BAR (BAR1) decodes the same registers as BAR0: NT's symc810.sys reaches
+//  the chip only through it (ScsiPortRead/WriteRegister*).
 //
 //  The host side: PCI configuration (as IBMRS6K7248_firecoral's: register
-//  number, byte k in wdata[8k+7:8k]), and BAR0's 256 bytes of I/O: one
+//  number, byte k in wdata[8k+7:8k]), and BAR0's 256 bytes of I/O (or BAR1's
+//  of memory: the machine decodes both onto sel): one
 //  access a cycle of up to four registers, off[7:2], be[3] the lowest
 //  address's, its byte in wdata[31:24] (the CPU's byte lanes, as the
 //  machine's device bus has them); the read value in rdata the cycle after
@@ -54,6 +56,8 @@ module IBMRS6K7248_ncr810 #(
 	output logic [31:0] cfg_rdata,
 	output logic        io_on,                  // BAR0 decoded
 	output logic [31:8] io_base,
+	output logic        mem_on,                 // BAR1 decoded
+	output logic [31:8] mem_base,
 
 	// the registers (BAR0)
 	input  logic        sel,
@@ -137,6 +141,8 @@ always_ff @(posedge clk) if (cfg_sel & ~cfg_we)
 	endcase
 assign io_on   = pci_cmd[0];
 assign io_base = bar0;
+assign mem_on   = pci_cmd[1];
+assign mem_base = bar1;
 
 // ---- the chip's registers -------------------------------------------------------------------
 logic [7:0]  scntl0, scntl1, scntl2, scntl3, scid, sxfer, sdid, gpreg, sfbr, socl, ssid;
@@ -249,11 +255,12 @@ wire [6:0] reg_adr = ins0[22:16];
 
 // a memory move's source (DMODE.SIOM) or destination (DMODE.DIOM) in PCI I/O space: inside our own
 // BAR0 it is the chip's own registers (80-FF alias 00-7F), as AIX's ncr810dd copies DSA and the
-// SCRATCH registers to and from memory; any other I/O address is a bus fault
+// SCRATCH registers to and from memory; any other I/O address is a bus fault (and in memory space,
+// inside our own BAR1, likewise the registers)
 wire       mm_src_io   = dmode[5];
 wire       mm_dst_io   = dmode[4];
-wire       mm_src_self = mm_src_io && io_on && dnad[31:8] == io_base;
-wire       mm_dst_self = mm_dst_io && io_on && mm_dst[31:8] == io_base;
+wire       mm_src_self = mm_src_io ? (io_on && dnad[31:8] == io_base) : (mem_on && dnad[31:8] == mem_base);
+wire       mm_dst_self = mm_dst_io ? (io_on && mm_dst[31:8] == io_base) : (mem_on && mm_dst[31:8] == mem_base);
 logic [7:0] mm_byte;                            // the byte read from our own registers
 
 function automatic logic [31:0] sext24(input logic [23:0] v);

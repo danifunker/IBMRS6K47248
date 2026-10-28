@@ -171,3 +171,9 @@ that cannot proceed without it.
   before the restart. Plan: log the 8259s' IRR/ISR and the IRQ at the halt; check that ICW1 clears
   the 8259 model's latched requests; consider resetting the devices on a port 92 bit 0 pulse.
   **The 8042's keyboard**: scan set 1 (F0 01, ARC's) added beside sets 2 and 3.
+- 2026-10-28 evening: **the 53C810's memory BAR (BAR1)** was stored but never decoded (all ones read
+  back). NT 4's `symc810.sys` imports only `ScsiPortRead/WriteRegister*`, so it reaches the chip through
+  BAR1 alone: it found no adapter, the CD never became `\Device\CdRom0`, and the kernel stopped with
+  bugcheck 0x7B INACCESSIBLE_BOOT_DEVICE (`\ArcName\multi(0)scsi(0)cdrom(3)fdisk(0)`, C0000034), read
+  over KD with `tools/kdpeek.py`. BAR1 now decodes the same registers as BAR0 (PCI command bit 1), and
+  a memory move to or from our own BAR1 is a register access like the BAR0 case.

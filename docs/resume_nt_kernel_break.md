@@ -7,6 +7,12 @@ the CPU-side analysis in `docs/resume_cpu_trap_fable.md`, `docs/resume_cpu_trap_
 
 ---
 
+> **Update 2026-10-28 evening (the NT session):** the stop was bugcheck **0x7B INACCESSIBLE_BOOT_DEVICE**
+> (`\ArcName\multi(0)scsi(0)cdrom(3)fdisk(0)`, C0000034), read live over KD with `tools/kdpeek.py`.
+> Cause: NT's `symc810.sys` reaches the 53C810 only through its memory BAR (BAR1), which the model did
+> not decode. Fixed (BAR1 decodes the registers); text-mode setup now runs and takes keys, but its
+> screens do not reach the display: the video is the next blocker. See `docs/bringup_log.md`.
+
 ## The result in one paragraph
 
 The 21 program exceptions with SRR1's trap bit at 0x800A3B80 are **real `twi` instructions executed on

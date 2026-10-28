@@ -1206,3 +1206,34 @@ the 7248's ROM v1.12 offers fewer services. Not the core's: a 7248 SMS diskette 
   exception (`scratch/work/run_fold.sh`). Lessons while writing it: in this (port 92) mode RAM holds
   the LE image with each doubleword's bytes reversed; a store in real mode with DCE on is cached (the
   port-92 write must come before the caches go on); BATU's BL for 8 MB is 0x3F (0x800000FE).
+
+## 2026-10-28 evening: NT's stop is bugcheck 0x7B; the 53C810's memory BAR
+
+- After the CPU session showed the 21 traps were NT's own `DbgLoadImageSymbols` (and the kernel is
+  `ntkrnlmp.exe` at 0x80049000), the stop at `DbgBreakPointWithStatus` (0x800A3B58) was read from the
+  kernel debugger itself. The debug build passes COM1 to the board's ttyS1 when the UART mode is not
+  None (set through the OSD while NT sat in its KD loop: writing `/tmp/uartmode2` alone changes nothing
+  in the core); KD talks at **19200**. The board's ttyS1 loses bytes in bursts longer than ~190 bytes
+  (64-byte lumps every 73-110 ms, no overrun counted), so the 592-byte state-change packet never
+  arrives whole, but small replies do: `tools/kdpeek.py` (on the board, python3) resets the protocol,
+  acknowledges the state change once the line is quiet 150 ms, and sends GetVersion/ReadVirtualMemory.
+- GetVersion: NT 15.1381, protocol 4, KernBase 80049000, PsLoadedModuleList 800C5BF0, machine 0x1F0.
+  `KiBugCheckData` (export 8008BCD0 + 0x39000): **0x7B INACCESSIBLE_BOOT_DEVICE**, argument 1 the name
+  `\ArcName\multi(0)scsi(0)cdrom(3)fdisk(0)`, argument 2 **C0000034** (object name not found). The
+  module list holds SCSIPORT, symc810, atapi, cdrom, CLASS2, disk, cdfs, ...
+- The debug stream shows ARC driving the 53C810 through BAR0 (385 SCRIPTS starts) and **not one
+  register access after the kernel starts**. `symc810.sys`'s imports: `ScsiPortRead/WriteRegisterUchar`,
+  `...Ulong`, `...BufferUchar`, no port functions: it uses the memory BAR, which the model stored but did
+  not decode (reads all ones), so the miniport found no adapter and no CD class device was made.
+- Fix: BAR1 decodes the same 256 bytes of registers (`_ncr810.sv`: `mem_on` = PCI command bit 1,
+  `mem_base`; `_machine.sv`: `ncr_hit` also for PCI memory C000_0000-FEFF_FFFF at BAR1); a SCRIPTS memory
+  move from or to our own BAR1 is a register access, as the BAR0 case already was.
+- **On .92 (19:10, the BAR1 build, `scratch/work/IBMRS6K7248_bar1.rbf`, CPU slack -2.43 ns, 41,501 ALMs)**:
+  ARC, setupldr and the kernel as before, then **no bugcheck**: the PC sits in `setupdd.sys`
+  (loaded at 801F7000) at 80211724-80211730, a loop that waits for a global to turn non-zero (setup's
+  wait for a key). One Enter from the KVM: the key event, the 8042's interrupt, then `symc810.sys`
+  runs SCRIPTS through BAR1 (DSA B5DF0C, DSP B5D994/B5DBB4, ISTAT 09/0A: DMA and SCSI interrupts) and
+  setup comes back to the same wait: text-mode setup is running and taking keys. **Nothing it draws
+  reaches the screen** (still setupldr's red frame drawn twice; no S3 register access in that window:
+  the text goes to frame-buffer memory the S3 model does not show in that mode). The video is now the
+  blocker for driving setup.
