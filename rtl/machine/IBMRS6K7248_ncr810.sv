@@ -179,7 +179,7 @@ function automatic logic [7:0] reg_rd(input logic [6:0] a);
 		7'h00: return scntl0;   7'h01: return {scntl1[7:5], con, scntl1[3:0]};
 		7'h02: return scntl2;   7'h03: return scntl3;
 		7'h04: return scid;     7'h05: return sxfer;
-		7'h06: return sdid;     7'h07: return gpreg;
+		7'h06: return sdid;     7'h07: return gpreg | {3'd0, gpcntl[4:0]};   // (an input pin reads 1: pulled up, nothing on it, no serial NVRAM)
 		7'h08: return sfbr;     7'h09: return socl;
 		7'h0A: return ssid;     7'h0B: return sbcl;
 		7'h0C: return dstat;    7'h0D: return sstat0;

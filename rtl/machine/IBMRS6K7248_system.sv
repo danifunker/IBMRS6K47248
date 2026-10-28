@@ -143,6 +143,7 @@ module IBMRS6K7248_system
 	output logic         io_ev,
 	output logic         io_we,
 	output logic         io_stub,
+	output logic         io_ncr,
 	output logic [31:0]  io_addr,
 	output logic [3:0]   io_be,
 	output logic [31:0]  io_wdata,
@@ -249,7 +250,7 @@ IBMRS6K7248_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .LE_MODE(LE_MODE), .UART_F
 	.en_tx_pend, .en_tx_len, .en_tx_a, .en_tx_q, .en_tx_done, .en_rx_free, .en_rx_we, .en_rx_a, .en_rx_d,
 	.en_rx_post, .en_rx_len, .en_rx_hash, .en_aprom_mac, .en_padr, .en_padr_ok,
 	.com1_txd, .com1_rxd, .com1_cts_n, .com1_rts_n,
-	.io_ev, .io_we, .io_stub, .io_addr, .io_be, .io_wdata, .io_rdata
+	.io_ev, .io_we, .io_stub, .io_ncr, .io_addr, .io_be, .io_wdata, .io_rdata
 );
 
 // ---- the SCSI devices ----------------------------------------------------------------------

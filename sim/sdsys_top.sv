@@ -135,7 +135,7 @@ IBMRS6K7248_system #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .PERF(PERF), .LE_MODE(LE_MO
 	.fm_cs(), .fm_we(), .fm_a(), .fm_wdata(), .fm_rdata(8'hFF), .fm_vol(), .joy1(6'd0), .joy2(6'd0), .ana1(16'd0), .ana2(16'd0),
 	.midi_tx(), .midi_rx(1'b1),
 	.fd_in(1'b0), .fd_ro(1'b0), .fd_blocks(13'd0), .fd_mounted(1'b0), .fd_req(), .fd_we(), .fd_lba(), .fd_ack(1'b0),
-	.fd_buf_a(), .fd_buf_q(8'h00), .fd_buf_we(), .fd_buf_d(), .kbc_reset, .com1_txd, .com1_rxd, .com1_cts_n, .com1_rts_n, .ddr_busy, .ddr_burstcnt, .ddr_addr, .ddr_dout, .ddr_dout_ready, .ddr_rd, .ddr_din, .ddr_be, .ddr_we, .vid_ce, .vid_r, .vid_g, .vid_b, .vid_hs, .vid_vs, .vid_hblank, .vid_vblank, .img_present, .img_blocks, .sd_lba, .sd_blk_cnt, .sd_rd, .sd_wr, .sd_ack, .sd_buff_addr, .sd_buff_dout, .sd_buff_din, .sd_buff_wr, .cd_change, .scsi_activity, .io_ev, .io_we, .io_stub, .io_addr, .io_be, .io_wdata, .io_rdata, .trace_valid, .trace_last, .trace_pc, .trace_insn, .trace_msr, .trace_dreq, .trace_dwe, .trace_daddr,
+	.fd_buf_a(), .fd_buf_q(8'h00), .fd_buf_we(), .fd_buf_d(), .kbc_reset, .com1_txd, .com1_rxd, .com1_cts_n, .com1_rts_n, .ddr_busy, .ddr_burstcnt, .ddr_addr, .ddr_dout, .ddr_dout_ready, .ddr_rd, .ddr_din, .ddr_be, .ddr_we, .vid_ce, .vid_r, .vid_g, .vid_b, .vid_hs, .vid_vs, .vid_hblank, .vid_vblank, .img_present, .img_blocks, .sd_lba, .sd_blk_cnt, .sd_rd, .sd_wr, .sd_ack, .sd_buff_addr, .sd_buff_dout, .sd_buff_din, .sd_buff_wr, .cd_change, .scsi_activity, .io_ev, .io_we, .io_stub, .io_ncr(), .io_addr, .io_be, .io_wdata, .io_rdata, .trace_valid, .trace_last, .trace_pc, .trace_insn, .trace_msr, .trace_dreq, .trace_dwe, .trace_daddr,
 	.b_req, .b_we, .b_line, .b_addr, .b_be, .b_wdata, .b_ack, .b_rdata
 );
 

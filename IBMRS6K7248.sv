@@ -408,7 +408,7 @@ wire [63:0]  trace_reg_val;
 wire         t_dreq, t_dwe;
 wire [31:2]  t_daddr;
 wire        com1_txd;
-wire        io_ev, io_we;
+wire        io_ev, io_we, io_ncr;
 wire [31:0] io_addr, io_wdata, io_rdata;
 wire [3:0]  io_be;
 wire         vid_ce, vid_hs, vid_vs, vid_hblank, vid_vblank;
@@ -454,7 +454,7 @@ IBMRS6K7248_system #(.CPU_HZ(CPU_MHZ * 1_000_000), .TB_HZ(TB_HZ)) system
 	.nv_m_addr, .nv_m_we, .nv_m_wdata, .nv_m_q, .nv_m_ok, .nv_wr_seq,
 	.cd_change(|cd_change_s), .scsi_activity(scsi_act),
 
-	.io_ev, .io_we, .io_stub(), .io_addr, .io_be, .io_wdata, .io_rdata,
+	.io_ev, .io_we, .io_stub(), .io_ncr, .io_addr, .io_be, .io_wdata, .io_rdata,
 	.trace_valid, .trace_last, .trace_pc, .trace_insn, .trace_msr, .trace_lr, .trace_ctr,
 	.trace_reg_we, .trace_reg_idx, .trace_reg_val,
 	.trace_dreq(t_dreq), .trace_dwe(t_dwe), .trace_daddr(t_daddr)
@@ -653,7 +653,9 @@ end
 // and the enhanced registers xxE8 (aa the port's high byte: 42 46 4A 82 ... 9A ... E2; 9AE8 the busy status)
 reg  [45:0] nq [64];                      // {s3, we, be, offset, data}
 reg  [5:0]  nq_w = 0, nq_r = 0;
-wire        ncr_ev = isi_armed & io_ev & (io_addr[31:8] == 24'h810000 || io_addr[31:3] == 29'h1000_000C);
+// (and, for ARC and NT, any access to the 53C810's I/O BAR wherever they place it: io_ncr)
+wire        ncr_ev = isi_armed & io_ev & (io_ncr || io_addr[31:8] == 24'h810000 ||
+                                         (io_addr[31:3] == 29'h1000_000C && (io_we || !io_addr[2])));   // (not the 8042's status polls)
 // (not the reads of 3DA, input status 1: AIX's X server polls it without end and they filled the FIFO)
 wire        s3v_ev = isi_armed & io_ev & (io_addr[31:5] == 27'h400_001E) & ~(~io_we & io_addr[7:0] == 8'hD8);   // 8000_03C0-8000_03DF
 wire        s3e_ev = isi_armed & io_ev & io_addr[31:16] == 16'h8000 && io_addr[9:2] == 8'hBA;   // 8000_xxE8

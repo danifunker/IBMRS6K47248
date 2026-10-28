@@ -279,6 +279,7 @@ module IBMRS6K7248_machine
 	output logic         io_ev,
 	output logic         io_we,
 	output logic         io_stub,                   // no device answered it
+	output logic         io_ncr,                    // the 53C810's registers (its I/O BAR, wherever placed)
 	output logic [31:0]  io_addr,
 	output logic [3:0]   io_be,
 	output logic [31:0]  io_wdata,
@@ -398,7 +399,9 @@ end
 assign dm_req   = dm_hold & (dm_sel == 2'd2 ? isa_dm_req : dm_sel == 2'd1 ? pcn_dm_req : ncr_dm_req);
 assign dm_we    = dm_sel == 2'd2 ? isa_dm_we    : dm_sel == 2'd1 ? pcn_dm_we    : ncr_dm_we;
 assign dm_addr  = dm_sel == 2'd2 ? isa_dm_addr  : dm_sel == 2'd1 ? pcn_dm_addr  : ncr_dm_addr;
-// (little-endian mode: a doubleword's bytes and their enables reversed, both ways)
+// (little-endian mode: a doubleword's bytes and their enables reversed, both ways; LE_DMA_SWAP 0 turns it
+// off for experiments. With it the 53C810 reads ARC's SCRIPTS right: DCMD 11, its table-indirect MOVE)
+localparam bit LE_DMA_SWAP = 1'b1;
 function automatic logic [63:0] rev64(input logic [63:0] x);
 	for (int i = 0; i < 8; i++) rev64[8 * i +: 8] = x[56 - 8 * i +: 8];
 endfunction
@@ -407,8 +410,9 @@ function automatic logic [7:0] rev8(input logic [7:0] x);
 endfunction
 wire  [7:0]   dm_be_m    = dm_sel == 2'd2 ? isa_dm_be    : dm_sel == 2'd1 ? pcn_dm_be    : ncr_dm_be;
 wire  [63:0]  dm_wdata_m = dm_sel == 2'd2 ? isa_dm_wdata : dm_sel == 2'd1 ? pcn_dm_wdata : ncr_dm_wdata;
-assign dm_be    = le_bus ? rev8(dm_be_m)     : dm_be_m;
-assign dm_wdata = le_bus ? rev64(dm_wdata_m) : dm_wdata_m;
+wire          le_dma     = le_bus & LE_DMA_SWAP;
+assign dm_be    = le_dma ? rev8(dm_be_m)     : dm_be_m;
+assign dm_wdata = le_dma ? rev64(dm_wdata_m) : dm_wdata_m;
 wire          ncr_dm_ack = dm_ack & dm_sel == 2'd0;
 wire          pcn_dm_ack = dm_ack & dm_sel == 2'd1;
 wire          isa_dm_ack = dm_ack & dm_sel == 2'd2;
@@ -462,7 +466,7 @@ always_ff @(posedge clk) begin
 		end
 		DQ_SNOOP: if (snoop_ack) dq <= DQ_MEM;
 		DQ_MEM: if (m_ack && own_dma) begin
-			dm_rdata <= le_bus ? rev64(m_rdata[255 - 64 * dpa[4:3] -: 64]) : m_rdata[255 - 64 * dpa[4:3] -: 64];
+			dm_rdata <= le_dma ? rev64(m_rdata[255 - 64 * dpa[4:3] -: 64]) : m_rdata[255 - 64 * dpa[4:3] -: 64];
 			if (dm_we && !dm_hi && dm_be[3:0] != 4'h0) dq_w1 <= 1'b1;      // the second word next
 			else if (dm_we) begin snoop_gap <= 1'b1; dq <= DQ_SNOOP2; end
 			else begin dm_ack <= 1'b1; dq <= DQ_DONE; end
@@ -977,6 +981,7 @@ always_ff @(posedge clk) begin
 		io_we    <= d_we;
 		io_stub  <= ~(q_s3 | q_fdc | q_com1 | q_com2 | q_sio | q_planar | q_pd | q_fcio | q_cf8 | q_dev0 | q_dev11 | q_dev14 | q_dev16 | q_ncr | q_dev12 | q_pcn |
 		              q_pic | q_pit | q_kbc | q_rtc | q_ee | q_ide | q_p92 | q_err | q_aud | q_audc | q_dma | q_sb | q_fm | q_mpu | q_joy | q_iack);
+		io_ncr   <= q_ncr;
 		io_addr  <= p_a;
 		io_be    <= p_be;
 		io_wdata <= p_wd;
