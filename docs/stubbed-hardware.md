@@ -162,3 +162,12 @@ that cannot proceed without it.
   the Main_MiSTer branch.
 - 2026-10-23: no new stubs under AIX's `cfgmgr` on the bench (`run24`/`run25`: the 8237's `0D`/`D4`/`D6`/`DA`, `808`, `CFC` reads); the 53C810's gap under `ncr810dd` (no `cd0`) is the install CD's blocker.
 - 2026-10-23 evening: the 53C810 under `ncr810dd`: the 80-FF alias in the special register cases and the SIOM/DIOM memory moves to our own registers are fixed (`2df9a08`, `1440701`); on the board the scan now runs but ends in a SELECT that never completes and a bus fault (`bringup_log.md`).
+- 2026-10-28: **port 92 bit 1** (the PReP endian bit) now switches the bridge like PICR1's LE_MODE;
+  in little-endian mode the bridge swaps only the device side (PCI/ISA I/O, PCI memory) and the DMA
+  masters' data, not RAM or ROM (the ARC diskette boots to its menu). **Port 92 bit 0** (the fast
+  reset) is still only stored. **The SMS diskette's restart** (a jump to FFF00100, no hardware reset)
+  halts in POST: after progress 50 an external interrupt the firmware does not expect (DC,
+  `ext_int_handler` 195F8, `bad_int` 0x500, the halt at 6F50); some device keeps its interrupt from
+  before the restart. Plan: log the 8259s' IRR/ISR and the IRQ at the halt; check that ICW1 clears
+  the 8259 model's latched requests; consider resetting the devices on a port 92 bit 0 pulse.
+  **The 8042's keyboard**: scan set 1 (F0 01, ARC's) added beside sets 2 and 3.

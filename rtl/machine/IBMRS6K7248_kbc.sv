@@ -17,7 +17,7 @@
 //  byte makes a new edge for the 8259.
 //
 //  The keyboard: reset (FA AA), identify (FA AB 83), enable and disable,
-//  the LEDs, the scan set (2, or 3 as AIX selects it; asked, it answers which), the set 3
+//  the LEDs, the scan set (2, 3 as AIX selects it, or 1 as Windows NT's ARC does; asked, it answers which), the set 3
 //  key types (FB/FC/FD and their key lists: all keys stay make/break), typematic, echo, FE for a
 //  byte that is not a command;
 //  its keys in set 2 (E0 for extended keys, F0 before a release). The
@@ -268,6 +268,7 @@ logic       k_on;                       // scanning
 logic [7:0] k_wait;                     // a command waiting for its parameter (0 none)
 logic       k_rel;                      // translation: the next code is a release
 logic       k_set3;                     // scan set 3 selected (F0 03; else set 2)
+logic       k_set1;                     // scan set 1 selected (F0 01: its codes are the 8042's translated ones)
 logic       k_list;                     // after FB/FC/FD: key codes follow until the next command
 // mouse device
 logic       m_on;
@@ -295,7 +296,7 @@ always_comb begin
 	// the keyboard's answer to a byte written to 60 (no controller command pending)
 	if (sel & we & ~cmd & pend == 8'h00) begin
 		// the scan set, asked (F0 00): the keyboard answers its set (2 or 3) after its FA
-		if (k_wait == 8'hF0 && wdata == 8'h00) begin kpush_n = 3'd2; kpush[0] = 8'hFA; kpush[1] = k_set3 ? 8'h03 : 8'h02; end
+		if (k_wait == 8'hF0 && wdata == 8'h00) begin kpush_n = 3'd2; kpush[0] = 8'hFA; kpush[1] = k_set3 ? 8'h03 : k_set1 ? 8'h01 : 8'h02; end
 		else if (k_wait != 8'h00) begin kpush_n = 3'd1; kpush[0] = 8'hFA; end
 		else if (k_list && !k_cmd(wdata)) begin kpush_n = 3'd1; kpush[0] = 8'hFA; end   // a key code after FB/FC/FD
 		else case (wdata)
@@ -319,8 +320,8 @@ always_comb begin
 				else            begin kpush_n = 3'd2; kpush[0] = 8'hF0; kpush[1] = c3; end
 			end
 		end
-		else if (cbyte[6]) begin
-			// translated: E0, then the code with bit 7 for a release
+		else if (cbyte[6] || k_set1) begin
+			// translated, or set 1: E0, then the code with bit 7 for a release
 			if (ps2_key[8]) begin kpush_n = 3'd2; kpush[0] = 8'hE0; kpush[1] = xlat(ps2_key[7:0]) | {~ps2_key[9], 7'd0}; end
 			else            begin kpush_n = 3'd1; kpush[0] = xlat(ps2_key[7:0]) | {~ps2_key[9], 7'd0}; end
 		end
@@ -466,7 +467,7 @@ always_ff @(posedge clk) begin
 						cbyte[4] <= 1'b0;
 						if (k_wait != 8'h00) begin
 							// the scan set: 1-3 select (set 1 is taken as 2), 0 asks (answered below)
-							if (k_wait == 8'hF0 && wdata != 8'h00) k_set3 <= wdata == 8'h03;
+							if (k_wait == 8'hF0 && wdata != 8'h00) begin k_set3 <= wdata == 8'h03; k_set1 <= wdata == 8'h01; end
 							k_wait <= 8'h00;
 						end
 						else if (k_list && !k_cmd(wdata)) ;      // a key code after FB/FC/FD: all keys stay make/break
@@ -477,7 +478,7 @@ always_ff @(posedge clk) begin
 								8'hF4: k_on <= 1'b1;
 								8'hF5: k_on <= 1'b0;
 								8'hF6: k_on <= 1'b1;
-								8'hFF: begin k_on <= 1'b1; k_set3 <= 1'b0; end     // the reset: set 2 again
+								8'hFF: begin k_on <= 1'b1; k_set3 <= 1'b0; k_set1 <= 1'b0; end     // the reset: set 2 again
 								default: ;
 							endcase
 						end
@@ -499,7 +500,7 @@ always_ff @(posedge clk) begin
 	if (reset) begin
 		kq_r <= '0; kq_w <= '0; mq_r <= '0; mq_w <= '0;
 		obf <= 1'b0; ob_aux <= 1'b0; cbyte <= 8'h00; a2 <= 1'b0; pend <= 8'h00; outport <= 8'hCF;
-		gap <= '0; k_on <= 1'b1; k_wait <= 8'h00; k_set3 <= 1'b0; k_list <= 1'b0; m_on <= 1'b0; m_wait <= 8'h00;
+		gap <= '0; k_on <= 1'b1; k_wait <= 8'h00; k_set3 <= 1'b0; k_set1 <= 1'b0; k_list <= 1'b0; m_on <= 1'b0; m_wait <= 8'h00;
 		m_rate <= 8'd100; m_res <= 8'd2; m_scale <= 1'b0;
 	end
 end
