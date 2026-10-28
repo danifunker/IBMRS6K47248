@@ -137,6 +137,11 @@ int main(int argc, char** argv) {
 	uint64_t pcs_print = 0, pcs_from = 0, calls_print = 0, calls_from = 0;
 	uint32_t prev_insn = 0, prev_pc = 0;
 	uint64_t exc_left = 0, exc_from = 0;
+	uint64_t hang_lim = 0, last_retire = 0;            // --hang N: stop when nothing retires for N clocks
+	const char* memdump_path = nullptr;                // --memdump FILE: the RAM (up to the bench's 128 MB) at the end
+	struct Ring { uint32_t pc, insn, msr; uint64_t cycle; };
+	std::vector<Ring> ring(512);                       // the last 512 instructions retired, printed at the end
+	size_t ring_n = 0;
 	unsigned cpu_mhz = 0, mem_mhz = 0;               // 0: the two clocks as one
 	struct KeyAt { uint64_t clock; unsigned code; bool ext; uint64_t hold = 300000; };
 	std::vector<KeyAt> keys;                      // --key-at
@@ -216,6 +221,8 @@ int main(int argc, char** argv) {
 			com1_in.push_back({strtoull(v.substr(0, c).c_str(), nullptr, 0), unsigned(strtoul(v.substr(c + 1).c_str(), nullptr, 16))});
 		}
 		else if (a == "--stall") stall_lim = strtoull(next(), nullptr, 0);
+		else if (a == "--hang") hang_lim = strtoull(next(), nullptr, 0);
+		else if (a == "--memdump") memdump_path = next();
 		else { usage(); return 2; }
 	}
 	if (!rom_path) { usage(); return 2; }
@@ -710,6 +717,8 @@ int main(int argc, char** argv) {
 			else if (pc >= 0xFFF00000u) prev_insn = rd32((ROM_AT << 22) + (pc - 0xFFF00000u));
 			else prev_insn = 0;
 			prev_pc = pc;
+			ring[ring_n++ % ring.size()] = {pc, prev_insn, uint32_t(top->trace_msr), cycle};
+			last_retire = cycle;
 			instr++;
 			last_pc = pc;
 			if (seen_pc.emplace(pc, instr).second) since_new = 0;
@@ -717,6 +726,7 @@ int main(int argc, char** argv) {
 			if (max_instr && instr >= max_instr) { why = "instruction limit"; break; }
 			if (stall_lim && since_new >= stall_lim) { why = "no new code for the stall limit"; break; }
 		}
+		if (hang_lim && instr && cycle - last_retire > hang_lim) { why = "nothing retired for the hang limit"; break; }
 		if (top->trace_dreq && instr < daddr_print && instr >= daddr_from)
 			printf("D %c %08X  (pc %08X, instr %llu)\n", top->trace_dwe ? 'W' : 'R', uint32_t(top->trace_daddr) << 2, last_pc, (unsigned long long)instr);
 		if (top->io_ev) {
@@ -765,6 +775,28 @@ int main(int argc, char** argv) {
 	       why, (unsigned long long)cycle, (unsigned long long)instr, instr ? double(cycle) / instr : 0.0,
 	       (unsigned long long)io_count);
 	printf("last PC %08X; %llu progress codes, the last %02X\n", last_pc, (unsigned long long)post_count, post_last);
+	if (hang_lim || memdump_path) {
+		printf("the last instructions retired (pc, the word in memory, msr, clock):\n");
+		size_t n = ring_n < ring.size() ? ring_n : ring.size();
+		for (size_t i = ring_n - n; i < ring_n; i++) {
+			auto& r = ring[i % ring.size()];
+			printf("  R %08X %08X msr %08X  %llu\n", r.pc, r.insn, r.msr, (unsigned long long)r.cycle);
+		}
+		printf("  CPU now: data request %d, write %d, address %08X\n", int(top->trace_dreq), int(top->trace_dwe),
+		       uint32_t(top->trace_daddr) << 2);
+	}
+	if (memdump_path) {
+		FILE* mf = fopen(memdump_path, "wb");
+		if (mf) {
+			for (uint32_t a = 0; a < (ram_mb << 20) && a < MEM_BYTES; a += 4) {
+				uint32_t w = rd32(a);
+				uint8_t b[4] = {uint8_t(w >> 24), uint8_t(w >> 16), uint8_t(w >> 8), uint8_t(w)};
+				fwrite(b, 1, 4, mf);
+			}
+			fclose(mf);
+			printf("RAM written to %s\n", memdump_path);
+		}
+	}
 	// the loop it is in: the PCs retired in the last stretch, by address
 	if (since_new > 1000) {
 		std::vector<uint32_t> recent;

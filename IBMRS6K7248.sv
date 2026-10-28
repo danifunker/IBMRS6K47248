@@ -401,7 +401,7 @@ wire [31:2]  b_addr;
 wire  [3:0]  b_be;
 wire [255:0] b_wdata, b_rdata;
 wire         trace_valid, trace_last;
-wire [31:0]  trace_pc, trace_msr, trace_lr, trace_ctr;
+wire [31:0]  trace_pc, trace_insn, trace_msr, trace_lr, trace_ctr;
 wire         trace_reg_we;
 wire [6:0]   trace_reg_idx;
 wire [63:0]  trace_reg_val;
@@ -455,7 +455,7 @@ IBMRS6K7248_system #(.CPU_HZ(CPU_MHZ * 1_000_000), .TB_HZ(TB_HZ)) system
 	.cd_change(|cd_change_s), .scsi_activity(scsi_act),
 
 	.io_ev, .io_we, .io_stub(), .io_addr, .io_be, .io_wdata, .io_rdata,
-	.trace_valid, .trace_last, .trace_pc, .trace_insn(), .trace_msr, .trace_lr, .trace_ctr,
+	.trace_valid, .trace_last, .trace_pc, .trace_insn, .trace_msr, .trace_lr, .trace_ctr,
 	.trace_reg_we, .trace_reg_idx, .trace_reg_val,
 	.trace_dreq(t_dreq), .trace_dwe(t_dwe), .trace_daddr(t_daddr)
 );
@@ -700,6 +700,26 @@ end
 // the hand-off, the header alone: "IL=" the last PC retired, " C=" the data address the CPU's access is at,
 // " M=" bit 31 a data access pending, bit 30 a write: where a stalled bus access hangs the core)
 wire        isi_go = 1'b0;
+// (little-endian bring-up) from the switch to little-endian (a port 92 write with bit 1 set) on, the last 64
+// instructions retired, PC and word, in a ring; at the stall they follow its header, the oldest first,
+// "pppppppp:iiiiiiii ". The stall's " M=" then also carries the MSR in bits 29-0.
+reg         le_arm = 1'b0;
+reg  [31:0] le_pc [64];
+reg  [31:0] le_in [64];
+reg  [5:0]  le_w = 0, le_r = 0;
+reg  [6:0]  le_left = 0;
+reg  [31:0] le_pc_q, le_in_q, le_hold;
+reg         le_half = 1'b0;
+always @(posedge clk_cpu) begin
+	if (io_ev & io_we & (io_addr[31:2] == 30'h2000_0024) & io_be[1] & io_wdata[9]) le_arm <= 1'b1;
+	if (le_arm && !isi_done && trace_valid && trace_last) begin
+		le_pc[le_w] <= trace_pc;
+		le_in[le_w] <= trace_insn;
+		le_w        <= le_w + 6'd1;
+	end
+	le_pc_q <= le_pc[le_r];
+	le_in_q <= le_in[le_r];
+end
 reg  [23:0] stall_n = 0;
 reg  [31:0] stall_pc = 0;
 always @(posedge clk_cpu) begin
@@ -717,7 +737,7 @@ always @(posedge clk_cpu) begin
 		isi_n          <= isi_go ? 6'd39 : isi_n - 6'd1;
 	end
 	if (isi_go) begin isi_done <= 1'b1; isi_lr <= trace_lr; isi_ctr <= trace_ctr; isi_msr <= trace_msr; end
-	if (stall_go) begin isi_done <= 1'b1; isi_lr <= stall_pc; isi_ctr <= {t_daddr, 2'b00}; isi_msr <= {t_dreq, t_dwe, 30'd0}; end
+	if (stall_go) begin isi_done <= 1'b1; isi_lr <= stall_pc; isi_ctr <= {t_daddr, 2'b00}; isi_msr <= {t_dreq, t_dwe, trace_msr[29:0]}; end
 	if (isi_armed && trace_valid && trace_last && trace_pc[31] == 1'b0 && trace_pc[30:28] != 3'd0) usr_on <= 1'b1;
 end
 
@@ -777,6 +797,7 @@ always @(posedge clk_cpu) begin
 	if (k92_ev) k92_d <= io_wdata[15:8];
 	k92_pend   <= k92_pend | k92_ev;
 	if (isi_go | stall_go) isi_hdr <= 2'd3;
+	if (stall_go & le_arm) begin le_r <= le_w; le_left <= 7'd64; end
 	if (isi_armed && io_ev && io_we && io_addr[31:3] == 29'h1000_007F && !usr_pend) begin
 		usr_pend <= 1'b1; usr_we <= io_we; usr_isa <= 1'b1; usr_a <= {io_be, io_addr[11:0]};
 		usr_d <= io_wdata;
@@ -822,6 +843,19 @@ always @(posedge clk_cpu) begin
 		stage   <= {isi_hdr == 2'd3 ? 16'h494C : isi_hdr == 2'd2 ? 16'h2043 : 16'h204D, 8'h3D,
 		            hex8(isi_hdr == 2'd3 ? isi_lr : isi_hdr == 2'd2 ? isi_ctr : isi_msr), 8'h20, 16'h0};
 		isi_hdr <= isi_hdr - 2'd1;
+	end
+	else if (le_half) begin
+		stage_n <= 4'd9;
+		stage   <= {hex8(le_hold), 8'h20, 40'h0};
+		le_half <= 1'b0;
+	end
+	else if (isi_done && le_left != 7'd0) begin   // (le_pc_q/le_in_q: read a clock after le_r moved, long before this)
+		stage_n <= 4'd9;
+		stage   <= {hex8(le_pc_q), 8'h3A, 40'h0};
+		le_hold <= le_in_q;
+		le_half <= 1'b1;
+		le_r    <= le_r + 6'd1;
+		le_left <= le_left - 7'd1;
 	end
 	else if (isi_done && isi_n == 6'd0 && isi_r != isi_w) begin
 		stage_n <= 4'd14;

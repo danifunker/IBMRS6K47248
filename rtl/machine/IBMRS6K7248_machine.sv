@@ -67,7 +67,7 @@
 //    0279       the CS4232's configuration (the Crystal key and commands); its
 //               Sound Blaster DSP and WSS codec where they are placed and
 //               only while active, present but silent (IBMRS6K7248_cs4232)
-//    0092       port 92 (stored; its endian bit is for little-endian mode)
+//    0092       port 92 (stored; bit 1 puts the bus in little-endian mode, as PICR1's LE_MODE)
 //    0840-0844  the memory and L2 error status registers: no error (0)
 //    0880-0882  SIMM presence detect (read only)
 //    Fire Coral's BAR0 (1000 as the firmware sets it): its index/data pair
@@ -341,7 +341,11 @@ endfunction
 function automatic logic [255:0] swap_line(input logic [255:0] x);
 	for (int i = 0; i < 8; i++) swap_line[255 - 32 * i -: 32] = rev32(x[255 - 32 * (i ^ 1) -: 32]);
 endfunction
-wire          le_bus  = (LE_MODE != 0) & picr1[5];
+// Either switch puts the bus in little-endian mode: the MPC105's own PICR1 bit, or the PReP
+// system's endian bit, port 92 bit 1, which is what the PReP software (the ARC loader, NT's
+// HAL) writes on the 7248.
+logic  [7:0] p92;
+wire          le_bus  = (LE_MODE != 0) & (picr1[5] | p92[1]);
 wire  [31:2]  x_addr  = le_bus & ~c_line ? {c_addr[31:3], ~c_addr[2]} : c_addr;
 wire  [3:0]   x_be    = le_bus ? {c_be[0], c_be[1], c_be[2], c_be[3]} : c_be;
 wire  [255:0] x_wdata = ~le_bus ? c_wdata : c_line ? swap_line(c_wdata) : {224'h0, rev32(c_wdata[31:0])};
@@ -705,7 +709,6 @@ logic  [7:0] rec_byte;
 logic [15:0] cs_l, cs_r, sb_l, sb_r;
 
 logic        irq0, irq1, irq8, irq12, nmi_mask;
-logic  [7:0] p92;
 
 IBMRS6K7248_pic pic (
 	.clk, .reset,

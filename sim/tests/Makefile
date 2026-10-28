@@ -5,7 +5,13 @@ LD      := powerpc-linux-gnu-ld
 OBJCOPY := powerpc-linux-gnu-objcopy
 NM      := powerpc-linux-gnu-nm
 
-all: le_test.rom le_test_dc.rom
+all: le_test.rom le_test_dc.rom le_sled.rom
+
+# the ARC diskette's switch (port 92, a sled into little-endian code in RAM), padded to 512 KB
+# (with clang-18 and llvm-objcopy-18 where binutils for PowerPC is missing: the code is position-free)
+le_sled.rom: le_sled.S
+	if command -v $(AS) > /dev/null; then $(AS) -mregnames -o le_sled.o $< && $(LD) -Ttext=0xFFF00000 -o le_sled.elf le_sled.o && 	  $(OBJCOPY) -O binary le_sled.elf le_sled.bin; 	else clang-18 --target=powerpc-unknown-linux-gnu -c -o le_sled.o $< && llvm-objcopy-18 -O binary -j .text le_sled.o le_sled.bin; fi
+	python3 -I -c "import sys; b=open('le_sled.bin','rb').read(); open('$@','wb').write(b + b'\xff' * (0x80000 - len(b)))"
 
 # $(1): the variant's suffix; $(2): its assembler flags
 define le_variant
