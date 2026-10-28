@@ -122,6 +122,7 @@ localparam CONF_STR = {
 	"R[0],Apply and reset;",
 
 	"P2O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
+	"P2O[124:123],Scale,Normal,V-Integer,Narrower HV-Integer,Wider HV-Integer;",
 
 	"P3O[5],Swap Alt/Win keys,No,Yes;",
 
@@ -182,8 +183,7 @@ reg  [127:0] cfg = 128'd0;
 wire         pending = {status[3:1], status[122:121]} != {cfg[3:1], cfg[122:121]};
 
 wire [1:0] ar = cfg[122:121];
-assign VIDEO_ARX = (!ar) ? 12'd4 : (ar - 1'd1);
-assign VIDEO_ARY = (!ar) ? 12'd3 : 12'd0;
+// (the ratio is the framework's video_freak's input, beside the picture below)
 wire        ioctl_download;
 wire [15:0] ioctl_index;
 wire        ioctl_wr;
@@ -938,7 +938,15 @@ assign LED_USER = retired[20];
 // the S3's scan-out (IBMRS6K7248_s3video), in the memory clock; the framework's scaler takes it
 assign CLK_VIDEO = clk_mem;
 assign CE_PIXEL  = vid_ce;
-assign VGA_DE    = ~(vid_hblank | vid_vblank);
+// the framework's integer scaling (the Video page's Scale, at once): video_freak measures the mode and
+// sets the ratio and the active area
+video_freak video_freak
+(
+	.CLK_VIDEO, .CE_PIXEL, .VGA_VS, .HDMI_WIDTH, .HDMI_HEIGHT, .VGA_DE, .VIDEO_ARX, .VIDEO_ARY,
+	.VGA_DE_IN(~(vid_hblank | vid_vblank)),
+	.ARX((!ar) ? 12'd4 : 12'(ar - 1'd1)), .ARY((!ar) ? 12'd3 : 12'd0),
+	.CROP_SIZE(12'd0), .CROP_OFF(5'd0), .SCALE({1'b0, status[124:123]})
+);
 assign VGA_HS    = vid_hs;
 assign VGA_VS    = vid_vs;
 assign VGA_R     = vid_r;

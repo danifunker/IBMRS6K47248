@@ -386,9 +386,11 @@ module IBMRS6K7248_scsitgt #(
     endfunction
 
     // ------------------------------------------------------------- engine
-    wire [2:0] id_hit = {img_present[2] && sel_id == CD_ID, img_present[1] && sel_id == DISK1_ID,
+    // (the CD drive answers with or without a disc, as a real one: empty, it reports no medium)
+    wire [2:0] id_hit = {sel_id == CD_ID, img_present[1] && sel_id == DISK1_ID,
                          img_present[0] && sel_id == DISK0_ID};
     logic        sd_busy;
+    logic        cd_ua;            // a disc mounted since: the next command but INQUIRY or REQUEST SENSE gets UNIT ATTENTION
     logic [1:0]  sd_dev;
     logic        sd_was_ack;
 
@@ -406,14 +408,14 @@ module IBMRS6K7248_scsitgt #(
         if (rst || brst) begin
             st <= T_FREE; bsy <= 1'b0; req <= 1'b0; e_rd <= 3'd0; e_wr <= 3'd0; sd_busy <= 1'b0;
             for (int d = 0; d < 3; d++) begin skey[d] <= 4'd0; sasc[d] <= 8'd0; end
-            pending <= 1'b0;
+            pending <= 1'b0; cd_ua <= 1'b0;
             if (rst) begin toc_ok <= 1'b0; toc_n <= 8'd0; vol0 <= 8'hFF; vol1 <= 8'hFF; a_stop <= 1'b1; end
         end else begin
             // block device handshake: drop rd/wr when ack rises, done when it falls
             if (|(ack_c & (e_rd | e_wr))) begin e_rd <= 3'd0; e_wr <= 3'd0; end
             if (sd_busy && sd_was_ack && !(|ack_c) && !(|e_rd) && !(|e_wr)) sd_busy <= 1'b0;
             // a new disc: its table is read again at the next command that needs it
-            if (cd_change) begin toc_ok <= 1'b0; toc_n <= 8'd0; a_stop <= 1'b1; end
+            if (cd_change) begin toc_ok <= 1'b0; toc_n <= 8'd0; a_stop <= 1'b1; cd_ua <= 1'b1; end
 
             case (st)
                 T_FREE: if (sel) begin
@@ -484,7 +486,12 @@ module IBMRS6K7248_scsitgt #(
                         cnt = {16'd0, cdb[7], cdb[8]};
                     end
                     d_idx <= 16'd0; ms_i <= 16'd0; ms_bdl <= 8'd0; ms_pg <= 6'h3F;
-                    if (is_cd && !toc_ok && (op == 8'h43 || op == 8'h42 || op == 8'h45 || op == 8'h47 ||
+                    if (is_cd && cd_ua && op != 8'h12 && op != 8'h03) begin
+                        cd_ua <= 1'b0;
+                        skey[dev] <= 4'h6; sasc[dev] <= 8'h28; go_status(8'h02);   // UNIT ATTENTION, medium may have changed
+                    end else if (is_cd && !img_present[2] && op != 8'h12 && op != 8'h03 && op != 8'h1B && op != 8'h1E) begin
+                        skey[dev] <= 4'h2; sasc[dev] <= 8'h3A; go_status(8'h02);   // NOT READY, medium not present
+                    end else if (is_cd && !toc_ok && (op == 8'h43 || op == 8'h42 || op == 8'h45 || op == 8'h47 ||
                                              op == 8'h48 || op == 8'hA5)) begin
                         st <= T_TOC;                                  // the track table first
                     end else if (lun != 3'd0 && op != 8'h12 && op != 8'h03) begin

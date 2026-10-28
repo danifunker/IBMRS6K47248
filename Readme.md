@@ -57,7 +57,10 @@ Put the files in `games/IBMRS6K7248/`:
 - `boot.rom`: the 7248's firmware (512 KB, v1.12, P93H7075; `releases/boot.rom`). It loads at every start.
 - A disk image for AIX, made with `dd if=/dev/zero of=AIX.img bs=1M count=4096`.
 - `IBMRS6K7248.nvr`: the NVRAM image, made with `dd if=/dev/zero of=IBMRS6K7248.nvr bs=512 count=9`.
-  The core fills it on first mount.
+  The core fills it on first mount. Or start from `releases/IBMRS6K7248_default.nvr` (copy it to
+  `IBMRS6K7248.nvr`): the boot sequence floppy, CD-ROM, the disk at ID 0, the disk the boot device,
+  no BOOTP addresses, the error log empty. Copy it again to undo NVRAM changes (the boot list an AIX
+  install CD leaves, SMS settings); the file is only read when it is mounted, so load the core again.
 - The AIX install CD, as an ISO.
 - For the System Management Services: `releases/7248_SMS_v1.07.img`, the 7248's SMS diskette,
   version 1.07 (a raw 1.44 MB FAT12 image, MD5 `77a5682c00c610c18341ea6dbb776a16`). Mount it as
@@ -85,6 +88,7 @@ Mounted images are remembered and mounted again at every core load.
 | top | `Memory` | the RAM as SIMM pairs. AIX needs 32 MB at least. A size the SDRAM can't hold gives the most it can: 24, 56 or 112 MB on a 32, 64 or 128 MB module |
 | top | `Apply and reset` | resets the machine with the OSD's settings. "Changes pending" shows while they differ from the running ones |
 | P2 Video | `Aspect ratio` | Original (4:3), Full Screen, or the custom ratios |
+| P2 Video | `Scale` | Normal, or integer scaling (V-Integer, Narrower or Wider HV-Integer: the framework's `video_freak`); at once |
 | P3 Input | `Swap Alt/Win keys` | swaps the Alt and Win keys (acts at once) |
 | P4 Audio | `Use MT32-pi`, `Synth`, `Munt ROM` / `SoundFont` | the MPU-401's MIDI to an MT32-pi on the user port, and its synth's settings (they act at once, like the Input page) |
 | P5 Advanced | `NVRAM image` | the file holding the 4 KB PReP NVRAM and the CMOS: the boot list, the console choice, SMS settings. Loaded at the mount, saved two seconds after AIX or the firmware writes them |
