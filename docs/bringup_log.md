@@ -1175,3 +1175,15 @@ the 7248's ROM v1.12 offers fewer services. Not the core's: a 7248 SMS diskette 
 - **On .92 (07:52) the ARC diskette boots**: "PowerPC Portable Boot Loader Ver. 1.51" on the S3,
   little-endian with translation on (0x806Fxxxx), the SCSI scan, then ARC's language menu ("Use ARC in US
   English" ...). CPU clock slack -2.73 ns.
+
+## 2026-10-28 afternoon: NT's phantom trap is the CPU's (hand-off to a Fable session)
+
+- The overnight capture (`Y:\ibmrs6k-bench-logs\nt_c1boot_20261028.raw`) read again with the kernel
+  image beside it: the last instruction retired before the program exception is **`stw r3,0x14(r27)` at
+  0x800A3D00**, followed in the kernel by `beq cr1` at 3D04, the pair the BTB's conditional fold makes;
+  LR at the exception is **0x800A3D04** (nothing there links), SRR0 0x800A3B80 (another `beq cr1`, same
+  BO/BI), SRR1 trap. The CPU acted as if it ran `bl -0x180` at 3D00 and a trap at 3B80: words or PCs
+  that are not the kernel's, deterministically (21 identical repeats), and only in little-endian.
+  Suspects (the cf fold in LE, BTB fold entries valid across MSR[LE] and HID0[ICFI], the LE I-cache
+  fill) and a plan (dump the 64-entry retire ring at the first 0x700, a directed LE bench test) in
+  `docs/resume_cpu_trap_fable.md`.
