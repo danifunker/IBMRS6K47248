@@ -1,5 +1,7 @@
 # Hand-off, CPU only: DSPPC604 takes a phantom trap in little-endian mode
 
+**SUPERSEDED 2026-10-28 evening: the trap is NT's own `twi` (DbgLoadImageSymbols), the kernel is ntkrnlmp.exe at 0x80049000, the CPU is fine. See `docs/resume_nt_kernel_break.md`.**
+
 (Written 2026-10-28, a CPU-scoped cut of `docs/resume_cpu_trap_fable.md`. Paste everything below the
 line into a new session started in this repository, `C:\Temp\mistercore\IBMRS6K47248`. The board
 procedure, NT media, the debug logger and the NT work list stay in `docs/resume_cpu_trap_fable.md` and

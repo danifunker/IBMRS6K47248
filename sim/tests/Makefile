@@ -5,13 +5,20 @@ LD      := powerpc-linux-gnu-ld
 OBJCOPY := powerpc-linux-gnu-objcopy
 NM      := powerpc-linux-gnu-nm
 
-all: le_test.rom le_test_dc.rom le_sled.rom
+all: le_test.rom le_test_dc.rom le_sled.rom le_fold.rom
 
 # the ARC diskette's switch (port 92, a sled into little-endian code in RAM), padded to 512 KB
 # (with clang-18 and llvm-objcopy-18 where binutils for PowerPC is missing: the code is position-free)
 le_sled.rom: le_sled.S
 	if command -v $(AS) > /dev/null; then $(AS) -mregnames -o le_sled.o $< && $(LD) -Ttext=0xFFF00000 -o le_sled.elf le_sled.o && 	  $(OBJCOPY) -O binary le_sled.elf le_sled.bin; 	else clang-18 --target=powerpc-unknown-linux-gnu -c -o le_sled.o $< && llvm-objcopy-18 -O binary -j .text le_sled.o le_sled.bin; fi
 	python3 -I -c "import sys; b=open('le_sled.bin','rb').read(); open('$@','wb').write(b + b'\xff' * (0x80000 - len(b)))"
+
+# the NT kernel's phantom trap (2026-10-28): the kernel's own words run little-endian at their
+# own addresses, from a driver; clang-18 for both halves (powerpc and powerpcle)
+le_fold.rom: le_fold_be.S le_fold_le.S le_fold_kernel.inc
+	clang-18 --target=powerpc-unknown-linux-gnu -c -o le_fold_be.o le_fold_be.S && llvm-objcopy-18 -O binary -j .text le_fold_be.o le_fold_be.bin
+	clang-18 --target=powerpcle-unknown-linux-gnu -c -o le_fold_le.o le_fold_le.S && llvm-objcopy-18 -O binary -j .text le_fold_le.o le_fold_le.bin
+	python3 -I -c "be=open('le_fold_be.bin','rb').read(); le=open('le_fold_le.bin','rb').read(); le=le+b'\0'*(-len(le)%8); le=b''.join(le[i:i+8][::-1] for i in range(0,len(le),8)); assert len(be) <= 0x10000 and len(le) <= 0x3000, (len(be), len(le)); img=bytearray(b'\xff'*0x80000); img[:len(be)]=be; img[0x10000:0x10000+len(le)]=le; open('$@','wb').write(img)"
 
 # $(1): the variant's suffix; $(2): its assembler flags
 define le_variant

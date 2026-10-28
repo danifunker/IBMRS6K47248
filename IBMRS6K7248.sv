@@ -805,7 +805,7 @@ always @(posedge clk_cpu) begin
 	if (k92_ev) k92_d <= io_wdata[15:8];
 	k92_pend   <= k92_pend | k92_ev;
 	if (isi_go | stall_go) isi_hdr <= 2'd3;
-	if (stall_go & le_arm) begin le_r <= le_w; le_left <= 7'd64; end
+	if ((stall_go | isi_go) & le_arm) begin le_r <= le_w; le_left <= 7'd64; end   // the ring at the stall, and at the first program exception
 	if (isi_armed && io_ev && io_we && io_addr[31:3] == 29'h1000_007F && !usr_pend) begin
 		usr_pend <= 1'b1; usr_we <= io_we; usr_isa <= 1'b1; usr_a <= {io_be, io_addr[11:0]};
 		usr_d <= io_wdata;

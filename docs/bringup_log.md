@@ -1187,3 +1187,22 @@ the 7248's ROM v1.12 offers fewer services. Not the core's: a 7248 SMS diskette 
   Suspects (the cf fold in LE, BTB fold entries valid across MSR[LE] and HID0[ICFI], the LE I-cache
   fill) and a plan (dump the 64-entry retire ring at the first 0x700, a directed LE bench test) in
   `docs/resume_cpu_trap_fable.md`.
+
+## 2026-10-28 evening: the phantom trap is NT's own debug-service trap; the CPU is exonerated
+
+- The debug build's 64-entry retire ring (PC and the word executed) now dumps at the first program
+  exception after the switch to little-endian (`IBMRS6K7248.sv`, one line). On .92 it showed the CPU
+  ran, at 0x800A3CA0-0x800A3D00, a prologue, a call to RtlImageNtHeader, loads of CheckSum and
+  SizeOfImage, and **`bl -0x180`** — `DbgLoadImageSymbols` ending in `DebugService`, which on PowerPC is
+  **`twi 31,r0,23`** (DEBUG_LOAD_SYMBOLS_BREAKPOINT) at 0x800A3B80. None of these words is what
+  `ntoskrnl.exe` holds at those addresses: the kernel that runs is **`ntkrnlmp.exe`** (txtsetup.sif's
+  Multiprocessor choice), **loaded at 0x80049000**; with that map every run of the ring matches the file
+  (delta 0x39000 throughout). The 21 traps are the 21 loaded modules. SRR0, SRR1 and LR were all right.
+- The real stop is the next trap, `twi 31,r0,22` at 0x800A3B58 (the DbgBreakPoint row of ntkrnlmp),
+  after which the kernel sends KD packets on COM1: a bugcheck breaking into the crash-time debugger,
+  code not yet captured. Hand-off and next captures: `docs/resume_nt_kernel_break.md`.
+- Bench: `sim/tests/le_fold.rom` runs `ntoskrnl.exe`'s words 0x800A3A80-0x800A3D60 little-endian at
+  their own addresses (BATs, both caches, MSR 00013031), 4096 iterations of both entry paths, no
+  exception (`scratch/work/run_fold.sh`). Lessons while writing it: in this (port 92) mode RAM holds
+  the LE image with each doubleword's bytes reversed; a store in real mode with DCE on is cached (the
+  port-92 write must come before the caches go on); BATU's BL for 8 MB is 0x3F (0x800000FE).

@@ -1,5 +1,7 @@
 # Hand-off for a Fable session: DSPPC604 takes a phantom trap under Windows NT (little-endian)
 
+**SUPERSEDED 2026-10-28 evening: the trap is NT's own `twi` (DbgLoadImageSymbols), the kernel is ntkrnlmp.exe at 0x80049000, the CPU is fine. See `docs/resume_nt_kernel_break.md`.**
+
 (Written 2026-10-28 by the session that resumed `docs/resume_nt_setup.md`. Paste everything below the
 line into a new session started in this repository, `C:\Temp\mistercore\IBMRS6K47248`.)
 
