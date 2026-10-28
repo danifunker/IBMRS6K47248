@@ -422,7 +422,9 @@ always_ff @(posedge clk) begin
 				fcnt <= 3'd0;
 				case (ins0[31:30])
 					2'b00: begin                                         // block move
-						if (target_mode || !ins0[27]) begin set_ds[0] = 1'b1; est <= E_IDLE; end    // target mode / CHMOV
+						if (target_mode) begin set_ds[0] = 1'b1; est <= E_IDLE; end    // target mode
+						// (CHMOV, opcode bit 27 clear, moves as MOVE: on a narrow 810 the chaining only matters to wide
+						// transfers; ARC's SCRIPTS move their data with it)
 						else if (ins0[28] || ins0[29]) begin
 							// table indirect (DSA + offset) or indirect: the count and address
 							d_go <= 1'b1; dm_we <= 1'b0; dm_be <= 8'hFF;

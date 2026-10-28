@@ -398,6 +398,9 @@ module IBMRS6K7248_scsitgt #(
 
     task automatic go_status(input logic [7:0] s);
         status <= s; st <= T_STAT; req <= 1'b1; phase <= P_STAT; tdata <= s;
+`ifdef VERILATOR
+        $display("  scsi status %02x", s);
+`endif
     endtask
 
     always_ff @(posedge clk) begin
@@ -475,6 +478,10 @@ module IBMRS6K7248_scsitgt #(
                 T_EXEC: begin
                     logic [7:0]  op;
                     logic [31:0] lba, cnt;
+`ifdef VERILATOR
+                    $display("  scsi dev %0d lun %0d cdb %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x", dev, lun,
+                             cdb[0], cdb[1], cdb[2], cdb[3], cdb[4], cdb[5], cdb[6], cdb[7], cdb[8], cdb[9]);
+`endif
                     op = cdb[0];
                     // block address and count of the READ/WRITE forms
                     if (op[7:5] == 3'd0) begin
