@@ -50,6 +50,7 @@ module IBMRS6K7248_sb
 	output logic        rec,           // recording: a write transfer wants 80
 	input  logic        dack,
 	input  logic [2:0]  dack_ch,
+	input  logic [2:0]  ch,            // its DMA channel: the codec's playback channel (IBMRS6K7248_cs4232)
 	input  logic [7:0]  dack_data,
 	output logic        irq,
 
@@ -58,7 +59,6 @@ module IBMRS6K7248_sb
 	output logic [7:0]  fm_vol         // the mixer's FM volume (26): left in 7:4, right in 3:0
 );
 
-localparam logic [2:0] CH = 3'd1;
 
 // ---- the mixer -------------------------------------------------------------------------------
 // (every index stored and read back, in block RAM; the four the mixing uses also in registers,
@@ -124,7 +124,7 @@ logic [31:0] ph;
 logic        tick;
 logic [7:0]  sl, sr;
 wire  [1:0]  fbytes = stereo ? 2'd2 : 2'd1;
-wire         xfer   = dack && dack_ch == CH && dma_on && !dma_pause;
+wire         xfer   = dack && dack_ch == ch && dma_on && !dma_pause;
 wire         take   = tick && !dma_in && f_n >= {3'd0, fbytes};
 assign drq = dma_on && !dma_pause && (dma_in || f_n <= 5'd12);
 assign rec = dma_on && dma_in;

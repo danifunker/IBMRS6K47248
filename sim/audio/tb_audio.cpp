@@ -245,6 +245,43 @@ int main(int argc, char **argv) {
 	t->joy1 = 0;
 	printf("%-46s %s\n", "joystick: the axes' times, the buttons", fails != f0 ? "FAIL" : "pass");
 
+	// NT's cs423x.sys: 02 02 before the key, the codec at 530, playback on DMA 0, capture on 1 (2A 00, 25 01)
+	f0 = fails;
+	out8(0x279, 0x02); out8(0x279, 0x02);
+	out8(0x279, 0x96); for (int i = 0; i < 31; i++) out8(0x279, 0x35 + i);
+	{
+		const int c[] = {0x15, 0x00, 0x47, 0x05, 0x30, 0x48, 0x03, 0x88, 0x42, 0x02, 0x20, 0x22, 0x05, 0x2A, 0x00,
+		                 0x25, 0x01, 0x33, 0x01, 0x15, 0x02, 0x47, 0x01, 0x20, 0x22, 0x00, 0x33, 0x01, 0x79};
+		for (int v : c) out8(0x279, v);
+	}
+	out8(0x530, 12); out8(0x531, 0x40);                     // MODE2, as cs423x.sys's first write
+	expect("codec at 530 (I25)", (out8(0x530, 25), in8(0x531)), 0xA2);
+	expect("not at 534", (out8(0x534, 25), in8(0x535)) != 0xA2, 1);
+	for (int i = 0; i < 64; i++) mem[0x31000 + i] = uint8_t(0x80 + i * 2 + 1);
+	out8(0x530, 8 | 0x40); out8(0x531, 0x0B); out8(0x530, 0);   // 8-bit unsigned mono (MCE)
+	out8(0x532, 0);
+	out8(0x530, 14); out8(0x531, 0x00); out8(0x530, 15); out8(0x531, 0x0F);
+	out8(0x0A, 4 | 0); out8(0x0C, 0);
+	out8(0x00, 0x00); out8(0x00, 0x10);                     // ch0 address 1000
+	out8(0x01, 63); out8(0x01, 0);
+	out8(0x87, 0x03); out8(0x487, 0x80);                    // page 03, high page 80: 8003_1000
+	out8(0x0B, 0x58);                                       // ch0, read, auto-initialise, single
+	out8(0x0A, 0);                                          // ch0 unmasked
+	track = true; last_l = t->aud_l; last_r = t->aud_r; out.clear();
+	out8(0x530, 9); out8(0x531, 0x01);                      // PEN
+	n = 0;
+	while (out.size() < 16 && n < 200000) { tick(); n++; }
+	{
+		int bad = 0;
+		for (int i = 0; i < 16 && i < (int)out.size(); i++) {
+			int16_t v = int16_t((((0x80 + i * 2 + 1) ^ 0x80) & 0xFF) << 8);
+			if (out[i].first != v) { if (bad < 4) printf("  frame %d: %d, want %d\n", i, out[i].first, v); bad++; }
+		}
+		expect("frames on DMA 0", (long)out.size() >= 16, 1);
+		expect("frames wrong", bad, 0);
+	}
+	out8(0x530, 9); out8(0x531, 0x00);
+	printf("%-46s %s\n", "NT's configuration: 02 02 key, 530, DMA 0", fails != f0 ? "FAIL" : "pass");
 	printf(fails ? "%d FAILED\n" : "ALL PASS\n", fails);
 	delete t;
 	return fails ? 1 : 0;

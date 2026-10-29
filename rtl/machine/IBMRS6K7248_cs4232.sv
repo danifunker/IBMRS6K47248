@@ -7,14 +7,17 @@
 //  Windows Sound System codec playing: the firmware's startup tune
 //  (audio_play: DMA channel 1, scatter/gather) and AIX's audio.
 //
-//  Configuration, at 0279 (write only): two zeros, then the 32-byte
-//  Crystal key (96 35 9A CD ... 1A, as the firmware sends it: the first 96
-//  after a 00 is taken as its start), then commands until 79:
+//  Configuration, at 0279 (write only): the 32-byte Crystal key (96 35 9A
+//  CD ... 1A; the firmware sends two zeros before it, NT's cs423x.sys two
+//  02s: a 96 out of configuration is taken as its start, whatever came
+//  before), then commands until 79:
 //    15 n      select logical device n
 //    47 hi lo  its I/O base 0 (device 0: the WSS codec, 534)
 //    48 hi lo  its I/O base 1 (device 0: the FM synthesiser, 388)
 //    42 hi lo  its I/O base 2 (device 0: the Sound Blaster, 220)
-//    22 n, 27 n, 2A n, 25 n   interrupt and DMA settings (taken, unused)
+//    2A n      device 0's playback DMA channel (its Sound Blaster's too; 4 none)
+//    25 n      device 0's capture DMA channel (4 none)
+//    22 n, 27 n   interrupt settings (taken, unused: IRQ 5)
 //    33 n      activate (1) or deactivate (0)
 //    79        leave configuration
 //  Only logical device 0 is modelled. It is inactive at reset (the chip
@@ -71,6 +74,8 @@ module IBMRS6K7248_cs4232
 	output logic        on,            // device 0 active
 	output logic [15:4] sb_base,
 	output logic [15:2] wss_base,
+	output logic [2:0]  play_ch,       // the DMA channels (2A, 25): the firmware's 1 and 0, NT's 0 and 1
+	output logic [2:0]  cap_ch,
 
 	// the codec's DMA (channel 1, 8-bit): a request while the FIFO has room; a transfer's byte
 	output logic        drq,
@@ -85,7 +90,6 @@ module IBMRS6K7248_cs4232
 	output logic [15:0] aud_r
 );
 parameter int unsigned CLK_HZ = 100_000_000;
-localparam logic [2:0] PLAY_CH = 3'd1;
 
 // ---- configuration ----------------------------------------------------------------------
 logic [7:0]  prev;
@@ -105,7 +109,7 @@ always_ff @(posedge clk) begin
 			if (keyn == 6'd1) cfg <= 1'b1;
 		end
 		else if (!cfg) begin
-			if (prev == 8'h00 && wdata == 8'h96) keyn <= 6'd31;
+			if (wdata == 8'h96) keyn <= 6'd31;
 		end
 		else if (argn != 2'd0) begin
 			argn <= argn - 2'd1;
@@ -115,6 +119,8 @@ always_ff @(posedge clk) begin
 				8'h47: if (ld == 8'd0) base0 <= {arg_hi, wdata};
 				8'h42: if (ld == 8'd0) base2 <= {arg_hi, wdata};
 				8'h33: if (ld == 8'd0) on <= wdata[0];
+				8'h2A: if (ld == 8'd0) play_ch <= wdata[2:0];
+				8'h25: if (ld == 8'd0) cap_ch <= wdata[2:0];
 				default: ;
 			endcase
 		end
@@ -129,7 +135,7 @@ always_ff @(posedge clk) begin
 	end
 	if (reset) begin
 		prev <= 8'hFF; keyn <= 6'd0; cfg <= 1'b0; argn <= 2'd0; ld <= 8'd0;
-		on <= 1'b0; base0 <= 16'h0534; base2 <= 16'h0220;
+		on <= 1'b0; base0 <= 16'h0534; base2 <= 16'h0220; play_ch <= 3'd1; cap_ch <= 3'd0;
 	end
 end
 
@@ -282,7 +288,7 @@ always_ff @(posedge clk) begin
 	pl_frame <= 1'b0;
 	pl_end   <= 1'b0;
 	pen_q    <= pen;
-	if (dack && dack_ch == PLAY_CH && pen) begin fifo[f_w] <= dack_data; f_w <= f_w + 4'd1; end
+	if (dack && dack_ch == play_ch && pen) begin fifo[f_w] <= dack_data; f_w <= f_w + 4'd1; end
 	if (take) begin
 		// a frame: its bytes from the FIFO's head
 		case (fbytes)
@@ -302,7 +308,7 @@ always_ff @(posedge clk) begin
 		if (cnt == 16'd0) begin pl_end <= 1'b1; cnt <= {dr[14], dr[15]}; end
 		else cnt <= cnt - 16'd1;
 	end
-	f_n <= f_n + ((dack && dack_ch == PLAY_CH && pen) ? 5'd1 : 5'd0) - (take ? {2'b00, fbytes} : 5'd0);
+	f_n <= f_n + ((dack && dack_ch == play_ch && pen) ? 5'd1 : 5'd0) - (take ? {2'b00, fbytes} : 5'd0);
 	if (pen && !pen_q) cnt <= {dr[14], dr[15]};
 	if (!pen || reset) begin f_w <= 4'd0; f_r <= 4'd0; f_n <= 5'd0; sl <= 16'd0; sr <= 16'd0; end
 end
@@ -312,7 +318,6 @@ always_ff @(posedge clk) begin
 end
 
 // ---- capture: silence, a frame at the rate, offered to DMA channel 0 -------------------------------
-localparam logic [2:0] CAP_CH = 3'd0;
 wire        cen    = dr[9][1] & ~dr[9][7] & on;
 wire [7:0]  cfmt_r = mode2 ? dr[28] : dr[8];
 wire [2:0]  cfmt   = mode2 ? cfmt_r[7:5] : {1'b0, cfmt_r[6:5]};
@@ -324,7 +329,7 @@ logic [4:0]  c_pend;                                            // bytes offered
 logic [15:0] ccnt;
 logic        cen_q, ctick;
 assign cap_drq = cen && c_pend != 5'd0;
-wire   ctake = dack && dack_ch == CAP_CH && cen && c_pend != 5'd0;
+wire   ctake = dack && dack_ch == cap_ch && cen && c_pend != 5'd0;
 always_ff @(posedge clk) begin
 	ctick  <= 1'b0;
 	cp_end <= 1'b0;

@@ -1292,3 +1292,19 @@ The debug logger (IBMRS6K7248_DEBUG) is set to video register writes, by port an
 through MMIO. Left (none needed at 8 bits a pixel): the colour registers' 32-bit
 MMIO write at 16 and 32 bits a pixel, planar VGA for vga.sys. CPU slack -3.15 ns,
 41,541 ALMs.
+
+## 2026-10-29: NT's sound (the IBM Power PC Audio driver, cs423x.sys)
+
+Every NT sound driver failed ("The IBM Power PC Audio board is not responding properly").
+The debug logger, set to the audio ports, showed cs423x.sys sending `02 02` and then the
+Crystal key to 0279; the CS4232 model took the key only after a 00 (the firmware's two
+zeros), so the driver's whole configuration was dropped (logical device 0: the codec at
+530, FM 388, SB 220, IRQ 5, `2A 00` and `25 01`, activate; devices 1-4: game 200, control
+120, MPU 330 on IRQ 9, CD 340) and its codec reads at 530 floated (FF). The model now takes
+a 96 out of configuration as the key's start, whatever came before. And `2A`/`25` (Linux's
+cs4232.c: the codec's playback and capture DMA) now choose the channels: NT plays on DMA 0
+and captures on 1, the firmware the other way round; the Sound Blaster follows the
+playback channel. `sim/audio/run.sh` adds NT's sequence (the key after 02 02, the codec at
+530, 8-bit playback on channel 0): all pass. On .92 the driver installs ("Crystal 4232
+Sound Device"), loads after the restart and plays. cs423x.sys also writes a download to
+the control device at 125 (not modelled: its one read gives FF); it does not seem to mind.

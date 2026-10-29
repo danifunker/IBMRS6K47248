@@ -711,6 +711,7 @@ wire        err_hit  = s_isa && bport >= 16'h0840 && bport <= 16'h0844;
 logic        aud_on;
 logic [15:4] sb_base;
 logic [15:2] wss_base;
+logic [2:0]  aud_play_ch, aud_cap_ch;      // the codec's DMA channels (its configuration's 2A and 25)
 wire        aud_cfg  = s_isa && bport == 16'h0279;
 // the ISA DMA controller: 00-0F, 80-8F, C0-DF, the 82378's 40A/40B, 410-43F, 480-48F, 4D4, 4D6
 wire        dma_hit  = s_isa && (bport[15:4] == 12'h000 || bport[15:4] == 12'h008 || bport[15:5] == 11'h006 ||
@@ -773,7 +774,7 @@ IBMRS6K7248_cs4232 #(.CLK_HZ(CPU_HZ)) cs4232 (
 	.clk, .reset,
 	.cfg_sel(d_go & d_we & aud_cfg),
 	.sel(d_go & wss_hit), .we(d_we),  .off(bport[3:0]), .wdata(bwd), .rdata(aud_q),
-	.on(aud_on), .sb_base, .wss_base,
+	.on(aud_on), .sb_base, .wss_base, .play_ch(aud_play_ch), .cap_ch(aud_cap_ch),
 	.drq(aud_drq), .dack(dma_dack), .dack_ch(dma_dack_ch), .dack_data(dma_dack_data[7:0]), .irq(aud_irq),
 	.cap_drq, .rec_byte,
 	.aud_l(cs_l), .aud_r(cs_r)
@@ -783,7 +784,7 @@ IBMRS6K7248_cs4232 #(.CLK_HZ(CPU_HZ)) cs4232 (
 IBMRS6K7248_sb #(.CLK_HZ(CPU_HZ)) sb (
 	.clk, .reset,
 	.sel(d_go & sb_hit), .we(d_we), .off(bport[3:0]), .wdata(bwd), .rdata(sb_q),
-	.drq(sb_drq), .rec(sb_rec), .dack(dma_dack), .dack_ch(dma_dack_ch), .dack_data(dma_dack_data[7:0]), .irq(sb_irq),
+	.drq(sb_drq), .rec(sb_rec), .dack(dma_dack), .dack_ch(dma_dack_ch), .ch(aud_play_ch), .dack_data(dma_dack_data[7:0]), .irq(sb_irq),
 	.aud_l(sb_l), .aud_r(sb_r), .fm_vol
 );
 IBMRS6K7248_mpu401 #(.CLK_HZ(CPU_HZ)) mpu (
@@ -799,6 +800,7 @@ IBMRS6K7248_joy #(.CLK_HZ(CPU_HZ)) joy (
 `else
 // (a LITE build: no audio card; its Plug-and-Play port never answers, so it stays off)
 assign aud_q = 8'hFF;  assign aud_on = 1'b0;  assign sb_base = '0;  assign wss_base = '0;
+assign aud_play_ch = 3'd1; assign aud_cap_ch = 3'd0;
 assign aud_drq = 1'b0; assign aud_irq = 1'b0; assign cap_drq = 1'b0; assign rec_byte = 8'h80;
 assign cs_l = '0;      assign cs_r = '0;
 assign sb_q = 8'hFF;   assign sb_drq = 1'b0;  assign sb_rec = 1'b0;  assign sb_irq = 1'b0;
@@ -818,14 +820,22 @@ always_ff @(posedge clk) begin
 	aud_r <= (sum_r[16] != sum_r[15]) ? {sum_r[16], {15{~sum_r[16]}}} : sum_r[15:0];
 end
 
-// the ISA DMA (Fire Coral's 8237s and the 82378's scatter/gather): the codec on channel 1
+// the ISA DMA (Fire Coral's 8237s and the 82378's scatter/gather): the codec on the channels its configuration chose
+logic [7:0] aud_dreq;
+always_comb begin
+	aud_dreq = 8'd0;
+	for (int c = 0; c < 4; c++)
+		if (c != 2) aud_dreq[c] = ((aud_drq | sb_drq) && aud_play_ch == 3'(c)) || (cap_drq && aud_cap_ch == 3'(c));
+	aud_dreq[2] = fdc_drq;
+end
 IBMRS6K7248_dma dma (
 	.clk, .reset,
 	.sel(d_go & dma_hit), .we(d_we), .port(bport), .wdata(bwd), .rdata(dma_q),
-	// channel 2: the floppy; channel 1: the codec's playback or the Sound Blaster's (never both); channel 0: the
-	// codec's capture. A write's byte from the channel being served
-	.dreq({5'd0, fdc_drq, aud_drq | sb_drq, cap_drq}), .dack(dma_dack), .dack_ch(dma_dack_ch), .dack_data(dma_dack_data),
-	.dev_data(dma_dev_ch == 3'd2 ? {8'h00, fdc_byte} : dma_dev_ch == 3'd1 ? 16'h0080 : {8'h00, rec_byte}), .dev_ch(dma_dev_ch),
+	// channel 2: the floppy; the codec's playback or the Sound Blaster's (never both) on its playback channel, its
+	// capture on its capture channel (the firmware's 1 and 0, NT's cs423x.sys's 0 and 1; not 2, the floppy's). A
+	// write's byte from the channel being served
+	.dreq(aud_dreq), .dack(dma_dack), .dack_ch(dma_dack_ch), .dack_data(dma_dack_data),
+	.dev_data(dma_dev_ch == 3'd2 ? {8'h00, fdc_byte} : dma_dev_ch == aud_cap_ch ? {8'h00, rec_byte} : 16'h0080), .dev_ch(dma_dev_ch),
 	.tc(dma_tc), .sg_irq,
 	.dm_req(isa_dm_req), .dm_we(isa_dm_we), .dm_addr(isa_dm_addr), .dm_be(isa_dm_be), .dm_wdata(isa_dm_wdata),
 	.dm_ack(isa_dm_ack), .dm_err, .dm_rdata

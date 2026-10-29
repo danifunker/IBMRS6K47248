@@ -716,13 +716,16 @@ reg  [31:12] dv_page = 0;
 reg         dv_half = 0;
 reg  [31:0] dv_d;
 wire        dv_mem = io_addr[31:30] == 2'b11;
-// (for now only the video's register writes: the VGA's 3B0-3DF and the S3's xxE8-xxEF, not E2E8's pixel data,
-// by port or through the S3's MMIO at A8000-AFFFF)
-wire        dv_ev  = isi_done & io_ev & io_we & ~(&dv_n) &
-                     ((io_addr[31:16] == 16'h8000 &&
-                       ((io_addr[15:4] == 12'h03B || io_addr[15:4] == 12'h03C || io_addr[15:4] == 12'h03D) ||
-                        (io_addr[7:3] == 5'b11101 && io_addr[15:10] != 6'd0 && io_addr[15:8] != 8'hE2))) ||
-                      io_addr[31:15] == 17'h18015);
+// (for now the ISA ports an audio driver may use, reads and writes: 100-13F (the CS4232's control), 200-23F,
+// 279, 300-38F, 530-53F, 604-60F, A79, E80-F4F (the WSS's other bases), and the PnP read port wherever it is
+// (203-3FF reads not named elsewhere); not the 8259s, the PIT, the 8042, the RTC, the video, COM1, the floppy)
+wire [15:0] dv_p   = io_addr[15:0];
+wire        dv_ev  = isi_done & io_ev & ~ncr_ev & ~(&dv_n) & io_addr[31:16] == 16'h8000 &
+                     ((dv_p >= 16'h0100 && dv_p <= 16'h013F) || (dv_p >= 16'h0200 && dv_p <= 16'h023F) ||
+                      dv_p[15:2] == 14'h009E || (dv_p >= 16'h0300 && dv_p <= 16'h038F) ||
+                      (dv_p >= 16'h0530 && dv_p <= 16'h053F) || (dv_p >= 16'h0604 && dv_p <= 16'h060F) ||
+                      dv_p[15:2] == 14'h029E || (dv_p >= 16'h0E80 && dv_p <= 16'h0F4F) ||
+                      (!io_we && dv_p >= 16'h0240 && dv_p <= 16'h03AF && dv_p[15:4] != 12'h03B));
 always @(posedge clk_cpu) begin
 	if (dv_ev && dv_w + 8'd1 != dv_r) begin
 		dv[dv_w] <= {io_we, io_addr[31:2], io_be, io_we ? io_wdata : io_rdata};

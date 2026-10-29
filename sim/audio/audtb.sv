@@ -11,7 +11,7 @@ module audtb (
 	output logic [15:0] fm_snd
 );
 logic aud_on, drq, cdrq, sdrq, srec, dack, tc, cirq, sirq, mirq; logic [15:4] sb_base; logic [15:2] wss_base;
-logic [2:0] dack_ch; logic [15:0] dack_data; logic [7:0] rec_byte, fm_vol;
+logic [2:0] dack_ch, play_ch, cap_ch; logic [15:0] dack_data; logic [7:0] rec_byte, fm_vol;
 logic [7:0] dma_q, aud_q, sb_q, mpu_q, joy_q, fm_q;
 logic [15:0] cl, cr, sl, sr;
 wire cfg = port == 16'h0279;
@@ -24,16 +24,21 @@ wire mph = aud_on && port[15:1] == 15'h0198;
 wire jyh = aud_on && port[15:3] == 13'h0040;
 wire dmh = port[15:4] == 12'h000 || port[15:4] == 12'h008 || port[15:5] == 11'h006 || port == 16'h040A || port == 16'h040B ||
            (port >= 16'h0410 && port <= 16'h043F) || port[15:4] == 12'h048 || port == 16'h04D4 || port == 16'h04D6;
+logic [7:0] dreq;                                       // (the machine's: each on the channel configured)
+always_comb begin
+	dreq = 8'd0;
+	for (int c = 0; c < 4; c++) dreq[c] = ((cdrq | sdrq) && play_ch == 3'(c)) || (drq && cap_ch == 3'(c));
+end
 logic [2:0] q;
 always_ff @(posedge clk) if (sel) q <= wss ? 3'd1 : sbh ? 3'd2 : fmh ? 3'd3 : mph ? 3'd4 : jyh ? 3'd5 : 3'd0;
 assign rdata = q == 3'd1 ? aud_q : q == 3'd2 ? sb_q : q == 3'd3 ? fm_q : q == 3'd4 ? mpu_q : q == 3'd5 ? joy_q : dma_q;
 assign irq5 = cirq | sirq | mirq;
 assign aud_l = cl + sl; assign aud_r = cr + sr;
 IBMRS6K7248_cs4232 #(.CLK_HZ(2_000_000)) cs (.clk, .reset, .cfg_sel(sel & we & cfg), .sel(sel & wss), .we, 
-	.off(port[3:0]), .wdata, .rdata(aud_q), .on(aud_on), .sb_base, .wss_base,
+	.off(port[3:0]), .wdata, .rdata(aud_q), .on(aud_on), .sb_base, .wss_base, .play_ch, .cap_ch,
 	.drq(cdrq), .dack, .dack_ch, .dack_data(dack_data[7:0]), .irq(cirq), .cap_drq(drq), .rec_byte, .aud_l(cl), .aud_r(cr));
 IBMRS6K7248_sb #(.CLK_HZ(2_000_000)) sb (.clk, .reset, .sel(sel & sbh), .we, .off(port[3:0]), .wdata, .rdata(sb_q),
-	.drq(sdrq), .rec(srec), .dack, .dack_ch, .dack_data(dack_data[7:0]), .irq(sirq), .aud_l(sl), .aud_r(sr), .fm_vol);
+	.drq(sdrq), .rec(srec), .dack, .dack_ch, .ch(play_ch), .dack_data(dack_data[7:0]), .irq(sirq), .aud_l(sl), .aud_r(sr), .fm_vol);
 IBMRS6K7248_mpu401 #(.CLK_HZ(2_000_000)) mpu (.clk, .reset, .sel(sel & mph), .we, .a0(port[0]), .wdata, .rdata(mpu_q),
 	.irq(mirq), .midi_tx, .midi_rx);
 IBMRS6K7248_joy #(.CLK_HZ(2_000_000)) joy (.clk, .reset, .sel(sel & jyh), .we, .rdata(joy_q),
@@ -41,6 +46,6 @@ IBMRS6K7248_joy #(.CLK_HZ(2_000_000)) joy (.clk, .reset, .sel(sel & jyh), .we, .
 IBMRS6K7248_opl #(.CLK_HZ(2_000_000)) opl (.clk, .reset, .cs(sel & fmh), .we,
 	.a((win && port[3]) ? {1'b0, port[0]} : port[1:0]), .wdata, .rdata(fm_q), .snd(fm_snd));
 IBMRS6K7248_dma dma (.clk, .reset, .sel(sel & dmh), .we, .port, .wdata, .rdata(dma_q),
-	.dreq({6'd0, cdrq | sdrq, drq}), .dack, .dack_ch, .dack_data, .dev_data(srec ? 16'h0080 : {8'h00, rec_byte}), .tc, .sg_irq,
+	.dreq(dreq), .dack, .dack_ch, .dack_data, .dev_data(srec ? 16'h0080 : {8'h00, rec_byte}), .tc, .sg_irq,
 	.dm_req, .dm_we, .dm_addr, .dm_be, .dm_wdata, .dm_ack, .dm_err(1'b0), .dm_rdata);
 endmodule
