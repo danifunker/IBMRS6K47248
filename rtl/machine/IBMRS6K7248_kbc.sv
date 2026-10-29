@@ -473,12 +473,15 @@ always_ff @(posedge clk) begin
 						else if (k_list && !k_cmd(wdata)) ;      // a key code after FB/FC/FD: all keys stay make/break
 						else begin
 							k_list <= wdata == 8'hFB || wdata == 8'hFC || wdata == 8'hFD;
+							// (enable, disable, defaults and reset clear the keyboard's buffer, as a keyboard does: the
+							// queued keys are dropped, the answer staged behind them still comes; else keys typed to ARC
+							// and not read reached NT's setup, which took them for its Welcome screen's choices)
 							case (wdata)
 								8'hED, 8'hF0, 8'hF3: k_wait <= wdata;
-								8'hF4: k_on <= 1'b1;
-								8'hF5: k_on <= 1'b0;
-								8'hF6: k_on <= 1'b1;
-								8'hFF: begin k_on <= 1'b1; k_set3 <= 1'b0; k_set1 <= 1'b0; end     // the reset: set 2 again
+								8'hF4: begin k_on <= 1'b1; kq_r <= kq_w; end
+								8'hF5: begin k_on <= 1'b0; kq_r <= kq_w; end
+								8'hF6: begin k_on <= 1'b1; kq_r <= kq_w; end
+								8'hFF: begin k_on <= 1'b1; k_set3 <= 1'b0; k_set1 <= 1'b0; kq_r <= kq_w; end   // the reset: set 2 again
 								default: ;
 							endcase
 						end
