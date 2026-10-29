@@ -225,6 +225,9 @@ logic [7:0]   v_pix_mask, pal_vaddr;
 logic [6:0]   v_pll_m;
 logic [7:0]   v_pll_n;
 logic [17:0]  pal_vq;
+logic [151:0] v_txt;
+logic [12:0]  font_vaddr;
+logic [7:0]   font_vq;
 logic         vb_req, vb_we, vb_line, vb_ack;
 logic [31:2]  vb_addr;
 logic [3:0]   vb_be;
@@ -246,7 +249,7 @@ IBMRS6K7248_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .LE_MODE(LE_MODE), .UART_F
 	.v_req, .v_we, .v_addr, .v_be, .v_wdata, .v_ack, .v_rdata,
 	.clk_v(clk_b), .h_total, .h_disp, .h_ss, .h_sl, .v_total, .v_disp, .v_ss, .v_sl, .v_depth, .v_start, .v_pitch,
 	.v_screen_on, .v_pix_mask, .v_pll_m, .v_pll_n, .v_cur_on, .v_cur_x, .v_cur_y, .v_cur_base, .v_cur_x11, .v_cur_fg, .v_cur_bg,
-	.pal_vaddr, .pal_vq, .vretrace_v, .disp_en_v,
+	.pal_vaddr, .pal_vq, .v_txt, .font_vaddr, .font_vq, .vretrace_v, .disp_en_v,
 	.en_tx_pend, .en_tx_len, .en_tx_a, .en_tx_q, .en_tx_done, .en_rx_free, .en_rx_we, .en_rx_a, .en_rx_d,
 	.en_rx_post, .en_rx_len, .en_rx_hash, .en_aprom_mac, .en_padr, .en_padr_ok,
 	.com1_txd, .com1_rxd, .com1_cts_n, .com1_rts_n,
@@ -288,7 +291,8 @@ IBMRS6K7248_s3video s3video (
 	.start(v_start), .pitch(v_pitch), .screen_on(v_screen_on), .pix_mask(v_pix_mask),
 	.pll_m(v_pll_m), .pll_n(v_pll_n), .cur_on(v_cur_on), .cur_x(v_cur_x), .cur_y(v_cur_y), .cur_base(v_cur_base),
 	.cur_x11(v_cur_x11), .cur_fg(v_cur_fg), .cur_bg(v_cur_bg),
-	.pal_addr(pal_vaddr), .pal_q(pal_vq), .vretrace(vretrace_v), .disp_en(disp_en_v),
+	.pal_addr(pal_vaddr), .pal_q(pal_vq), .txt(v_txt), .font_addr(font_vaddr), .font_q(font_vq),
+	.vretrace(vretrace_v), .disp_en(disp_en_v),
 	.ce_pix(vid_ce), .r(vid_r), .g(vid_g), .b(vid_b), .hs(vid_hs), .vs(vid_vs), .hblank(vid_hblank), .vblank(vid_vblank)
 );
 

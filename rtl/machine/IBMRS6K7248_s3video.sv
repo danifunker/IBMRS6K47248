@@ -42,6 +42,20 @@
 //  8 bits palette indexes (CR0E, CR0F), deeper pixel values (the CR4A and
 //  CR4B stacks).
 //
+//  The VGA's text mode (txt, from IBMRS6K7248_s3): character k of a row is
+//  the VRAM word (8 bytes) at the row's start + 8k, its character byte 0
+//  and its attribute byte 1 (planes 0 and 1, odd/even); a row of characters
+//  is CR09 + 1 lines; each line fetches its row's characters as the packed
+//  modes fetch pixels, and each character's line of dots comes from the
+//  font's copy (font_addr / font_q, plane 2 as written); 8 or 9 dots (the
+//  ninth repeats the eighth for C0-DF with AR10 bit 2), the foreground the
+//  attribute's low nibble, the background its high (bit 7 the blink with
+//  AR10 bit 3), the cursor's lines (CR0A-CR0B) at its address (CR0E-CR0F),
+//  then the attribute controller's palette (AR00-0F, AR10 bit 7 and AR14)
+//  and the DAC's. Two stages more than the packed pixels' (the font, the
+//  attribute palette). Not here: double scanning, panning, split screen,
+//  the second character set.
+//
 //============================================================================
 
 module IBMRS6K7248_s3video
@@ -101,6 +115,11 @@ module IBMRS6K7248_s3video
 	output logic [7:0]   pal_addr,
 	input  logic [17:0]  pal_q,
 
+	// the text mode's values (IBMRS6K7248_s3's v_txt, quasi-static), and the font's read port (a clock later)
+	input  logic [151:0] txt,
+	output logic [12:0]  font_addr,
+	input  logic [7:0]   font_q,
+
 	// to the register side: the retrace and the display enable (levels)
 	output logic         vretrace,
 	output logic         disp_en,
@@ -115,6 +134,21 @@ module IBMRS6K7248_s3video
 	output logic         hblank,
 	output logic         vblank
 );
+
+// ---- the text mode's values ------------------------------------------------------------------
+logic [151:0] tq;
+always_ff @(posedge clk) tq <= txt;
+wire         t_on   = tq[151];
+wire         t_9    = tq[150];
+wire  [4:0]  t_chm1 = tq[149:145];         // the character's lines, less one
+wire  [4:0]  t_cs   = tq[144:140];         // the cursor's first line
+wire  [4:0]  t_ce   = tq[139:135];         // ... its last
+wire         t_coff = tq[134];
+wire  [15:0] t_cloc = tq[133:118];         // ... its character address
+wire  [7:0]  t_ar10 = tq[117:110];
+wire  [3:0]  t_ar14 = tq[109:106];
+wire  [9:0]  t_cols = tq[105:96];
+wire  [95:0] t_pal  = tq[95:0];
 
 // ---- the dot clock ---------------------------------------------------------------------------
 localparam longint unsigned REF = 14_318_180;
@@ -159,6 +193,20 @@ endfunction
 assign vretrace = vs_on;
 assign disp_en  = h_act & v_act;
 
+// the text mode's column and dot (they follow hc), and the frames for the blinking
+logic [9:0] tcol;
+logic [3:0] tdot;
+logic [5:0] frames;
+always_ff @(posedge clk) begin
+	if (ce_dot) begin
+		if (h_end) begin tcol <= 10'd0; tdot <= 4'd0; end
+		else if (tdot == (t_9 ? 4'd8 : 4'd7)) begin tdot <= 4'd0; tcol <= tcol + 10'd1; end
+		else tdot <= tdot + 4'd1;
+		if (h_end && v_end) frames <= frames + 6'd1;
+	end
+	if (reset) begin tcol <= 10'd0; tdot <= 4'd0; end
+end
+
 // the next line's fetch: asked for as the line before it starts (line v_total - 1 fetches line 0)
 logic        fetch;
 logic [10:0] fetch_y;
@@ -174,7 +222,16 @@ end
 // the cursor: on the fetched line if cur_on and cur_y <= y < cur_y + 64; its row's 16 bytes (two words)
 wire  [11:0] c_row  = 12'(fetch_y) - 12'(cur_y);
 wire         c_line = cur_on && !c_row[11] && c_row < 12'd64;
-// the pixels: h_disp pixels' bytes from start + y x pitch, in 64-bit words (rounded out to whole words)
+// the pixels: h_disp pixels' bytes from start + y x pitch, in 64-bit words (rounded out to whole words);
+// in the text mode the line's character row from its start, one word a character
+logic [20:0] t_row;                    // the fetched line's row's first byte
+logic [4:0]  t_line;                   // ... the line in its row
+logic [15:0] t_ma;                     // ... its first character's address
+wire         t_new   = fetch_y == 11'd0;
+wire         t_wrap  = t_line == t_chm1;
+wire  [20:0] t_row_n = t_new ? start : t_wrap ? t_row + 21'(pitch) : t_row;
+wire  [15:0] t_ma_n  = t_new ? start[18:3] : t_wrap ? t_ma + 16'(pitch[11:3]) : t_ma;
+wire  [4:0]  t_line_n = (t_new || t_wrap) ? 5'd0 : t_line + 5'd1;
 
 typedef enum logic [2:0] {D_IDLE, D_FREAD, D_FWAIT, D_CREAD, D_CWAIT, D_CWRITE} ds_t;
 ds_t         ds;
@@ -197,16 +254,17 @@ always_ff @(posedge clk) begin
 	f_calc  <= 1'b0;
 	f_calc2 <= 1'b0;
 	if (fetch) begin
-		f_line  <= start + 21'(fetch_y) * 21'(pitch);
+		f_line  <= t_on ? t_row_n : start + 21'(fetch_y) * 21'(pitch);
 		f_curad <= {cur_base, 10'd0} + {11'd0, c_row[5:0], 4'd0};
 		f_bank  <= fetch_y[0];
-		f_cur   <= c_line;
+		f_cur   <= c_line && !t_on;
 		f_calc  <= 1'b1;
+		if (t_on) begin t_row <= t_row_n; t_line <= t_line_n; t_ma <= t_ma_n; end
 	end
 	if (f_calc) begin
 		f_addr  <= {f_line[20:3], 3'b000};
 		f_off   <= f_line[2:0];
-		f_left  <= 12'((xbytes(depth, h_disp) + 14'(f_line[2:0]) + 14'd7) >> 3);
+		f_left  <= t_on ? 12'(t_cols) : 12'((xbytes(depth, h_disp) + 14'(f_line[2:0]) + 14'd7) >> 3);
 		f_put   <= 12'd0;
 		f_calc2 <= 1'b1;
 	end
@@ -232,6 +290,8 @@ logic [127:0] cur0, cur1;
 logic         cw;                      // the cursor's word being received
 logic         cur_has0, cur_has1;      // the line has the cursor
 logic [2:0]   off0, off1;              // each line's first lane
+logic [4:0]   tline0, tline1;          // the text mode: each line's line in its row
+logic [15:0]  tma0, tma1;              // ... and its row's first character's address
 always_ff @(posedge clk) begin
 	if (f_word && !f_curw && !f_put[0]) lbuf_e[{f_bank, f_put[8:1]}] <= ddr_dout;
 	if (f_word && !f_curw &&  f_put[0]) lbuf_o[{f_bank, f_put[8:1]}] <= ddr_dout;
@@ -244,8 +304,8 @@ always_ff @(posedge clk) begin
 	end
 	if (f_calc) begin
 		cw <= 1'b0;
-		if (!f_bank) begin cur_has0 <= f_cur; off0 <= f_line[2:0]; end
-		else         begin cur_has1 <= f_cur; off1 <= f_line[2:0]; end
+		if (!f_bank) begin cur_has0 <= f_cur; off0 <= f_line[2:0]; tline0 <= t_line; tma0 <= t_ma; end
+		else         begin cur_has1 <= f_cur; off1 <= f_line[2:0]; tline1 <= t_line; tma1 <= t_ma; end
 	end
 end
 
@@ -327,7 +387,7 @@ assign c_rdata = c_addr[2] ? {c_got[39:32], c_got[47:40], c_got[55:48], c_got[63
 // ---- the pixels ----------------------------------------------------------------------------------
 // stage 0: the CRTC's pixel: its first byte in the line buffer (the line's first lane added)
 // (its word w and the next: the even one of the two at (w + 1) >> 1, the odd at w >> 1)
-wire [13:0] p_byte = xbytes(depth, hc) + {11'd0, vc[0] ? off1 : off0};
+wire [13:0] p_byte = t_on ? {1'b0, tcol, 3'b000} : xbytes(depth, hc) + {11'd0, vc[0] ? off1 : off0};
 wire [8:0]  p_word = p_byte[11:3];
 wire [8:0]  p_wn   = p_word + 9'd1;
 assign lbe_ra = {vc[0], p_wn[8:1]};
@@ -365,7 +425,37 @@ wire         c_x   = c_xor[c_bit];
 wire         c_col = c_in && (cur_x11 ? c_a : !c_a);
 wire         c_fg  = c_x;
 wire         c_inv = c_in && !cur_x11 && c_a && c_x;
-assign pal_addr = c_col ? (c_fg ? cur_fg[7:0] : cur_bg[7:0]) : pix8 & pix_mask;
+assign pal_addr = t_on ? t_pal8 & pix_mask : c_col ? (c_fg ? cur_fg[7:0] : cur_bg[7:0]) : pix8 & pix_mask;
+
+// the text mode, from stage 1: the character and attribute out of the word, the font's line asked for (A); the
+// dots and the colour's index (B); the attribute palette to the DAC's palette, whose answer stage 2 takes
+logic [3:0]  p1_tdot;
+logic [9:0]  p1_tcol;
+wire  [4:0]  p1_tline = vc[0] ? tline1 : tline0;
+wire  [15:0] p1_tma   = vc[0] ? tma1 : tma0;
+assign font_addr = {p1_w[7:0], p1_tline};
+logic        ta_ce, ta_de, ta_hs, ta_vs, ta_hb, ta_vb, ta_cur;
+logic [7:0]  ta_ch, ta_at;
+logic [3:0]  ta_dot;
+logic        tb_ce, tb_de, tb_hs, tb_vs, tb_hb, tb_vb;
+logic [3:0]  tb_idx;
+wire         ta_dl  = ta_dot[3] ? (t_ar10[2] && ta_ch[7:5] == 3'b110 && font_q[0]) : font_q[3'd7 - ta_dot[2:0]];
+wire         ta_bl  = t_ar10[3] & ta_at[7];                        // a blinking character
+wire         ta_fg  = (ta_dl | ta_cur) & ~(ta_bl & frames[5]);
+wire  [3:0]  ta_idx = ta_fg ? ta_at[3:0] : {ta_at[7] & ~t_ar10[3], ta_at[6:4]};
+wire  [5:0]  tb_v   = t_pal[6 * tb_idx +: 6];
+wire  [7:0]  t_pal8 = {t_ar14[3:2], t_ar10[7] ? t_ar14[1:0] : tb_v[5:4], tb_v[3:0]};
+always_ff @(posedge clk) begin
+	p1_tdot <= tdot;
+	p1_tcol <= tcol;
+	ta_ce  <= p1_ce;  ta_de <= p1_de;  ta_hs <= p1_hs;  ta_vs <= p1_vs;  ta_hb <= p1_hb;  ta_vb <= p1_vb;
+	ta_ch  <= p1_w[7:0];
+	ta_at  <= p1_w[15:8];
+	ta_dot <= p1_tdot;
+	ta_cur <= !t_coff && !frames[4] && p1_tma + 16'(p1_tcol) == t_cloc && p1_tline >= t_cs && p1_tline <= t_ce;
+	tb_ce  <= ta_ce;  tb_de <= ta_de;  tb_hs <= ta_hs;  tb_vs <= ta_vs;  tb_hb <= ta_hb;  tb_vb <= ta_vb;
+	tb_idx <= ta_idx;
+end
 
 // stage 2: the palette answers (or the direct colour, a clock on)
 logic        p2_ce, p2_de, p2_hs, p2_vs, p2_hb, p2_vb;
@@ -391,14 +481,14 @@ always_ff @(posedge clk) begin
 	p1_x    <= hc;
 	p1_ch   <= vc[0] ? cur_has1 : cur_has0;
 
-	p2_ce  <= p1_ce;
-	p2_de  <= p1_de;
-	p2_hs  <= p1_hs;
-	p2_vs  <= p1_vs;
-	p2_hb  <= p1_hb;
-	p2_vb  <= p1_vb;
-	p2_inv <= c_inv;
-	p2_dir <= depth != 3'd0;
+	p2_ce  <= t_on ? tb_ce : p1_ce;
+	p2_de  <= t_on ? tb_de : p1_de;
+	p2_hs  <= t_on ? tb_hs : p1_hs;
+	p2_vs  <= t_on ? tb_vs : p1_vs;
+	p2_hb  <= t_on ? tb_hb : p1_hb;
+	p2_vb  <= t_on ? tb_vb : p1_vb;
+	p2_inv <= c_inv && !t_on;
+	p2_dir <= depth != 3'd0 && !t_on;
 	p2_d   <= dcol(depth, c_col ? {8'd0, c_fg ? cur_fg : cur_bg} : pix32);
 
 	{r, g, b} <= p2_out;

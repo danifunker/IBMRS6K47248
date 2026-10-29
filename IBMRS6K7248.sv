@@ -637,7 +637,7 @@ always @(posedge clk_cpu) begin
 	c1_q   <= com1_txd;
 	c1_evl <= 1'b0;
 	c1_evh <= 1'b0;
-	if (com1_txd != c1_q) begin
+	if (1'b0 && com1_txd != c1_q) begin   // (off in the NT video build, for room: the COM1 bit timing)
 		c1_len <= 32'd1;
 		if (!c1_q && c1_len < c1_minl) begin c1_minl <= c1_len; c1_evl <= 1'b1; end
 		if ( c1_q && c1_len < c1_minh) begin c1_minh <= c1_len; c1_evh <= 1'b1; end
@@ -700,6 +700,35 @@ reg  [5:0]  nq_wq = 0;
 always @(posedge clk_cpu) begin
 	nq_e  <= nq[nq_r];
 	nq_wq <= nq_w;
+end
+// (the NT video build) from the first program exception after the switch to little-endian (isi_done: the NT
+// kernel's first DbgLoadImageSymbols) on, every other device access by its whole address, through a 64-entry
+// FIFO, in two parts: "Daaaaaaaab" (D a write, d a read; b the byte lanes) then "=dddddddd ": not COM1
+// (3F8-3FF), not the 8042 (60-67), not what the FIFO above takes (the 53C810); PCI memory (C000_0000 up) only when the
+// 4 KB page differs from the last one logged, so a frame buffer's writes show where they go, not each one;
+// at most 16383 entries; not the 8259s' ports (20-21, A0-A1), 808 or the interrupt acknowledge (BFFF_FFF0),
+// which an interrupt storm filled the FIFO with
+reg  [66:0] dv [256];                     // {we, addr[31:2], be, data}
+reg  [7:0]  dv_w = 0, dv_r = 0, dv_wq = 0;
+reg  [66:0] dv_e;
+reg  [13:0] dv_n = 0;
+reg  [31:12] dv_page = 0;
+reg         dv_half = 0;
+reg  [31:0] dv_d;
+wire        dv_mem = io_addr[31:30] == 2'b11;
+wire        dv_ev  = isi_done & io_ev & ~ncr_ev & ~(io_addr[31:3] == 29'h1000_007F) & ~(io_addr[31:3] == 29'h1000_000C) & ~(&dv_n) &
+                     ~(io_addr[31:2] == 30'h2000_0008) & ~(io_addr[31:2] == 30'h2000_0028) &
+                     ~(io_addr[31:2] == 30'h2000_0202) & ~(io_addr[31:4] == 28'hBFFF_FFF) &
+                     (~dv_mem | io_addr[31:12] != dv_page);
+always @(posedge clk_cpu) begin
+	if (dv_ev && dv_w + 8'd1 != dv_r) begin
+		dv[dv_w] <= {io_we, io_addr[31:2], io_be, io_we ? io_wdata : io_rdata};
+		dv_w     <= dv_w + 8'd1;
+		dv_n     <= dv_n + 14'd1;
+		if (dv_mem) dv_page <= io_addr[31:12];
+	end
+	dv_e  <= dv[dv_r];
+	dv_wq <= dv_w;
 end
 // (the desktop build: no PC trigger; instead, once, when nothing has retired for 2^24 clocks (0.24 s) after
 // the hand-off, the header alone: "IL=" the last PC retired, " C=" the data address the CPU's access is at,
@@ -778,7 +807,7 @@ always @(posedge clk_mem) begin
 end
 reg  [2:0]  m_s = 0;
 always @(posedge clk_cpu) m_s <= {m_s[1:0], m_tog};
-wire        m_ev = m_s[2] ^ m_s[1];       // (the latched data stands still long enough: one event in 512)
+wire        m_ev = 1'b0;                  // (off in the NT video build, for room: was m_s[2] ^ m_s[1], the latched data stands still long enough)
 
 function automatic [7:0] hex(input [3:0] n);
 	hex = n < 4'd10 ? 8'h30 + {4'd0, n} : 8'h37 + {4'd0, n};
@@ -806,7 +835,7 @@ always @(posedge clk_cpu) begin
 	k92_pend   <= k92_pend | k92_ev;
 	if (isi_go | stall_go) isi_hdr <= 2'd3;
 	if ((stall_go | isi_go) & le_arm) begin le_r <= le_w; le_left <= 7'd64; end   // the ring at the stall, and at the first program exception
-	if (isi_armed && io_ev && io_we && io_addr[31:3] == 29'h1000_007F && !usr_pend) begin
+	if (1'b0 && isi_armed && io_ev && io_we && io_addr[31:3] == 29'h1000_007F && !usr_pend) begin   // (off in the NT video build, for room)
 		usr_pend <= 1'b1; usr_we <= io_we; usr_isa <= 1'b1; usr_a <= {io_be, io_addr[11:0]};
 		usr_d <= io_wdata;
 	end
@@ -873,6 +902,18 @@ always @(posedge clk_cpu) begin
 	end
 	else if (c1_pendl) begin stage_n <= 4'd11; stage <= {8'h4C, 8'h3D, hex8(c1_minl), 8'h20, 24'h0}; c1_pendl <= 1'b0; end
 	else if (c1_pendh) begin stage_n <= 4'd11; stage <= {8'h48, 8'h3D, hex8(c1_minh), 8'h20, 24'h0}; c1_pendh <= 1'b0; end
+	else if (dv_half) begin
+		stage_n <= 4'd10;
+		stage   <= {8'h3D, hex8(dv_d), 8'h20, 32'h0};
+		dv_half <= 1'b0;
+	end
+	else if (dv_r != dv_wq) begin           // (dv_e: read a clock after dv_r moved, long before this)
+		stage_n <= 4'd10;
+		stage   <= {dv_e[66] ? 8'h44 : 8'h64, hex8({dv_e[65:36], 2'b00}), hex(dv_e[35:32]), 32'h0};
+		dv_d    <= dv_e[31:0];
+		dv_half <= 1'b1;
+		dv_r    <= dv_r + 8'd1;
+	end
 	else if (nq_r != nq_wq) begin
 		stage_n <= 4'd14;                  // (14 bytes: the stage's whole width; a pad byte had pushed the letter out)
 		stage   <= {nq_e[44] ? (nq_e[45] ? 8'h77 : 8'h57) : (nq_e[45] ? 8'h72 : 8'h52), hex(nq_e[43:40]), hex(nq_e[39:36]), hex(nq_e[35:32]), 8'h3D, hex8(nq_e[31:0]),

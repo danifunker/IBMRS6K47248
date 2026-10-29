@@ -255,6 +255,9 @@ module IBMRS6K7248_machine
 	output logic [23:0]  v_cur_fg, v_cur_bg,
 	input  logic [7:0]   pal_vaddr,
 	output logic [17:0]  pal_vq,
+	output logic [151:0] v_txt,                      // the text mode's values (IBMRS6K7248_s3)
+	input  logic [12:0]  font_vaddr,
+	output logic [7:0]   font_vq,
 	input  logic         vretrace_v,
 	input  logic         disp_en_v,
 
@@ -642,7 +645,7 @@ IBMRS6K7248_s3 #(.CLK_HZ(CPU_HZ)) s3 (
 	.v_req, .v_we, .v_addr, .v_be, .v_wdata, .v_ack, .v_rdata,
 	.clk_v, .h_total, .h_disp, .h_ss, .h_sl, .v_total, .v_disp, .v_ss, .v_sl, .v_depth, .v_start, .v_pitch,
 	.v_screen_on, .v_pix_mask, .v_pll_m, .v_pll_n, .v_cur_on, .v_cur_x, .v_cur_y, .v_cur_base, .v_cur_x11, .v_cur_fg, .v_cur_bg,
-	.pal_vaddr, .pal_vq, .vretrace_v, .disp_en_v,
+	.pal_vaddr, .pal_vq, .v_txt, .font_vaddr, .font_vq, .vretrace_v, .disp_en_v,
 	.irq(s3_irq), .monitor_id(4'hF)
 );
 

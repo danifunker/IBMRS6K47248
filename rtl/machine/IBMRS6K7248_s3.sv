@@ -8,7 +8,8 @@
 //  and SDAC registers, the palette, the monitor ID, the linear frame
 //  buffer's decode and its path to VRAM, the vertical interrupt, and the
 //  graphics engine (IBMRS6K7248_s3ge, phase 1b) sharing VRAM with the
-//  frame buffer. The picture side (IBMRS6K7248_s3video, phase 1c, in the
+//  frame buffer; and the VGA's own memory window (A0000-BFFFF) with its
+//  plane addressing and its text mode, as NT's HAL and vga.sys use them. The picture side (IBMRS6K7248_s3video, phase 1c, in the
 //  video clock) takes the CRTC, pitch, start, cursor and clock values
 //  from here, reads the palette through a second port, and sends the
 //  retrace and display enable back (3DA, the vertical interrupt).
@@ -88,6 +89,12 @@ module IBMRS6K7248_s3
 	output logic [23:0] v_cur_fg, v_cur_bg,   // 8 bits a pixel: palette indexes; else pixel values
 	input  logic [7:0]  pal_vaddr,
 	output logic [17:0] pal_vq,
+	// the text mode (GR6 bit 0 clear): {text, 9-dot, CR09 height - 1 (5), cursor start (5), end (5), off,
+	// the cursor's character address (16), AR10, AR14[3:0], the characters a line (10), AR00-0F (16 x 6)}
+	output logic [151:0] v_txt,
+	// the font (plane 2's first 8 KB, as written: 256 characters x 32 lines), read in clk_v a clock later
+	input  logic [12:0] font_vaddr,
+	output logic [7:0]  font_vq,
 	input  logic        vretrace_v,
 	input  logic        disp_en_v,
 
@@ -188,8 +195,12 @@ always_comb begin
 	endcase
 end
 assign v_depth = depth;
-// characters (of 8 VCLKs) to pixels: x 16, 8, 4, 2; at 24 bits x 16 / 3
-wire  [2:0] hsh = sdac_cmd[7:4] == 4'h1 || depth == 3'd4 ? 3'd4 : depth == 3'd0 ? 3'd3 : depth == 3'd3 ? 3'd1 : 3'd2;
+// characters (of 8 VCLKs) to pixels: x 16, 8, 4, 2; at 24 bits x 16 / 3; in the text mode x 8, or x 9
+// with SR1 bit 0 clear (c << 3, plus c for the ninth dot)
+wire        txt  = ~gr[6][0];
+wire        txt9 = txt & ~sr[1][0];
+wire  [2:0] hsh = txt ? 3'd3 :
+                  sdac_cmd[7:4] == 4'h1 || depth == 3'd4 ? 3'd4 : depth == 3'd0 ? 3'd3 : depth == 3'd3 ? 3'd1 : 3'd2;
 // the CRTC in characters, with the S3's overflow bits (CR5D, CR5E)
 wire  [9:0] ht_c = 10'(cr[7'h00]) + 10'd5 + {1'b0, cr[7'h5D][0], 8'd0};
 wire  [9:0] hd_c = 10'(cr[7'h01]) + 10'd1 + {1'b0, cr[7'h5D][1], 8'd0};
@@ -201,16 +212,17 @@ wire [9:0] hl_c = hsl5 == 5'd0 ? 10'd32 : 10'(hsl5);
 // (quasi-static, so in three register stages: the shift, then the shift's value, then a third of it
 // as (v x 21846) >> 16, exact for v below 2^14)
 logic [2:0]  hsh_q;
-logic        third_q, third_q2;
+logic        third_q, third_q2, txt9_q;
 logic [13:0] hv [4];
 always_ff @(posedge clk) begin
 	hsh_q    <= hsh;
-	third_q  <= depth == 3'd4;
+	txt9_q   <= txt9;
+	third_q  <= depth == 3'd4 && !txt;
 	third_q2 <= third_q;
-	hv[0] <= 14'({4'd0, ht_c} << hsh_q);
-	hv[1] <= 14'({4'd0, hd_c} << hsh_q);
-	hv[2] <= 14'({4'd0, hs_c} << hsh_q);
-	hv[3] <= 14'({4'd0, hl_c} << hsh_q);
+	hv[0] <= 14'({4'd0, ht_c} << hsh_q) + (txt9_q ? {4'd0, ht_c} : 14'd0);
+	hv[1] <= 14'({4'd0, hd_c} << hsh_q) + (txt9_q ? {4'd0, hd_c} : 14'd0);
+	hv[2] <= 14'({4'd0, hs_c} << hsh_q) + (txt9_q ? {4'd0, hs_c} : 14'd0);
+	hv[3] <= 14'({4'd0, hl_c} << hsh_q) + (txt9_q ? {4'd0, hl_c} : 14'd0);
 	h_total <= third_q2 ? 12'((30'(hv[0]) * 30'd21846) >> 16) : 12'(hv[0]);
 	h_disp  <= third_q2 ? 12'((30'(hv[1]) * 30'd21846) >> 16) : 12'(hv[1]);
 	h_ss    <= third_q2 ? 12'((30'(hv[2]) * 30'd21846) >> 16) : 12'(hv[2]);
@@ -220,8 +232,14 @@ assign v_total = {cr[7'h5E][0], cr[7'h07][5], cr[7'h07][0], cr[7'h06]} + 11'd2;
 assign v_disp  = {cr[7'h5E][1], cr[7'h07][6], cr[7'h07][1], cr[7'h12]} + 11'd1;
 assign v_ss    = {cr[7'h5E][4], cr[7'h07][7], cr[7'h07][2], cr[7'h10]};
 assign v_sl    = vsl4 == 4'd0 ? 5'd16 : {1'b0, vsl4};
-assign v_start = 21'({cr[7'h51][1:0], cr[7'h31][5:4], cr[7'h0C], cr[7'h0D]}) << 2;
-assign v_pitch = 12'({cr[7'h51][5:4], cr[7'h13], 3'b000});
+// (the text mode: character k is planes 0 and 1 at plane offset 2k (odd/even), VRAM bytes 8k and 8k + 1, so
+// the start is the character address x 8, and a row CR13 words, CR13 x 2 characters, x 16 bytes)
+assign v_start = txt ? 21'({cr[7'h0C], cr[7'h0D]}) << 3 : 21'({cr[7'h51][1:0], cr[7'h31][5:4], cr[7'h0C], cr[7'h0D]}) << 2;
+assign v_pitch = txt ? 12'({cr[7'h13], 4'b0000}) : 12'({cr[7'h51][5:4], cr[7'h13], 3'b000});
+logic [95:0] ar_pal;
+always_comb for (int i = 0; i < 16; i++) ar_pal[6 * i +: 6] = ar[i][5:0];
+assign v_txt = {txt, txt9, cr[7'h09][4:0], cr[7'h0A][4:0], cr[7'h0B][4:0], cr[7'h0A][5],
+                cr[7'h0E], cr[7'h0F], ar[16], ar[20][3:0], hd_c, ar_pal};
 assign v_screen_on = ~sr[1][5] & ar_idx[5];
 assign v_pix_mask  = dac_mask;
 // the dot clock: misc[3:2] 0 and 1 select f0 and f1, 3 the SDAC's f[CR42[2:0]]; or the SDAC's own
@@ -271,11 +289,20 @@ always_comb begin
 		default: lfb_mask = 16'hFFC0;     // 4 MB
 	endcase
 end
-assign mem_hit = mem_on && cr[7'h58][4] && ((pci_addr[31:16] & lfb_mask) == (lfb_base & lfb_mask));
+wire lfb_hit = mem_on && cr[7'h58][4] && ((pci_addr[31:16] & lfb_mask) == (lfb_base & lfb_mask));
 wire [21:0] lfb_off = pci_addr[21:0] & {~lfb_mask[21:16], 16'hFFFF};
+// the VGA's window (misc bit 1 on): GR6[3:2] 0 A0000-BFFFF, 1 A0000-AFFFF, 2 B0000-B7FFF, 3 B8000-BFFFF; an
+// address in it is its offset in the window (17 bits); a byte of it goes to the planes as the sequencer and
+// the graphics controller say (leg_*, below); the frame buffer's window first where both match
+wire        leg_in  = pci_addr[31:17] == 15'h0005 &&
+                      (gr[6][3:2] == 2'd0 || (gr[6][3:2] == 2'd1 && !pci_addr[16]) ||
+                       (gr[6][3:2] == 2'd2 && pci_addr[16:15] == 2'b10) || (gr[6][3:2] == 2'd3 && pci_addr[16:15] == 2'b11));
+wire        leg_hit = mem_on && misc[1] && leg_in && !lfb_hit;
+wire [16:0] leg_off = {pci_addr[16] & ~gr[6][3], pci_addr[15] & ~(gr[6][3] & gr[6][2]), pci_addr[14:0]};
+assign mem_hit = lfb_hit | leg_hit;
 
 // ---- the access: I/O a byte at a time; memory to VRAM ------------------------------------
-typedef enum logic [2:0] {A_IDLE, A_IO, A_MEM, A_PT, A_PR, A_DONE} ast_t;
+typedef enum logic [2:0] {A_IDLE, A_IO, A_MEM, A_PT, A_PR, A_LEG, A_LEGW, A_DONE} ast_t;
 ast_t        ast;
 logic [3:0]  left;                  // I/O: the lanes still to do (bit 3 the lowest address)
 logic [31:0] rq;                    // the answer being gathered
@@ -287,6 +314,26 @@ wire  [7:0]  bw  = wdata[31 - 8 * k -: 8];                                  // i
 function automatic logic [7:0] lanebyte(input logic [31:0] w, input logic [1:0] l);
 	lanebyte = w[31 - 8 * l -: 8];
 endfunction
+
+// the VGA window's byte k of the access: its address a, and where it is in VRAM. The planes are VRAM's
+// bytes: plane p of plane offset o is VRAM byte 4o + p. Chain 4 (SR4 bit 3): o = a >> 2, p = a & 3, so VRAM
+// byte a. Odd/even (SR4 bit 2 clear): o = a & ~1, p = a & 1 (planes 2 and 3 when the map mask holds only
+// them). Else planar: o = a, a write to every plane the map mask (SR2) enables, a read from GR4's
+// (write mode 0 alone: no set/reset, rotation, logic or bit mask, the latches not kept)
+wire [16:0] leg_a   = {leg_off[16:2], k};
+wire        leg_c4  = sr[4][3];
+wire        leg_oe  = ~sr[4][3] & ~sr[4][2];
+wire        leg_hi  = ~sr[2][0] & ~sr[2][1];
+wire [1:0]  leg_p   = leg_c4 ? leg_a[1:0] : leg_oe ? {leg_hi, leg_a[0]} : gr[4][1:0];
+wire [18:0] leg_vb  = leg_c4 ? {2'b00, leg_a} : leg_oe ? {leg_a[16:1], 1'b0, leg_p} : {leg_a, leg_p};   // the VRAM byte
+wire        leg_wen = leg_c4 || leg_oe ? sr[2][{1'b0, leg_p}] : |sr[2][3:0];
+wire [3:0]  leg_be  = leg_c4 || leg_oe || !we ? (4'b1000 >> leg_vb[1:0]) : {sr[2][0], sr[2][1], sr[2][2], sr[2][3]};
+// a write to plane 2's first 8 KB (the font: 256 characters x 32 lines) goes to the font's copy too
+wire [16:0] leg_o   = leg_c4 ? {2'b00, leg_a[16:2]} : leg_oe ? {leg_a[16:1], 1'b0} : leg_a;
+wire        leg_fw  = (leg_c4 || leg_oe) ? (leg_p == 2'd2) : sr[2][2];
+logic [7:0] font [8192];
+always_ff @(posedge clk) if (ast == A_LEG && we && leg_wen && leg_fw && leg_o[16:13] == 4'd0) font[leg_o[12:0]] <= bw;
+always_ff @(posedge clk_v) font_vq <= font[font_vaddr];
 
 logic [7:0] rb;                     // the byte a read returns (combinational, from bp)
 always_comb begin
@@ -399,7 +446,12 @@ always_ff @(posedge clk) begin
 
 	case (ast)
 		A_IDLE: if (sel & ~ack) begin
-			if (is_mem) begin
+			if (is_mem && leg_hit) begin         // the VGA's window: a byte at a time
+				left <= be;
+				rq   <= 32'hFFFF_FFFF;
+				ast  <= (be == 4'd0) ? A_DONE : A_LEG;
+			end
+			else if (is_mem) begin
 				if (lfb_off[21]) begin           // beyond the 2 MB: nothing (no aliasing)
 					rq  <= 32'hFFFF_FFFF;
 					ast <= A_DONE;
@@ -437,6 +489,26 @@ always_ff @(posedge clk) begin
 			l_req <= 1'b0;
 			rq    <= v_rdata;
 			ast   <= A_DONE;
+		end
+		A_LEG: begin                                     // byte k: to VRAM, or skipped (no plane enabled)
+			if (we && !leg_wen) begin
+				left[3 - k] <= 1'b0;
+				if (left == (4'b1000 >> k)) ast <= A_DONE;
+			end
+			else begin
+				l_req   <= 1'b1;
+				l_we    <= we;
+				l_addr  <= {2'b00, leg_vb[18:2]};
+				l_be    <= leg_be;
+				l_wdata <= {4{bw}};
+				ast     <= A_LEGW;
+			end
+		end
+		A_LEGW: if (l_ack) begin
+			l_req <= 1'b0;
+			if (!we) rq[31 - 8 * k -: 8] <= lanebyte(v_rdata, leg_vb[1:0]);
+			left[3 - k] <= 1'b0;
+			ast <= (left == (4'b1000 >> k)) ? A_DONE : A_LEG;
 		end
 		A_PT: if (pt_ready | ~ge_busy) ast <= A_DONE;    // taken by the engine, or dropped with none running
 		A_PR: if (ge_rd_valid) begin                     // the engine's transfer (E2E8 in its bits 7:0) on the bus's lanes

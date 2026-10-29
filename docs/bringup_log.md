@@ -1237,3 +1237,29 @@ the 7248's ROM v1.12 offers fewer services. Not the core's: a 7248 SMS diskette 
   reaches the screen** (still setupldr's red frame drawn twice; no S3 register access in that window:
   the text goes to frame-buffer memory the S3 model does not show in that mode). The video is now the
   blocker for driving setup.
+
+## 2026-10-28 night: NT setup's text mode on screen (the S3's VGA window and text mode)
+
+- txtsetup.sif lists the card (`s3_864`, "E10 Graphics Adapter (S3 864)", ARC identifier `S3_864`), but
+  `[Display.Load]` gives all the S3 entries **vga.sys** for text-mode setup (s3.sys is the GUI phase's).
+  The HAL's banner and setupdd's screens are VGA text cells written to **B8000** (the first logged
+  access after the kernel's start was `D C00B8000 = 'M'`); vga.sys probes the graphics controller (the
+  bit-mask test) and loads its font through plane 2 at A0000. The S3 model decoded no legacy window at
+  all (only the linear frame buffer) and its scan-out knew packed pixels only: every write was lost.
+- New debug logger (this build): from the first program exception after the LE switch, every device
+  access by its whole address ("Daaaaaaaab=dddddddd", "d" a read), PCI memory only on a 4 KB page change,
+  not COM1, the 8042, the 8259s, 808 or the interrupt acknowledge, through a 256-entry FIFO. Room was made
+  by turning off the low-memory shadow compare and the COM1 bit-timing and register logging.
+- `_s3.sv`: the VGA window (misc bit 1; GR6[3:2] A0000 128 KB / 64 KB, B0000, B8000; the frame buffer's
+  window first), a byte at a time to VRAM as planes (plane p of offset o at VRAM byte 4o + p): chain 4,
+  odd/even (character plane 0, attribute plane 1), or planar with the map mask (write mode 0 only; reads
+  from GR4's plane); plane 2's first 8 KB also into an on-chip copy of the font. In the text mode (GR6 bit 0
+  clear) the start is CR0C/0D x 8 bytes, a row CR13 x 16, the dots 8 or 9 a character (SR1 bit 0), and the
+  text values go to the picture side in one bus (`v_txt`, with the font's read port).
+- `_s3video.sv`: the text path: each line fetches its character row (one VRAM word a character), the font's
+  line from the copy, 9th dot for C0-DF (AR10 bit 2), blink (AR10 bit 3), the cursor (CR0A/0B lines at
+  CR0E/0F), the attribute palette (AR00-0F, AR10 bit 7, AR14), then the DAC. `sim/s3video`: a text-mode case
+  with a model of every pixel (9 dots, attributes, the cursor, line graphics): all six cases pass.
+- **On .92 (21:16, `scratch/work/IBMRS6K7248_text.rbf`, 41,497 ALMs, CPU slack -2.38 ns)**: the firmware and
+  ARC as before; setup's screens appear, blue and grey: "Setup has recognized the following mass storage
+  devices in your computer: Symbios Logic C810 PCI SCSI Host Adapter" (`docs/images/nt_setup_text_20261028.png`).

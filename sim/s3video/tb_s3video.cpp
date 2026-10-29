@@ -15,6 +15,7 @@ static uint32_t pal[256];                 // 18 bits: 6 a component
 static const uint32_t DDR_BASE = 0x06000000;
 static std::deque<uint64_t> rq;           // the words a burst read owes
 static int fails;
+static uint8_t font[8192];                // the text mode's font copy, on its port
 
 static void tick() {
 	// DDR3: never busy; a burst read's words one a clock, from the clock after it is asked
@@ -31,9 +32,11 @@ static void tick() {
 	}
 	// the palette's port: the colour a clock later
 	uint32_t q = pal[t->pal_addr];
+	uint8_t fq = font[t->font_addr];
 	t->clk = 0; t->eval();
 	t->clk = 1; t->eval();
 	t->pal_q = q;
+	t->font_q = fq;
 	t->eval();
 }
 
@@ -111,6 +114,71 @@ static void run_depth(int depth, const char *name, uint32_t fg, uint32_t bg) {
 	if (bad) fails++;
 }
 
+// the VGA text mode: 5 characters of 9 dots a line, rows of 4 lines, 8 characters a row in memory (CR13 4), the
+// start at character 3; the font's copy, the attribute palette, AR14, the line graphics' ninth dot, the cursor
+static void set_txt(bool on, bool nine, int chm1, int cs, int ce, bool coff, int cloc, int ar10, int ar14, int cols,
+                    const uint8_t *arpal) {
+	uint32_t w[5] = {0, 0, 0, 0, 0};
+	auto put = [&](int lo, int n, uint32_t v) { for (int i = 0; i < n; i++) if ((v >> i) & 1) w[(lo + i) / 32] |= 1u << ((lo + i) % 32); };
+	for (int i = 0; i < 16; i++) put(6 * i, 6, arpal[i]);
+	put(96, 10, cols); put(106, 4, ar14); put(110, 8, ar10); put(118, 16, cloc); put(134, 1, coff);
+	put(135, 5, ce); put(140, 5, cs); put(145, 5, chm1); put(150, 1, nine); put(151, 1, on);
+	for (int i = 0; i < 5; i++) t->txt[i] = w[i];
+}
+static void run_text() {
+	const int CW = 9, COLS = 5, CH = 4, ROWCH = 8, SC = 3, TW = CW * COLS, TH = 8;
+	const int CLOC = SC + 1 * ROWCH + 2, CS = 1, CE = 2, AR10 = 0x0C, AR14 = 0x5;
+	uint8_t arpal[16];
+	for (int i = 0; i < 16; i++) arpal[i] = (uint8_t)((i * 37 + 11) & 63);
+	for (int i = 0; i < 8192; i++) font[i] = (uint8_t)(i * 2654435761u >> 13);
+	for (int r = 0; r < 2; r++)
+		for (int c = 0; c < ROWCH; c++) {
+			int ma = SC + r * ROWCH + c;
+			vram[8 * ma] = (r == 0 && c == 1) ? 0xC5 : (r == 1 && c == 3) ? 0xC2 : (uint8_t)(0x41 + 7 * ma);
+			vram[8 * ma + 1] = (uint8_t)(0x9E * ma + 0x17);
+		}
+	t->reset = 1;
+	t->h_total = 64; t->h_disp = TW; t->h_ss = 50; t->h_sl = 6;
+	t->v_total = 12; t->v_disp = TH; t->v_ss = 9; t->v_sl = 1;
+	t->depth = 0; t->start = SC * 8; t->pitch = ROWCH * 8; t->screen_on = 1; t->pix_mask = 0xFF;
+	t->pll_m = 127; t->pll_n = 0; t->cur_on = 0;
+	set_txt(true, CW == 9, CH - 1, CS, CE, false, CLOC, AR10, AR14, COLS, arpal);
+	t->c_req = 0;
+	rq.clear();
+	for (int i = 0; i < 10; i++) tick();
+	t->reset = 0;
+	static uint32_t got[TH][TW];
+	int x = 0, y = 0, frame = 0, seen = 0;
+	bool hb_q = true, vb_q = true;
+	for (long i = 0; i < 64 * 12 * 3 + 200 && frame < 3; i++) {
+		tick();
+		if (!t->ce_pix) continue;
+		if (t->vblank && !vb_q) frame++;
+		if (!t->vblank && vb_q) y = 0;
+		if (t->hblank && !hb_q && !t->vblank) y++;
+		if (!t->hblank && hb_q) x = 0;
+		if (frame == 1 && !t->hblank && !t->vblank && y < TH && x < TW) { got[y][x] = (t->r << 16) | (t->g << 8) | t->b; x++; seen++; }
+		hb_q = t->hblank; vb_q = t->vblank;
+	}
+	int bad = 0;
+	for (int yy = 0; yy < TH; yy++)
+		for (int xx = 0; xx < TW; xx++) {
+			int row = yy / CH, line = yy % CH, col = xx / CW, dot = xx % CW, ma = SC + row * ROWCH + col;
+			int ch = vram[8 * ma], at = vram[8 * ma + 1], fb = font[ch * 32 + line];
+			int dl = dot < 8 ? (fb >> (7 - dot)) & 1 : ((AR10 & 4) && (ch & 0xE0) == 0xC0 ? fb & 1 : 0);
+			int cur = ma == CLOC && line >= CS && line <= CE;
+			int idx = (dl | cur) ? at & 15 : (at >> 4) & ((AR10 & 8) ? 7 : 15);
+			int v6 = arpal[idx];
+			int i8 = ((AR14 >> 2) & 3) << 6 | ((AR10 & 0x80) ? (AR14 & 3) : (v6 >> 4) & 3) << 4 | (v6 & 15);
+			uint32_t want = pcol(pal[i8]);
+			if (got[yy][xx] != want) { if (bad < 6) printf("  (%d,%d) %06X, want %06X\n", xx, yy, got[yy][xx], want); bad++; }
+		}
+	if (seen != TW * TH) { printf("  %d pixels seen, want %d\n", seen, TW * TH); bad++; }
+	printf("%-44s %s (%d differ)\n", "text, 9 dots, attributes, the cursor", bad ? "FAIL" : "pass", bad);
+	if (bad) fails++;
+	set_txt(false, false, 0, 0, 0, true, 0, 0, 0, 0, arpal);
+}
+
 int main(int argc, char **argv) {
 	Verilated::commandArgs(argc, argv);
 	t = new VIBMRS6K7248_s3video;
@@ -120,6 +188,7 @@ int main(int argc, char **argv) {
 	run_depth(2, "16 bits a pixel (5-6-5), the cursor", 0xF800, 0x07E0);
 	run_depth(3, "32 bits a pixel (8-8-8), the cursor", 0x123456, 0xABCDEF);
 	run_depth(4, "24 bits a pixel packed, the cursor", 0x654321, 0x0F1E2D);
+	run_text();
 	printf(fails ? "%d FAILED\n" : "ALL PASS\n", fails);
 	delete t;
 	return fails ? 1 : 0;
