@@ -164,6 +164,8 @@ logic [31:0] ge_rd_data;
 logic       ge_bus32;                     // the engine's command takes 32-bit transfers
 logic [31:0] pt_w;                        // a PIX_TRANS transfer for the engine, the bus's lanes
 logic [15:0] pt_lo;                       // ... its first half (E2E8, E2E9) when it came alone
+logic [1:0]  pt_n;                        // ... the transfers after it in the same write (8 or 16-bit bus)
+logic        ge_bus8;
 
 // the CRTC's port base follows misc bit 0 (3Dx colour, 3Bx mono)
 wire  [15:0] crt_base = misc[0] ? 16'h03D0 : 16'h03B0;
@@ -279,6 +281,8 @@ end
 // the frame buffer: CR58 bit 4 on, the window CR58[1:0] (64 KB, 1, 2, 4 MB) at CR59/CR5A << 16,
 // aligned to its size
 wire  [1:0]  lfb_win  = cr[7'h58][1:0];
+// the 64 KB bank (CR31 bit 0 on): CR6A, or with CR6A 0 CR51[3:2] and CR35[3:0] (5 bits: 2 MB)
+wire  [4:0]  leg_bk   = ~cr[7'h31][0] ? 5'd0 : |cr[7'h6A][6:0] ? cr[7'h6A][4:0] : {cr[7'h51][2], cr[7'h35][3:0]};
 wire  [31:16] lfb_base = {cr[7'h59], cr[7'h5A]};
 logic [31:16] lfb_mask;
 always_comb begin
@@ -290,16 +294,22 @@ always_comb begin
 	endcase
 end
 wire lfb_hit = mem_on && cr[7'h58][4] && ((pci_addr[31:16] & lfb_mask) == (lfb_base & lfb_mask));
-wire [21:0] lfb_off = pci_addr[21:0] & {~lfb_mask[21:16], 16'hFFFF};
+// (a 64 KB window is the bank's 64 KB, as the VGA window's below: s3.sys puts it at A0000 to reach the screen
+// with the engine's MMIO off)
+wire [21:0] lfb_off = lfb_win == 2'd0 ? {1'b0, leg_bk, pci_addr[15:0]} : pci_addr[21:0] & {~lfb_mask[21:16], 16'hFFFF};
 // the VGA's window (misc bit 1 on): GR6[3:2] 0 A0000-BFFFF, 1 A0000-AFFFF, 2 B0000-B7FFF, 3 B8000-BFFFF; an
 // address in it is its offset in the window (17 bits); a byte of it goes to the planes as the sequencer and
 // the graphics controller say (leg_*, below); the frame buffer's window first where both match
 wire        leg_in  = pci_addr[31:17] == 15'h0005 &&
                       (gr[6][3:2] == 2'd0 || (gr[6][3:2] == 2'd1 && !pci_addr[16]) ||
                        (gr[6][3:2] == 2'd2 && pci_addr[16:15] == 2'b10) || (gr[6][3:2] == 2'd3 && pci_addr[16:15] == 2'b11));
-wire        leg_hit = mem_on && misc[1] && leg_in && !lfb_hit;
+// the engine's memory-mapped registers (CR53 bit 4, the 864's MMIO): A0000-A7FFF PIX_TRANS (E2E8), A8000-AFFFF
+// the ports 8000-FFFF (A8000 + port - 8000), in place of the VGA's window there; NT's s3.sys draws through them
+wire        mmio_hit = mem_on && cr[7'h53][4] && pci_addr[31:16] == 16'h000A && !lfb_hit;
+wire [15:0] ap       = !(is_mem && mmio_hit) ? port : pci_addr[15] ? {1'b1, pci_addr[14:2], 2'b00} : 16'hE2E8;
+wire        leg_hit = mem_on && misc[1] && leg_in && !lfb_hit && !mmio_hit;
 wire [16:0] leg_off = {pci_addr[16] & ~gr[6][3], pci_addr[15] & ~(gr[6][3] & gr[6][2]), pci_addr[14:0]};
-assign mem_hit = lfb_hit | leg_hit;
+assign mem_hit = lfb_hit | leg_hit | mmio_hit;
 
 // ---- the access: I/O a byte at a time; memory to VRAM ------------------------------------
 typedef enum logic [2:0] {A_IDLE, A_IO, A_MEM, A_PT, A_PR, A_LEG, A_LEGW, A_DONE} ast_t;
@@ -307,7 +317,7 @@ ast_t        ast;
 logic [3:0]  left;                  // I/O: the lanes still to do (bit 3 the lowest address)
 logic [31:0] rq;                    // the answer being gathered
 wire  [1:0]  k   = left[3] ? 2'd0 : left[2] ? 2'd1 : left[1] ? 2'd2 : 2'd3;   // the next lane
-wire  [15:0] bp  = {port[15:2], k};                                          // its port
+wire  [15:0] bp  = {ap[15:2], k};                                            // its port (an MMIO access's too)
 wire  [7:0]  bw  = wdata[31 - 8 * k -: 8];                                  // its byte
 
 // one byte register access
@@ -319,13 +329,17 @@ endfunction
 // bytes: plane p of plane offset o is VRAM byte 4o + p. Chain 4 (SR4 bit 3): o = a >> 2, p = a & 3, so VRAM
 // byte a. Odd/even (SR4 bit 2 clear): o = a & ~1, p = a & 1 (planes 2 and 3 when the map mask holds only
 // them). Else planar: o = a, a write to every plane the map mask (SR2) enables, a read from GR4's
-// (write mode 0 alone: no set/reset, rotation, logic or bit mask, the latches not kept)
+// (write mode 0 alone: no set/reset, rotation, logic or bit mask, the latches not kept). The S3's enhanced
+// mapping (CR31 bit 3) is chain 4's linear bytes too, and with CR31 bit 0 the window is the 64 KB bank
+// CR6A (or, with CR6A 0, CR51[3:2] and CR35[3:0]) of VRAM: NT's s3.sys turns the linear window off (CR58
+// bit 4) and draws the screen through A0000 a bank at a time (banks only in the linear addressing here)
 wire [16:0] leg_a   = {leg_off[16:2], k};
-wire        leg_c4  = sr[4][3];
+wire        leg_c4  = sr[4][3] | cr[7'h31][3];
 wire        leg_oe  = ~sr[4][3] & ~sr[4][2];
 wire        leg_hi  = ~sr[2][0] & ~sr[2][1];
 wire [1:0]  leg_p   = leg_c4 ? leg_a[1:0] : leg_oe ? {leg_hi, leg_a[0]} : gr[4][1:0];
-wire [18:0] leg_vb  = leg_c4 ? {2'b00, leg_a} : leg_oe ? {leg_a[16:1], 1'b0, leg_p} : {leg_a, leg_p};   // the VRAM byte
+wire [20:0] leg_vb  = leg_c4 ? {leg_bk[4:0] + {4'd0, leg_a[16]}, leg_a[15:0]} :                     // the VRAM byte
+                      leg_oe ? {2'b00, leg_a[16:1], 1'b0, leg_p} : {2'b00, leg_a, leg_p};
 wire        leg_wen = leg_c4 || leg_oe ? sr[2][{1'b0, leg_p}] : |sr[2][3:0];
 wire [3:0]  leg_be  = leg_c4 || leg_oe || !we ? (4'b1000 >> leg_vb[1:0]) : {sr[2][0], sr[2][1], sr[2][2], sr[2][3]};
 // a write to plane 2's first 8 KB (the font: 256 characters x 32 lines) goes to the font's copy too
@@ -371,7 +385,9 @@ always_comb begin
 	else if (bp == 16'h4AE8)            rb = r4ae8;
 	else if (bp == 16'h0102)            rb = r0102;
 	else if (bp == 16'h9AE8)            rb = 8'h00;                             // GP_STAT: the FIFO empty (no FIFO: the bus waits)
-	else if (bp == 16'h9AE9)            rb = {6'd0, ge_busy, ge_rd_valid};      // ... bit 9 the engine busy, 8 read data waiting
+	// ... bit 10 all FIFO slots empty (always: no FIFO), 9 the engine busy, 8 read data waiting (NT's s3.sys waits
+	// for bit 10 before it draws: with it 0, GUI setup spun on GP_STAT)
+	else if (bp == 16'h9AE9)            rb = {5'd0, 1'b1, ge_busy, ge_rd_valid};
 	else if (bp == 16'h82E8)            rb = ge_cy[7:0];
 	else if (bp == 16'h82E9)            rb = ge_cy[15:8];
 	else if (bp == 16'h86E8)            rb = ge_cx[7:0];
@@ -396,7 +412,7 @@ IBMRS6K7248_s3ge engine (
 	.r_we(ast == A_IO && we && ge_reg_b && !ge_busy), .r_idx(bp[15:10]), .r_hi(bp[0]), .r_data(bw),
 	.r_abort(ast == A_IO && we && bp == 16'h42E9 && bw[7:6] == 2'b10),
 	.pt_valid(ast == A_PT), .pt_data({pt_w[7:0], pt_w[15:8], pt_w[23:16], pt_w[31:24]}), .pt_ready,
-	.bus32(ge_bus32), .rd_mode(ge_rd_mode), .rd_valid(ge_rd_valid), .rd_data(ge_rd_data), .rd_take(ast == A_PR && ge_rd_valid),
+	.bus32(ge_bus32), .bus8(ge_bus8), .rd_mode(ge_rd_mode), .rd_valid(ge_rd_valid), .rd_data(ge_rd_data), .rd_take(ast == A_PR && ge_rd_valid),
 	.busy(ge_busy), .pitch(ge_pitch[11:0]),
 	.psz(cr[7'h50][5:4] == 2'b01 ? 2'd1 : cr[7'h50][5:4] == 2'b11 ? 2'd2 : 2'd0),   // CR50: bytes a pixel
 	.v_req(e_req), .v_we(e_we), .v_addr(e_addr), .v_be(e_be), .v_wdata(e_wdata), .v_ack(e_ack), .v_rdata
@@ -451,7 +467,7 @@ always_ff @(posedge clk) begin
 				rq   <= 32'hFFFF_FFFF;
 				ast  <= (be == 4'd0) ? A_DONE : A_LEG;
 			end
-			else if (is_mem) begin
+			else if (is_mem && !mmio_hit) begin
 				if (lfb_off[21]) begin           // beyond the 2 MB: nothing (no aliasing)
 					rq  <= 32'hFFFF_FFFF;
 					ast <= A_DONE;
@@ -465,18 +481,27 @@ always_ff @(posedge clk) begin
 					ast     <= A_MEM;
 				end
 			end
-			else if (port == 16'hE2E8 && we) begin   // PIX_TRANS: the transfer whole, to the engine
+			else if (ap == 16'hE2E8 && we) begin   // PIX_TRANS: the transfer whole, to the engine
 				// (on a 32-bit bus a halfword write of E2E8 waits for E2EA's to complete the transfer)
 				if (ge_bus32 && be == 4'b1100) begin
 					pt_lo <= wdata[31:16];
 					ast   <= A_DONE;
 				end
+				else if (ge_bus32) begin
+					pt_w <= (be == 4'b0011) ? {pt_lo, wdata[15:0]} : wdata;
+					pt_n <= 2'd0;
+					ast  <= A_PT;
+				end
 				else begin
-					pt_w <= (ge_bus32 && be == 4'b0011) ? {pt_lo, wdata[15:0]} : wdata;
+					// on an 8 or 16-bit bus a wider write is a transfer a byte or halfword, the lowest address
+					// first, as the ISA bus splits an I/O write (s3.sys writes MMIO's PIX_TRANS a word at a time
+					// on a 16-bit bus): the first lane written to the top, the rest shifted up in A_PT
+					pt_w <= wdata << (be[3] ? 5'd0 : be[2] ? 5'd8 : be[1] ? 5'd16 : 5'd24);
+					pt_n <= ge_bus8 ? 2'(3'(be[3]) + 3'(be[2]) + 3'(be[1]) + 3'(be[0]) - 3'd1) : (be == 4'b1111 ? 2'd1 : 2'd0);
 					ast  <= A_PT;
 				end
 			end
-			else if (port == 16'hE2E8 && ge_rd_mode) begin   // ... or from it, in an image read
+			else if (ap == 16'hE2E8 && ge_rd_mode) begin   // ... or from it, in an image read
 				ast <= A_PR;
 			end
 			else begin
@@ -498,7 +523,7 @@ always_ff @(posedge clk) begin
 			else begin
 				l_req   <= 1'b1;
 				l_we    <= we;
-				l_addr  <= {2'b00, leg_vb[18:2]};
+				l_addr  <= leg_vb[20:2];
 				l_be    <= leg_be;
 				l_wdata <= {4{bw}};
 				ast     <= A_LEGW;
@@ -510,7 +535,13 @@ always_ff @(posedge clk) begin
 			left[3 - k] <= 1'b0;
 			ast <= (left == (4'b1000 >> k)) ? A_DONE : A_LEG;
 		end
-		A_PT: if (pt_ready | ~ge_busy) ast <= A_DONE;    // taken by the engine, or dropped with none running
+		A_PT: if (pt_ready | ~ge_busy) begin             // taken by the engine, or dropped with none running
+			if (pt_n != 2'd0 && ge_busy) begin          // the write's next byte or halfword
+				pt_w <= ge_bus8 ? pt_w << 8 : pt_w << 16;
+				pt_n <= pt_n - 2'd1;
+			end
+			else ast <= A_DONE;
+		end
 		A_PR: if (ge_rd_valid) begin                     // the engine's transfer (E2E8 in its bits 7:0) on the bus's lanes
 			rq  <= {ge_rd_data[7:0], ge_rd_data[15:8], ge_rd_data[23:16], ge_rd_data[31:24]};
 			ast <= A_DONE;

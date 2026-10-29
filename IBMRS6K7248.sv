@@ -716,10 +716,13 @@ reg  [31:12] dv_page = 0;
 reg         dv_half = 0;
 reg  [31:0] dv_d;
 wire        dv_mem = io_addr[31:30] == 2'b11;
-wire        dv_ev  = isi_done & io_ev & ~ncr_ev & ~(io_addr[31:3] == 29'h1000_007F) & ~(io_addr[31:3] == 29'h1000_000C) & ~(&dv_n) &
-                     ~(io_addr[31:2] == 30'h2000_0008) & ~(io_addr[31:2] == 30'h2000_0028) &
-                     ~(io_addr[31:2] == 30'h2000_0202) & ~(io_addr[31:4] == 28'hBFFF_FFF) &
-                     (~dv_mem | io_addr[31:12] != dv_page);
+// (for now only the video's register writes: the VGA's 3B0-3DF and the S3's xxE8-xxEF, not E2E8's pixel data,
+// by port or through the S3's MMIO at A8000-AFFFF)
+wire        dv_ev  = isi_done & io_ev & io_we & ~(&dv_n) &
+                     ((io_addr[31:16] == 16'h8000 &&
+                       ((io_addr[15:4] == 12'h03B || io_addr[15:4] == 12'h03C || io_addr[15:4] == 12'h03D) ||
+                        (io_addr[7:3] == 5'b11101 && io_addr[15:10] != 6'd0 && io_addr[15:8] != 8'hE2))) ||
+                      io_addr[31:15] == 17'h18015);
 always @(posedge clk_cpu) begin
 	if (dv_ev && dv_w + 8'd1 != dv_r) begin
 		dv[dv_w] <= {io_we, io_addr[31:2], io_be, io_we ? io_wdata : io_rdata};

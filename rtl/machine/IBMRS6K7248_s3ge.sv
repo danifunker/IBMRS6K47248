@@ -76,6 +76,7 @@ module IBMRS6K7248_s3ge
 	output logic        pt_ready,
 	// ... and reads (an image read): the transfer waiting, the same order; rd_take a read took it
 	output logic        bus32,         // a command runs on a 32-bit bus (its transfer may come as E2E8, then E2EA)
+	output logic        bus8,          // ... on an 8-bit bus (else 16 bits)
 	output logic        rd_mode,       // an image read runs: PIX_TRANS reads wait for rd_valid
 	output logic        rd_valid,
 	output logic [31:0] rd_data,
@@ -260,6 +261,7 @@ assign busy     = g != G_IDLE;
 assign pt_ready = g == G_DATA;
 assign rd_mode  = busy & rd_cmd;
 assign bus32    = busy & (bus == 2'd2);
+assign bus8     = busy & (bus == 2'd0);
 assign rd_valid = g == G_RDOUT;
 
 wire [31:0] result = mix(fn, src, dst);

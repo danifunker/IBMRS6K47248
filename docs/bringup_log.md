@@ -1263,3 +1263,32 @@ the 7248's ROM v1.12 offers fewer services. Not the core's: a 7248 SMS diskette 
 - **On .92 (21:16, `scratch/work/IBMRS6K7248_text.rbf`, 41,497 ALMs, CPU slack -2.38 ns)**: the firmware and
   ARC as before; setup's screens appear, blue and grey: "Setup has recognized the following mass storage
   devices in your computer: Symbios Logic C810 PCI SCSI Host Adapter" (`docs/images/nt_setup_text_20261028.png`).
+
+## 2026-10-29: NT's GUI setup on screen (the S3's MMIO, banks, narrow-bus transfers)
+
+Text setup finished on .92 (the user drove it; the NTFS conversion done) and GUI
+setup stopped in four steps, each the S3 model short of what NT's s3.dll does
+(the whole list, from disassembling s3.dll and s3.sys: `docs/s3_nt_driver.md`):
+
+1. **GP_STAT bit 10** (all FIFO slots empty) read 0, and s3.dll waits for it
+   before it draws (s3.dll's loop at file offsets 0x8D4 and 0xCDFC): set always.
+2. **MMIO** (CR53 bit 4): s3.dll writes every engine register at A8000 + (port -
+   8000) and image data at A0000-A7FFF; the model had no MMIO, so the commands
+   went into the first 64 KB of VRAM as pixels (a garbled strip across the top,
+   the rest the firmware's blue). Now the ports 8000-FFFF through the window,
+   PIX_TRANS below A8000.
+3. **Banks**: with the engine's MMIO off s3.dll reaches the screen through a
+   64 KB linear window at A0000 (CR58=50, CR59/5A=000A) and CR6A's bank; the
+   model ignored the bank there and in the VGA window (CR31 bit 0). The cursor's
+   image (bank 1F) landed on the screen's top too: the black 64 x 64 square.
+4. **PIX_TRANS on a 16-bit bus**: s3.dll's image and glyph commands (53B1,
+   53B3) take a 16-bit bus but get 32-bit stores; the engine took the first half
+   of each and waited forever for the rest (the screen stopped at the first fill,
+   teal). A wider write on an 8 or 16-bit bus is now that many transfers, the
+   lowest address first, as the ISA bus splits an I/O write.
+
+The Setup Wizard's first page then drew whole (`images/nt_gui_setup_20261029.png`).
+The debug logger (IBMRS6K7248_DEBUG) is set to video register writes, by port and
+through MMIO. Left (none needed at 8 bits a pixel): the colour registers' 32-bit
+MMIO write at 16 and 32 bits a pixel, planar VGA for vga.sys. CPU slack -3.15 ns,
+41,541 ALMs.
