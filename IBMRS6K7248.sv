@@ -133,6 +133,9 @@ localparam CONF_STR = {
 	"P4h1O[15:13],SoundFont,0,1,2,3,4,5,6,7;",
 
 	"P5SC3,NVR,NVRAM image;",
+	// the planar ID (port 0852): the same firmware is a 7248 (F5) or a Power Series 850 (F1, the IDE planar:
+	// "IBM PPS Model 6050/6070"), which OS/2 PPC knows by name; the 53C810 stays either way
+	"P5O[16],Model,7248-100,Power Series 850;",
 
 	"v,0;",
 	"V,v",`BUILD_DATE
@@ -180,7 +183,7 @@ wire   [7:0] uart_mode;                  // the System page's UART mode: 0 None,
 // the settings the machine runs with (taken at reset: below), and "Changes pending"
 reg  [127:0] cfg = 128'd0;
 // (status bit 4 was the UART's source: now the System page's UART mode, below)
-wire         pending = {status[3:1], status[122:121]} != {cfg[3:1], cfg[122:121]};
+wire         pending = {status[16], status[3:1], status[122:121]} != {cfg[16], cfg[3:1], cfg[122:121]};
 
 wire [1:0] ar = cfg[122:121];
 // (the ratio is the framework's video_freak's input, beside the picture below)
@@ -365,9 +368,11 @@ assign ps2_key_m = !status[5] ? ps2_key :
 // the options taken under reset
 reg [8:0] simm_cfg = SIMM_16;
 reg       rom_512k = 1;
+reg [7:0] planar = 8'hF5;
 always @(posedge clk_mem) if (cpu_reset_m) begin
 	simm_cfg <= simm_opt;
 	rom_512k <= ~rom_big;
+	planar   <= status[16] ? 8'hF1 : 8'hF5;
 end
 
 // into the CPU's clock (quasi-static: they change only with the reset held)
@@ -375,6 +380,7 @@ reg [2:0] cpu_reset_s = 3'b111;
 reg [8:0] simm_c [2];
 reg [4:0] rom_at_c [2];
 reg [1:0] rom_512k_c;
+reg [7:0] planar_c [2];
 always @(posedge clk_cpu) begin
 	cpu_reset_s <= {cpu_reset_s[1:0], cpu_reset_m};
 	simm_c[0]   <= simm_cfg;
@@ -382,6 +388,8 @@ always @(posedge clk_cpu) begin
 	rom_at_c[0] <= rom_at;
 	rom_at_c[1] <= rom_at_c[0];
 	rom_512k_c  <= {rom_512k_c[0], rom_512k};
+	planar_c[0] <= planar;
+	planar_c[1] <= planar_c[0];
 end
 wire cpu_reset = cpu_reset_s[2];
 
@@ -423,7 +431,7 @@ IBMRS6K7248_system #(.CPU_HZ(CPU_MHZ * 1_000_000), .TB_HZ(TB_HZ)) system
 	.simm_cfg(simm_c[1]),
 	.rom_at(rom_at_c[1]),
 	.rom_512k(rom_512k_c[1]),
-	.planar_id(8'hF5),                      // a 7248-100 (the OSD's model choice to come)
+	.planar_id(planar_c[1]),                // the OSD's Model: F5 a 7248-100, F1 a Power Series 850
 
 	.clk_b(clk_mem),
 	.reset_b(cpu_reset_m),
@@ -576,6 +584,10 @@ sdramclk_ddr
 // CPU's); and, from the memory clock, the CPU's word accesses to RAM 7FC
 // ("W7=xxxxxxxx ", "R7=xxxxxxxx ") and any word read of RAM 0-7FC that differs
 // from the CPU's own last write there ("!aaa=expected/got "). A 4 KB queue in RAM.
+// the stream's optional parts (1 to build them; off for room, 2026-10-29: the floppy and NT's audio are done)
+localparam bit DBG_DEVLOG = 1'b0;           // the whole-address device log (NT's audio and video bring-up)
+localparam bit DBG_FLOPPY = 1'b0;           // the floppy's controller, DMA ports and requests to the Main
+localparam bit DBG_GPR    = 1'b0;           // the 40 instructions and the GPRs they wrote after the first program exception
 wire        post_ev = io_ev & io_we & (io_addr == 32'h8000_0680) & (io_be == 4'hF);
 wire        cf8_ev  = io_ev & io_we & (io_addr == 32'h8000_0CF8);
 wire        cfc_ev  = io_ev & (io_addr == 32'h8000_0CFC);
@@ -668,7 +680,7 @@ wire        pk_ev = isi_armed & (pk_s[2] ^ pk_s[1]);   // (the other bits stand 
 // {write, 12'd0, blocks less one (6 bits), the LBA (13 bits)})
 // (and 3F7 both ways, the DIR's disk change line and the CCR, and the reads of the DMA controller's
 // ports 00-0F too: its status and current counts)
-wire        fdp_ev = io_ev & ((io_addr == 32'h8000_03F4 && (io_be == 4'b0100 || io_be == 4'b0001)) ||
+wire        fdp_ev = DBG_FLOPPY & io_ev & ((io_addr == 32'h8000_03F4 && (io_be == 4'b0100 || io_be == 4'b0001)) ||
                               (io_addr[31:4] == 28'h8000_000) ||
                               (io_we && (io_addr == 32'h8000_0080 || io_addr == 32'h8000_0480)));
 reg         fds_t = 1'b0, fds_q = 1'b0;
@@ -691,7 +703,7 @@ always @(posedge clk_cpu) begin
 		nq_w     <= nq_w + 6'd1;
 		if (!nq_io && !pk_ev) fds_pend <= 1'b0;
 	end
-	if (fds_s[2] ^ fds_s[1]) fds_pend <= 1'b1;
+	if (DBG_FLOPPY && (fds_s[2] ^ fds_s[1])) fds_pend <= 1'b1;
 end
 // (read a clock behind: a block RAM; the drain looks at the write pointer a clock late, so an entry is
 // read before it is taken, and after a take the stage is busy for 14 clocks)
@@ -720,7 +732,7 @@ wire        dv_mem = io_addr[31:30] == 2'b11;
 // 279, 300-38F, 530-53F, 604-60F, A79, E80-F4F (the WSS's other bases), and the PnP read port wherever it is
 // (203-3FF reads not named elsewhere); not the 8259s, the PIT, the 8042, the RTC, the video, COM1, the floppy)
 wire [15:0] dv_p   = io_addr[15:0];
-wire        dv_ev  = isi_done & io_ev & ~ncr_ev & ~(&dv_n) & io_addr[31:16] == 16'h8000 &
+wire        dv_ev  = DBG_DEVLOG & isi_done & io_ev & ~ncr_ev & ~(&dv_n) & io_addr[31:16] == 16'h8000 &
                      ((dv_p >= 16'h0100 && dv_p <= 16'h013F) || (dv_p >= 16'h0200 && dv_p <= 16'h023F) ||
                       dv_p[15:2] == 14'h009E || (dv_p >= 16'h0300 && dv_p <= 16'h038F) ||
                       (dv_p >= 16'h0530 && dv_p <= 16'h053F) || (dv_p >= 16'h0604 && dv_p <= 16'h060F) ||
@@ -772,7 +784,7 @@ end
 wire        stall_go = isi_armed & ~isi_done & (stall_n == 24'hFFFFFE);
 always @(posedge clk_cpu) begin
 	if (post_ev && io_wdata[31:24] == 8'h2F) isi_armed <= 1'b1;
-	if (trace_valid && trace_last && (isi_go || isi_n != 6'd0)) begin
+	if (DBG_GPR && trace_valid && trace_last && (isi_go || isi_n != 6'd0)) begin
 		isi_pc[isi_w]  <= trace_pc[15:0];
 		isi_v[isi_w]   <= trace_reg_val[31:0];
 		isi_vw[isi_w]  <= trace_reg_we & ~trace_reg_idx[6] & ~trace_reg_idx[5];

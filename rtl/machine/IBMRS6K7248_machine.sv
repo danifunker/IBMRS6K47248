@@ -74,6 +74,10 @@
 //    PCI device 12: the AMD Am79C970 PCnet (IBMRS6K7248_pcnet) at its BAR0, IRQ 15
 //    PCI device 16: the NCR 53C810 (IBMRS6K7248_ncr810) at its BAR0 (I/O) and BAR1 (memory), IRQ 15
 //               with the S3's; its DMA through the CPU's snoop port (below)
+//    0850       the I/O map type register: bit 0 set (at reset) the contiguous map (port p at
+//               8000_0000 + p), clear the discontiguous one: each 32 ports in a 4 KB page, port p at
+//               8000_0000 + (p >> 5 << 12) + (p & 1F) (OS/2's loader writes FE, then reaches
+//               port 92 at 4012 and COM1 at 1F018 so)
 //    0852       planar ID (read only): the model, which the firmware reads to
 //               choose its personality (F4-F7 a 7248, with SCSI: F5 100 MHz,
 //               F4 120, F6/F7 133; F0-F3 a Power Series 830/850, without)
@@ -560,7 +564,11 @@ end
 wire s_isa   = p_a[31:23] == 9'h100;                         // 80000000-807FFFFF
 wire s_pcicf = p_a[31:23] == 9'h101;                         // 80800000-80FFFFFF
 wire s_iack  = p_a[31:12] == 20'hBFFFF;
-wire [15:0] port = p_a[15:0];
+// ia: the I/O address after the I/O map (0850): discontiguous, address bits 22-12 are the
+// port's bits 15-5 and bits 4-0 its own; the rest of the address space as it is
+logic       iomap;                                     // 0850 bit 0: 1 contiguous (reset), 0 discontiguous
+wire [31:0] ia   = s_isa & ~iomap ? {p_a[31:23], 7'd0, p_a[22:12], p_a[4:0]} : p_a;
+wire [15:0] port = ia[15:0];
 
 // the byte lane of a byte access (be[3] the lowest address); the ISA devices
 // are byte wide: a wider access reaches the byte at its first enabled lane
@@ -640,7 +648,7 @@ logic        s3_irq;
 IBMRS6K7248_s3 #(.CLK_HZ(CPU_HZ)) s3 (
 	.clk, .reset,
 	.cfg_sel(d_go & cfg_dev14), .cfg_we(d_we), .cfg_reg(cf8[7:2]), .cfg_be(le_be), .cfg_wdata(le_wd), .cfg_rdata(s3_cfg_q),
-	.port({p_a[15:2], 2'b00}), .pci_addr({2'b00, p_a[29:0]}), .io_hit(s3_io_hit), .mem_hit(s3_mem_hit),
+	.port({ia[15:2], 2'b00}), .pci_addr({2'b00, p_a[29:0]}), .io_hit(s3_io_hit), .mem_hit(s3_mem_hit),
 	.sel(s3_sel & ~s3_ack), .we(d_we), .is_mem(s_pcimem), .be(p_be), .wdata(p_wd), .rdata(s3_rdata), .ack(s3_ack),
 	.v_req, .v_we, .v_addr, .v_be, .v_wdata, .v_ack, .v_rdata,
 	.clk_v, .h_total, .h_disp, .h_ss, .h_sl, .v_total, .v_disp, .v_ss, .v_sl, .v_depth, .v_start, .v_pitch,
@@ -654,7 +662,7 @@ IBMRS6K7248_s3 #(.CLK_HZ(CPU_HZ)) s3 (
 wire         s_pciio = p_a[31:30] == 2'b10 && !s_pcicf && !s_iack;      // 80000000-BF7FFFFF less the above
 logic        ncr_io_on, ncr_mem_on;
 logic [31:8] ncr_io_base, ncr_mem_base;
-wire         ncr_hit = (s_pciio && ncr_io_on && ncr_io_base == {2'b00, p_a[29:8]}) ||
+wire         ncr_hit = (s_pciio && ncr_io_on && ncr_io_base == {2'b00, ia[29:8]}) ||
                        (s_pcimem && ncr_mem_on && ncr_mem_base == {2'b00, p_a[29:8]});
 logic [31:0] ncr_cfg_q, ncr_q;
 logic        ncr_irq;
@@ -662,7 +670,7 @@ IBMRS6K7248_ncr810 #(.STO_UNIT(STO_UNIT)) ncr810 (
 	.clk, .reset,
 	.cfg_sel(d_go & cfg_dev16), .cfg_we(d_we), .cfg_reg(cf8[7:2]), .cfg_be(le_be), .cfg_wdata(le_wd), .cfg_rdata(ncr_cfg_q),
 	.io_on(ncr_io_on), .io_base(ncr_io_base), .mem_on(ncr_mem_on), .mem_base(ncr_mem_base),
-	.sel(d_go & ncr_hit), .we(d_we), .off(p_a[7:2]), .be(p_be), .wdata(p_wd), .rdata(ncr_q), .irq(ncr_irq),
+	.sel(d_go & ncr_hit), .we(d_we), .off(ia[7:2]), .be(p_be), .wdata(p_wd), .rdata(ncr_q), .irq(ncr_irq),
 	.dm_req(ncr_dm_req), .dm_we(ncr_dm_we), .dm_addr(ncr_dm_addr), .dm_be(ncr_dm_be), .dm_wdata(ncr_dm_wdata),
 	.dm_ack(ncr_dm_ack), .dm_err, .dm_rdata,
 	.sb_sel, .sb_sel_id, .sb_sel_atn, .sb_sel_done, .sb_sel_fail, .sb_bsy, .sb_req, .sb_phase, .sb_tdata,
@@ -672,7 +680,7 @@ IBMRS6K7248_ncr810 #(.STO_UNIT(STO_UNIT)) ncr810 (
 // ---- the AMD Am79C970 PCnet (PCI device 12): its registers at BAR0 in PCI I/O space ---------
 logic        pcn_io_on;
 logic [31:5] pcn_io_base;
-wire         pcn_hit = s_pciio && pcn_io_on && pcn_io_base == {2'b00, p_a[29:5]};
+wire         pcn_hit = s_pciio && pcn_io_on && pcn_io_base == {2'b00, ia[29:5]};
 logic [31:0] pcn_cfg_q, pcn_q;
 logic        pcn_irq;
 `ifndef IBMRS6K7248_LITE
@@ -680,7 +688,7 @@ IBMRS6K7248_pcnet pcnet (
 	.clk, .reset,
 	.cfg_sel(d_go & cfg_dev12), .cfg_we(d_we), .cfg_reg(cf8[7:2]), .cfg_be(le_be), .cfg_wdata(le_wd), .cfg_rdata(pcn_cfg_q),
 	.io_on(pcn_io_on), .io_base(pcn_io_base),
-	.sel(d_go & pcn_hit), .we(d_we), .off(p_a[4:2]), .be(p_be), .wdata(p_wd), .rdata(pcn_q), .irq(pcn_irq),
+	.sel(d_go & pcn_hit), .we(d_we), .off(ia[4:2]), .be(p_be), .wdata(p_wd), .rdata(pcn_q), .irq(pcn_irq),
 	.dm_req(pcn_dm_req), .dm_we(pcn_dm_we), .dm_addr(pcn_dm_addr), .dm_be(pcn_dm_be), .dm_wdata(pcn_dm_wdata),
 	.dm_ack(pcn_dm_ack), .dm_err, .dm_rdata,
 	.clk_m(clk_v), .tx_pend(en_tx_pend), .tx_len(en_tx_len), .m_tx_a(en_tx_a), .m_tx_q(en_tx_q), .m_tx_done(en_tx_done),
@@ -703,6 +711,7 @@ wire        pit_hit  = s_isa && (bport[15:2] == 14'h0010 || bport == 16'h0061); 
 wire        kbc_hit  = s_isa && (bport == 16'h0060 || bport == 16'h0064);
 wire        rtc_hit  = s_isa && (bport[15:1] == 15'h0038 || (bport[15:2] == 14'h001D && bport[1:0] != 2'd3));   // 70/71, 74-76
 wire        p92_hit  = s_isa && bport == 16'h0092;
+wire        iomap_hit = s_isa && bport == 16'h0850;
 wire        ee_hit   = s_isa && bport[15:3] == 13'h000F;
 // the IDE channels (1F0-1F7/3F6, 170-177/376): no drive on the 7248's SCSI planar; FF, as a
 // floating bus, ends the firmware's probe at once (a stub's 0 made it poll the status 65 K times)
@@ -843,7 +852,8 @@ IBMRS6K7248_dma dma (
 
 always_ff @(posedge clk) begin
 	if (d_go & d_we & p92_hit) p92 <= bwd;
-	if (reset) p92 <= 8'h00;
+	if (d_go & d_we & iomap_hit) iomap <= bwd[0];
+	if (reset) begin p92 <= 8'h00; iomap <= 1'b1; end
 end
 
 // the request lines: COM1's INTR as a PC board gates it, with OUT2
@@ -908,6 +918,7 @@ IBMRS6K7248_firecoral firecoral (
 // the answer, the cycle after the access
 logic       q_sio, q_com2, q_dev14, q_fdc;
 logic       q_pic, q_pit, q_kbc, q_rtc, q_p92, q_err, q_aud, q_audc, q_ee, q_ide, q_dma, q_sb, q_fm, q_mpu, q_joy;
+logic       q_iomap;
 logic       q_com1, q_planar, q_pd, q_cf8, q_cfc, q_dev0, q_dev11, q_fcio, q_pcicf, q_iack, q_dev16, q_ncr, q_dev12, q_pcn;
 logic [1:0] q_lane;
 always_ff @(posedge clk) if (d_go) begin
@@ -931,6 +942,7 @@ always_ff @(posedge clk) if (d_go) begin
 	q_dma   <= dma_hit;
 	q_audc  <= aud_cfg;
 	q_planar <= planar_hit;
+	q_iomap  <= iomap_hit;
 	q_pd    <= pd_hit;
 	q_cf8   <= cf8_hit;
 	q_cfc   <= cfc_hit;
@@ -954,7 +966,7 @@ wire [31:0] cfc_q = q_dev0 ? swap32(mpc_q) : q_dev11 ? swap32(fc_q) : q_dev14 ? 
                     q_dev16 ? swap32(ncr_cfg_q) : q_dev12 ? swap32(pcn_cfg_q) : 32'hFFFF_FFFF;
 wire        q_any = q_com1 | q_com2 | q_fdc | q_sio | q_pic | q_pit | q_kbc | q_rtc | q_ee | q_ide | q_p92 | q_err |
                     q_aud | q_sb | q_fm | q_mpu | q_joy | q_dma | q_planar | q_pd | q_fcio | q_cf8 | q_cfc | q_ncr |
-                    q_pcn | q_pcicf | q_iack;
+                    q_pcn | q_pcicf | q_iack | q_iomap;
 function automatic logic [31:0] when(input logic q, input logic [31:0] v);
 	when = {32{q}} & v;
 endfunction
@@ -977,6 +989,7 @@ always_comb begin
 	            when(q_joy,    {4{joy_q}})        |
 	            when(q_dma,    {4{dma_q}})        |
 	            when(q_planar, {4{planar_id}})    |
+	            when(q_iomap,  {4{7'h7F, iomap}}) |
 	            when(q_pd,     {4{simm_pd[q_lane]}}) |
 	            when(q_fcio,   {4{fc_io_q}})      |
 	            when(q_cf8,    swap32(cf8))       |
@@ -994,7 +1007,7 @@ always_ff @(posedge clk) begin
 	io_ev <= w_done;
 	if (w_done) begin
 		io_we    <= d_we;
-		io_stub  <= ~(q_s3 | q_fdc | q_com1 | q_com2 | q_sio | q_planar | q_pd | q_fcio | q_cf8 | q_dev0 | q_dev11 | q_dev14 | q_dev16 | q_ncr | q_dev12 | q_pcn |
+		io_stub  <= ~(q_s3 | q_fdc | q_com1 | q_com2 | q_sio | q_planar | q_iomap | q_pd | q_fcio | q_cf8 | q_dev0 | q_dev11 | q_dev14 | q_dev16 | q_ncr | q_dev12 | q_pcn |
 		              q_pic | q_pit | q_kbc | q_rtc | q_ee | q_ide | q_p92 | q_err | q_aud | q_audc | q_dma | q_sb | q_fm | q_mpu | q_joy | q_iack);
 		io_ncr   <= q_ncr;
 		io_addr  <= p_a;

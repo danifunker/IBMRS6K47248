@@ -113,7 +113,7 @@ that cannot proceed without it.
 | RTC/CMOS (MC146818) | `70`/`71` | **real**; starts with `init_cmos`'s image (valid CRCs, reset bit clear) | the firmware's "boot 0" (BOOT.6XE); AIX's `planar_pal_init_ds1285` (waits for UIP with interrupts off) | UIP is the last 8 ticks before each second, also under the bench's `RTC_FAST` (`09ba71a`) |
 | **PReP NVRAM 4 KB** | `74`/`75`/`76` | **real**: starts with the image the firmware's own formatter makes (`firmware/tools/nvram_image.py`: valid header and CRCs, blank areas), **verified**: the residual's NvramSize is 0x1000 (`run20`); **kept on the SD card** with the CMOS (`IBMRS6K7248_nvsave`: the OSD's NVRAM file, mounted again at every load; loaded at the mount, saved two seconds after the CPU's last write) | AIX: boot list, console choice; the firmware's SMS settings | the Serial in the residual comes from this header (now the EEPROM image's), not from the EEPROM |
 | **VPD / security EEPROM** | `78`-`7C` | **modelled, contents inferred** (`IBMRS6K7248_eeprom.sv`: the controller with two register sets, a 93C46-class 64-word EEPROM; `firmware/tools/eeprom_image.py`: the CRC word, a 16-digit serial, no passwords) | the firmware's VPD (`build_vpd`, `GetEEPROMSerialNumber`), passwords; AIX's `systemid`, maybe `modelcode` | **to verify** on the bench: the firmware's EEPROM_init and reads succeed (no `EEPROM locked`/password path), the residual's Serial becomes the image's; adjust the image as the firmware's readers show what else they expect |
-| Flash lock, system registers | `98`, `800`, `808`, `80C`/`80D`, `810`/`812`, `814`, `81C`, `82A`/`82B`, `838`/`83C`, `860`/`862`, `880`-`882` (SIMM presence), `8A0`, `8C0`/`8C1` | **partial**: planar ID `852`, the SIMM presence `880`-`882` and the L2 status bits the firmware reads are real; the rest stubbed | firmware (L2 init, power management, LEDs, security) | AIX's `planar_pal_rspc` touches `82A`-`83C` (power, LEDs) and the reboot path (`Q014288DC-100`: PCI scan then the ROM reset vector); harmless as stubs so far |
+| Flash lock, system registers | `98`, `800`, `808`, `80C`/`80D`, `810`/`812`, `814`, `81C`, `82A`/`82B`, `838`/`83C`, `860`/`862`, `880`-`882` (SIMM presence), `8A0`, `8C0`/`8C1` | **partial**: planar ID `852` (F5 or F1, the OSD's Model), the I/O map type register `850` (bit 0: 1 contiguous, 0 discontiguous: port p at 8000_0000 + (p >> 5 << 12) + (p & 1F); OS/2's loader writes FE, 2026-10-29), the SIMM presence `880`-`882` and the L2 status bits the firmware reads are real; the rest stubbed | firmware (L2 init, power management, LEDs, security) | AIX's `planar_pal_rspc` touches `82A`-`83C` (power, LEDs) and the reboot path (`Q014288DC-100`: PCI scan then the ROM reset vector); harmless as stubs so far |
 | Checkpoint ports | `680` (32-bit), `3BC` (LPT data), `8C0` | **real as logs** (the bench prints `680`; the UART logs it) | debugging | |
 | Port 92 | `92` | logged | firmware A20/reset | the kernel's reboot does not use it (it jumps to FFF00100) |
 
@@ -177,3 +177,11 @@ that cannot proceed without it.
   bugcheck 0x7B INACCESSIBLE_BOOT_DEVICE (`\ArcName\multi(0)scsi(0)cdrom(3)fdisk(0)`, C0000034), read
   over KD with `tools/kdpeek.py`. BAR1 now decodes the same registers as BAR0 (PCI command bit 1), and
   a memory move to or from our own BAR1 is a register access like the BAR0 case.
+
+### 2026-10-29: OS/2 for PowerPC
+
+- `850` (I/O map type): OS/2's loader writes FE (discontiguous map), then reaches port 92 at 4012
+  and COM1 at 1F018. The model had it as a stub and decoded 16-bit ports only: the port-92 write
+  (the bus's little-endian mode) was lost and COM1's accesses fell on F018 (nothing). Now real.
+- Seen in the same run, still stubs: `80C` (read), `808` (written 0), `4010`'s neighbours, `8004001C`
+  (read and written by the boot image at 3B0574). Watch them as OS/2 gets further.

@@ -8,10 +8,15 @@
 //     synchronised there, the address stable before them); sd_ack is
 //     synchronised into clk; the sector buffer is a dual-clock RAM, byte-wide
 //     on both ports (hps_io 8-bit: WIDE = 0, the ROM upload's width);
-//   - no CD audio: PLAY AUDIO and the others are accepted and do nothing,
-//     READ SUB-CHANNEL reports no audio status, MODE page 0E reads its
-//     defaults; the track table (READ TOC) still comes from the block at
-//     C000_0000 when the Main serves one, else one data track;
+//   - CD audio only with IBMRS6K7248_CDAUDIO: its own player (below, not
+//     the 715's cd_audio.sv). The frames come from the Main's audio window
+//     (block 8000_0000 + 5 x frame, 2352 of each 2560 bytes), one request a
+//     frame while the bus is free, into two frame buffers of their own; it
+//     plays at 44.1 kHz with MODE page 0E's port volumes, and READ
+//     SUB-CHANNEL reports the position and track. Without it PLAY AUDIO and
+//     the others are accepted and do nothing, READ SUB-CHANNEL reports no
+//     audio status. The track table (READ TOC) comes from the block at
+//     C000_0000 when the Main serves one, else one data track, either way;
 //   - the IDs: disks 0 and 1, the CD-ROM 3 (IBM's internal CD-ROM ID).
 //
 // The SCSI devices on the 715's internal bus (docs/design/system.md 5;
@@ -48,7 +53,8 @@
 module IBMRS6K7248_scsitgt #(
     parameter logic [2:0] DISK0_ID = 3'd0,
     parameter logic [2:0] DISK1_ID = 3'd1,
-    parameter logic [2:0] CD_ID    = 3'd3
+    parameter logic [2:0] CD_ID    = 3'd3,
+    parameter int unsigned CLK_HZ  = 100_000_000      // clk (CD audio's 44.1 kHz)
 ) (
     input  logic        clk,
     input  logic        rst,
@@ -107,8 +113,9 @@ module IBMRS6K7248_scsitgt #(
     logic [2:0]  e_rd, e_wr, rd_s1, wr_s1;
     always @(posedge clk)   begin ack_s1 <= sd_ack; ack_c <= ack_s1; end
     always @(posedge clk_h) begin rd_s1 <= e_rd; sd_rd <= rd_s1; wr_s1 <= e_wr; sd_wr <= wr_s1; end
+    logic        aud_h;                   // the request is an audio frame's (clk_h): not into this buffer
     always @(posedge clk_h) begin         // port A: hps_io
-        if (sd_buff_wr && |sd_ack) buf_mem[sd_buff_addr[13:0]] <= sd_buff_dout;
+        if (sd_buff_wr && |sd_ack && !aud_h) buf_mem[sd_buff_addr[13:0]] <= sd_buff_dout;
         h_q <= buf_mem[sd_buff_addr[13:0]];
     end
     always @(posedge clk) begin           // port B: the engine, one byte
@@ -173,18 +180,174 @@ module IBMRS6K7248_scsitgt #(
 
     always_comb toc_a = (st == T_DIN && cdb[0] == 8'h43) ? 7'(rt_first + 7'((d_idx - 16'd4) >> 3)) : toc_a_r;
 
-    // no CD player (see the header): its outputs at rest; the track table in a small RAM
+    logic        fr_half;                // the frame buffer a fetch fills
+    logic        aud_busy, aud_half;     // the engine: an audio fetch in flight, into this buffer
+
+    // the track table in a small RAM
     logic [63:0] toc_mem [0:127];
     always @(posedge clk) begin
         if (toc_we) toc_mem[toc_a] <= toc_wd;
         toc_q <= toc_mem[toc_a];
     end
+
+`ifdef IBMRS6K7248_CDAUDIO
+    // ------------------------------------------------------- the CD player
+    // Two frame buffers (2352 bytes each, 16-bit little-endian L, R samples),
+    // written by hps_io in clk_h while the engine's request is an audio one;
+    // aud_busy and aud_half cross as sd_rd does (two flops), so they are
+    // steady before the first byte.
+    logic       aud_s1, ah_s1, ah_h;
+    always @(posedge clk_h) begin aud_s1 <= aud_busy; aud_h <= aud_s1; ah_s1 <= aud_half; ah_h <= ah_s1; end
+    (* ramstyle = "M10K, no_rw_check" *) logic [7:0] aram [0:8191];
+    logic [12:0] ra;
+    logic [7:0]  aq;
+    always @(posedge clk_h)
+        if (sd_buff_wr && sd_ack[2] && aud_h && sd_buff_addr < 14'd2352) aram[{ah_h, sd_buff_addr[11:0]}] <= sd_buff_dout;
+    always @(posedge clk) aq <= aram[ra];
+
+    // the track table's second read port: the position's track
+    logic [6:0]  p_a;
+    logic [63:0] toc_q2;
+    always @(posedge clk) toc_q2 <= toc_mem[p_a];
+
+    logic        pl_on, pl_pause;        // playing (or paused)
+    logic [7:0]  pl_st;                  // the audio status READ SUB-CHANNEL reports
+    logic [23:0] cur, endl, f_lba;       // the frame playing, the end (exclusive), the next to fetch
+    logic        f_busy, f_disc, f_half; // a fetch in flight; its frame no longer wanted; the buffer it fills
+    logic [1:0]  fvalid;                 // the buffers holding a frame not yet played
+    logic        p_half;                 // the buffer playing
+    logic [9:0]  s_i;                    // its sample (0-587)
+    logic [2:0]  s_q;                    // the sample's four byte reads
+    logic [31:0] s_acc;                  // 44.1 kHz from clk
+    logic [7:0]  b0, b1, b2;
+    logic signed [15:0] smp_l, smp_r;
+
+    assign fr_req  = pl_on && !f_busy && f_lba < endl && !fvalid[f_half];
+    assign fr_lba  = {8'd0, f_lba};
+    assign fr_half = f_half;
+    assign a_status = pl_st;
+
+    // the Q channel's view of cur, recomputed whenever cur changes:
+    // the track (the last entry starting at or before it), then the
+    // absolute (+150) and the track-relative M:S:F by subtraction
+    typedef enum logic [2:0] { C_IDLE, C_W, C_CMP, C_AM, C_AS, C_RM, C_RS } cst_e;
+    cst_e        cs;
+    logic        rc_t = 1'b0, rc_seen = 1'b0;   // a recalculation asked (toggled), taken
+    logic [6:0]  ci;
+    logic [23:0] c_cur, c_ts, cv;
+    logic [7:0]  c_trk, c_ctl, cm, csec, am, asec, af;
+
+    always_ff @(posedge clk) begin
+        if (rst) begin
+            cs <= C_IDLE; rc_seen <= rc_t;
+            q_track <= 8'd1; q_ctl <= 8'h14;
+            q_abs_lba <= 24'd0; q_rel_lba <= 24'd0; q_abs_msf <= 24'h000200; q_rel_msf <= 24'd0;
+        end else case (cs)
+            C_IDLE: if (rc_t != rc_seen) begin
+                rc_seen <= rc_t; c_cur <= cur; c_trk <= toc_first; c_ctl <= 8'h14; c_ts <= 24'd0;
+                ci <= 7'd0; p_a <= 7'd0;
+                cs <= (toc_n == 8'd0) ? C_AM : C_W;
+                cv <= cur + 24'd150; cm <= 8'd0; csec <= 8'd0;
+            end
+            C_W: cs <= C_CMP;
+            C_CMP: if (toc_q2[23:0] <= c_cur) begin
+                c_trk <= toc_q2[55:48]; c_ctl <= toc_q2[63:56]; c_ts <= toc_q2[23:0];
+                if (8'(ci) + 8'd1 < toc_n) begin ci <= ci + 7'd1; p_a <= ci + 7'd1; cs <= C_W; end
+                else cs <= C_AM;
+            end else cs <= C_AM;
+            C_AM: if (cv >= 24'd4500) begin cv <= cv - 24'd4500; cm <= cm + 8'd1; end else cs <= C_AS;
+            C_AS: if (cv >= 24'd75) begin cv <= cv - 24'd75; csec <= csec + 8'd1; end
+                  else begin
+                      am <= cm; asec <= csec; af <= cv[7:0];
+                      cv <= (c_cur >= c_ts) ? c_cur - c_ts : 24'd0; cm <= 8'd0; csec <= 8'd0;
+                      cs <= C_RM;
+                  end
+            C_RM: if (cv >= 24'd4500) begin cv <= cv - 24'd4500; cm <= cm + 8'd1; end else cs <= C_RS;
+            C_RS: if (cv >= 24'd75) begin cv <= cv - 24'd75; csec <= csec + 8'd1; end
+                  else begin
+                      q_track <= c_trk; q_ctl <= c_ctl;
+                      q_abs_lba <= c_cur; q_rel_lba <= (c_cur >= c_ts) ? c_cur - c_ts : 24'd0;
+                      q_abs_msf <= {am, asec, af}; q_rel_msf <= {cm, csec, cv[7:0]};
+                      cs <= C_IDLE;
+                  end
+            default: cs <= C_IDLE;
+        endcase
+    end
+
+    always_ff @(posedge clk) begin
+        if (rst || brst) begin
+            pl_on <= 1'b0; pl_pause <= 1'b0; pl_st <= 8'h15; f_busy <= 1'b0; f_disc <= 1'b0;
+            fvalid <= 2'b00; s_q <= 3'd0; s_acc <= 32'd0; smp_l <= 16'sd0; smp_r <= 16'sd0;
+        end else begin
+            // the fetch: issued by the engine (fr_go), done (fr_done)
+            if (fr_go) f_busy <= 1'b1;
+            if (fr_done) begin
+                f_busy <= 1'b0; f_disc <= 1'b0;
+                if (!f_disc) begin fvalid[f_half] <= 1'b1; f_half <= ~f_half; f_lba <= f_lba + 24'd1; end
+            end
+
+            // the commands
+            if (a_play && a_start < a_end) begin
+                pl_on <= 1'b1; pl_pause <= 1'b0; pl_st <= 8'h11;
+                cur <= a_start; endl <= a_end; f_lba <= a_start;
+                fvalid <= 2'b00; f_half <= 1'b0; p_half <= 1'b0; s_i <= 10'd0; s_q <= 3'd0;
+                if (f_busy && !fr_done) f_disc <= 1'b1;
+                rc_t <= ~rc_t;
+            end else if (a_stop) begin
+                if (pl_on) pl_st <= 8'h15;
+                pl_on <= 1'b0; pl_pause <= 1'b0; fvalid <= 2'b00; s_q <= 3'd0;
+                if (f_busy && !fr_done) f_disc <= 1'b1;
+            end else if (a_pause && pl_on) begin pl_pause <= 1'b1; pl_st <= 8'h12; end
+            else if (a_resume && pl_on && pl_pause) begin pl_pause <= 1'b0; pl_st <= 8'h11; end
+            else if (a_stread && (pl_st == 8'h13 || pl_st == 8'h14)) pl_st <= 8'h15;
+
+            // 44.1 kHz: a sample's four bytes (L low, L high, R low, R high), aq the cycle after ra
+            if (s_acc + 32'd44100 >= 32'(CLK_HZ)) begin
+                s_acc <= s_acc + 32'd44100 - 32'(CLK_HZ);
+                if (pl_on && !pl_pause && fvalid[p_half] && s_q == 3'd0) begin
+                    ra <= {p_half, 12'({s_i, 2'b00})}; s_q <= 3'd1;
+                end else if (!pl_on || pl_pause || !fvalid[p_half]) begin
+                    smp_l <= 16'sd0; smp_r <= 16'sd0;
+                end
+            end else s_acc <= s_acc + 32'd44100;
+            if (s_q != 3'd0 && !(a_play || a_stop)) begin
+                s_q <= s_q + 3'd1;
+                if (s_q < 3'd4) ra <= ra + 13'd1;
+                case (s_q)
+                    3'd2: b0 <= aq;
+                    3'd3: b1 <= aq;
+                    3'd4: b2 <= aq;
+                    3'd5: begin
+                        smp_l <= $signed({b1, b0}); smp_r <= $signed({aq, b2}); s_q <= 3'd0;
+                        if (s_i == 10'd587) begin
+                            s_i <= 10'd0; fvalid[p_half] <= 1'b0; p_half <= ~p_half;
+                            if (cur + 24'd1 >= endl) begin
+                                pl_on <= 1'b0; pl_st <= 8'h13;
+                                if (f_busy && !fr_done) f_disc <= 1'b1;
+                            end else begin cur <= cur + 24'd1; rc_t <= ~rc_t; end
+                        end else s_i <= s_i + 10'd1;
+                    end
+                    default: ;
+                endcase
+            end
+        end
+    end
+
+    // MODE page 0E's port volumes: 255 is unity
+    wire [8:0] v0 = {1'b0, vol0} + {8'd0, vol0[7]}, v1 = {1'b0, vol1} + {8'd0, vol1[7]};
+    wire signed [25:0] ml = smp_l * $signed({1'b0, v0}), mr = smp_r * $signed({1'b0, v1});
+    always_ff @(posedge clk) begin cd_l <= ml[23:8]; cd_r <= mr[23:8]; end
+`else
+    // no CD player (see the header): its outputs at rest
+    assign aud_h = 1'b0;
     assign a_status = 8'h15;              // no current audio status
     assign q_ctl = 8'h14; assign q_track = 8'd1;
     assign q_abs_lba = 24'd0; assign q_rel_lba = 24'd0; assign q_abs_msf = 24'h000200; assign q_rel_msf = 24'd0;
-    assign fr_req = 1'b0; assign fr_lba = 32'd0;
+    assign fr_req = 1'b0; assign fr_lba = 32'd0; assign fr_half = 1'b0;
     assign cd_l = 16'sd0; assign cd_r = 16'sd0;
-    wire unused_audio = &{1'b0, a_play, a_pause, a_resume, a_stop, a_stread, a_start, a_end, fr_go, fr_done, vol0, vol1, toc_first, toc_n};
+    wire unused_audio = &{1'b0, a_play, a_pause, a_resume, a_stop, a_stread, a_start, a_end, fr_go, fr_done, vol0, vol1,
+                          aud_half, clk_h};
+`endif
 
     // M:S:F (absolute, +150) to LBA
     function automatic logic [23:0] msf_lba(input logic [7:0] m, input logic [7:0] sec, input logic [7:0] f);
@@ -409,14 +572,17 @@ module IBMRS6K7248_scsitgt #(
         toc_we <= 1'b0; fr_go <= 1'b0; fr_done <= 1'b0;
         sd_was_ack <= |ack_c;
         if (rst || brst) begin
-            st <= T_FREE; bsy <= 1'b0; req <= 1'b0; e_rd <= 3'd0; e_wr <= 3'd0; sd_busy <= 1'b0;
+            st <= T_FREE; bsy <= 1'b0; req <= 1'b0; e_rd <= 3'd0; e_wr <= 3'd0; sd_busy <= 1'b0; aud_busy <= 1'b0;
             for (int d = 0; d < 3; d++) begin skey[d] <= 4'd0; sasc[d] <= 8'd0; end
             pending <= 1'b0; cd_ua <= 1'b0;
             if (rst) begin toc_ok <= 1'b0; toc_n <= 8'd0; vol0 <= 8'hFF; vol1 <= 8'hFF; a_stop <= 1'b1; end
         end else begin
             // block device handshake: drop rd/wr when ack rises, done when it falls
             if (|(ack_c & (e_rd | e_wr))) begin e_rd <= 3'd0; e_wr <= 3'd0; end
-            if (sd_busy && sd_was_ack && !(|ack_c) && !(|e_rd) && !(|e_wr)) sd_busy <= 1'b0;
+            if (sd_busy && sd_was_ack && !(|ack_c) && !(|e_rd) && !(|e_wr)) begin
+                sd_busy <= 1'b0;
+                if (aud_busy) begin aud_busy <= 1'b0; fr_done <= 1'b1; end
+            end
             // a new disc: its table is read again at the next command that needs it
             if (cd_change) begin toc_ok <= 1'b0; toc_n <= 8'd0; a_stop <= 1'b1; cd_ua <= 1'b1; end
 
@@ -428,6 +594,11 @@ module IBMRS6K7248_scsitgt #(
                         if (sel_atn) begin st <= T_MOUT; req <= 1'b1; phase <= P_MOUT; end
                         else begin st <= T_CMD; req <= 1'b1; phase <= P_CMD; cdb_n <= 4'd0; end
                     end else sel_fail <= 1'b1;
+                end else if (fr_req && !sd_busy) begin
+                    // the CD player's next frame, while the bus is free: 5 blocks of the audio window
+                    sd_lba[2] <= 32'h8000_0000 + {fr_lba[29:0], 2'b00} + fr_lba;
+                    sd_blk_cnt[2] <= 6'd4; e_rd[2] <= 1'b1; sd_busy <= 1'b1; sd_dev <= 2'd2;
+                    aud_busy <= 1'b1; aud_half <= fr_half; fr_go <= 1'b1;
                 end
 
                 // MESSAGE OUT while ATN is asserted
@@ -673,6 +844,7 @@ module IBMRS6K7248_scsitgt #(
                         if (b_we) b_addr <= b_addr + 14'd1;
                         if (x_blocks == 0 && d_left == 0 && chunk == 0 && !b_we) go_status(8'h00);
                         else if (x_blocks == 0 && d_left != 0) req <= 1'b1;
+                        else if (chunk == 15'd0 && !b_we && sd_busy) ;           // a CD frame's fetch in flight
                         else if (chunk == 15'd0 && !b_we) begin
                             logic [31:0] n;
                             n = (x_blocks >= 32) ? 32'd32 : x_blocks;

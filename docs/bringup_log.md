@@ -1308,3 +1308,29 @@ playback channel. `sim/audio/run.sh` adds NT's sequence (the key after 02 02, th
 530, 8-bit playback on channel 0): all pass. On .92 the driver installs ("Crystal 4232
 Sound Device"), loads after the restart and plays. cs423x.sys also writes a download to
 the control device at 125 (not modelled: its one read gives FF); it does not seem to mind.
+
+## 2026-10-29: duplicate Ethernet frames; OS/2 for PowerPC as far as its boot prompt
+
+**Every frame went out 3-5 times** (`ping` from Linux: "+4 duplicates", for NT and AIX alike). A capture
+on .92's eth0 showed one echo request in and the same reply (same IP ID) out 3-5 times about 1 ms
+apart, and the mailbox's TX_WPTR advancing by as many: the core posted each frame again, not the Main.
+`IBMRS6K7248_enetbox` pulses `m_tx_done` and is idle again the next clock, while the PCnet's `tx_pend`
+fell only a clock after the pulse: the mailbox saw it still set and posted the frame again, and every
+extra done flipped the toggle back, until the cached TX_RPTR made the ring look full. `tx_pend` is now
+low in the pulse's clock. `sim/pcnet/tb_net.cpp` now runs on after the first post (it stopped at
+TX_WPTR 1 and so missed the copies: 8 before the fix, 1 after). On .92 (AIX): 10 pings, then 200
+1400-byte pings 10 ms apart, no duplicates, no loss.
+
+**OS/2**: the firmware boots the CD's PReP partition with either planar ID; the loader then looped at
+0xDC878 (the bench at 8 billion clocks, the board the same). The loop reads a 16550 at 1F01D/1F018
+(found once the bench's `--io` range covered 80000000-807FFFFF): the loader had written FE to `850`,
+the PReP I/O map type register, choosing the discontiguous ISA map, in which 1F018 is COM1 and 4012
+port 92, which it then set for the little-endian bus. The model ignored `850`, so the bus stayed
+big-endian and COM1's registers came out byte-swapped (the line status read FF: data always waiting).
+`850` is now modelled and every I/O address goes through the map (the ISA decodes, the S3's ports,
+the 53C810's and the PCnet's I/O BARs). On .92 the loader then talks on COM1 at 9600 (UART mode
+Console): "FW boot string is '/pci@80000000/pci1000,1@10,0/cdrom@3,0'", scsi_device 0x10, unit 3,
+an empty boot device name, "Unknown device: automatic", and the prompt `[PN_BOOT_DEV="automatic"]`
+(its names: `cd%d`, `hd%d`, `cdrom`, `ide_cdrom%d`, `floppy`). Typed `cd3`: echoed, then silence.
+Next: the bench from a snapshot at the prompt (`--save-exit`), COM1 input with `--com1-at`.
+

@@ -113,6 +113,7 @@ int main(int argc, char **argv) {
 		uint32_t a = TDR; w32(a, 0x80020000); w16(a + 4, uint16_t(0xF000 | (-75 & 0xFFF))); w16(a + 6, 0x8300);
 		csr_w(0, 0x0048);
 		for (int n = 0; n < 400 && rd64(0x10) != 1; n++) run(500);
+		run(20000);                                      // and posted once: no copies after it
 		expect("TX_WPTR", rd64(0x10), 1);
 		expect("TX slot length", rd64(0x1000) & 0x7FF, 75);
 		int bad = 0; for (int i = 0; i < 75; i++) if (rdb(0x1008 + i) != f[i]) bad++;

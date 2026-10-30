@@ -241,7 +241,7 @@ IBMRS6K7248_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .LE_MODE(LE_MODE), .UART_F
 	.snoop_req, .snoop_we, .snoop_addr, .snoop_ack,
 	.sb_sel, .sb_sel_id, .sb_sel_atn, .sb_sel_done, .sb_sel_fail, .sb_bsy, .sb_req, .sb_phase, .sb_tdata,
 	.sb_ack, .sb_idata, .sb_ackhold, .sb_atn, .sb_rst,
-	.ext_irq, .tb_tick, .kbc_reset, .speaker, .aud_l, .aud_r,
+	.ext_irq, .tb_tick, .kbc_reset, .speaker, .aud_l(card_l), .aud_r(card_r),
 	.fm_cs, .fm_we, .fm_a, .fm_wdata, .fm_rdata, .fm_vol, .joy1, .joy2, .ana1, .ana2, .midi_tx, .midi_rx,
 	.fd_in, .fd_ro, .fd_blocks, .fd_mounted, .fd_req, .fd_we, .fd_lba, .fd_ack, .fd_buf_a, .fd_buf_q, .fd_buf_we, .fd_buf_d,
 	.ps2_key, .ps2_mouse, .rtc_set, .rtc_time,
@@ -257,15 +257,33 @@ IBMRS6K7248_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .LE_MODE(LE_MODE), .UART_F
 );
 
 // ---- the SCSI devices ----------------------------------------------------------------------
-IBMRS6K7248_scsitgt scsi (
+logic [15:0]  card_l, card_r;                 // the audio card's
+logic signed [15:0] cd_l, cd_r;               // the CD's (IBMRS6K7248_CDAUDIO; else 0)
+IBMRS6K7248_scsitgt #(.CLK_HZ(CPU_HZ)) scsi (
 	.clk, .rst(reset), .clk_h(clk_b),
 	.sel(sb_sel), .sel_id(sb_sel_id), .sel_atn(sb_sel_atn), .sel_done(sb_sel_done), .sel_fail(sb_sel_fail),
 	.bsy(sb_bsy), .req(sb_req), .phase(sb_phase), .tdata(sb_tdata),
 	.ack(sb_ack), .idata(sb_idata), .ackhold(sb_ackhold), .atn(sb_atn), .brst(sb_rst),
 	.img_present, .img_blocks, .sd_lba, .sd_blk_cnt, .sd_rd, .sd_wr, .sd_ack,
 	.sd_buff_addr, .sd_buff_dout, .sd_buff_din, .sd_buff_wr,
-	.cd_change, .cd_l(), .cd_r(), .activity(scsi_activity)
+	.cd_change, .cd_l, .cd_r, .activity(scsi_activity)
 );
+
+`ifdef IBMRS6K7248_CDAUDIO
+// the CD's audio with the card's, as the 7248's CD drive's line out goes into the CS4232's
+// AUX input (no mixer control modelled for it): summed, saturated
+always_ff @(posedge clk) begin
+	logic signed [16:0] l, r;
+	l = 17'($signed(card_l)) + 17'(cd_l);
+	r = 17'($signed(card_r)) + 17'(cd_r);
+	aud_l <= (l[16] != l[15]) ? (l[16] ? 16'h8000 : 16'h7FFF) : l[15:0];
+	aud_r <= (r[16] != r[15]) ? (r[16] ? 16'h8000 : 16'h7FFF) : r[15:0];
+end
+`else
+assign aud_l = card_l;
+assign aud_r = card_r;
+wire unused_cd = &{1'b0, cd_l, cd_r};
+`endif
 
 // ---- the S3's VRAM: its port across to the memory's clock, then DDR3 and the scan-out ----
 assign v_rdata = v_rdata_w[31:0];

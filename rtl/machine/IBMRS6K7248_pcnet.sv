@@ -178,7 +178,7 @@ always_ff @(posedge clk_m) begin
 	if (m_tx_done) tx_done_t <= ~tx_done_t;
 	if (m_rx_post) begin rx_post_t <= ~rx_post_t; rx_len_m <= m_rx_len; rx_hash_m <= m_rx_hash; end
 end
-assign tx_pend = tx_t_m[2] != tx_done_t;
+assign tx_pend = tx_t_m[2] != tx_done_t && !m_tx_done;   // (not in the done pulse's clock: the wire would post the frame again)
 assign rx_free = rx_take_m[2] == rx_post_t && !m_rx_post;
 always_ff @(posedge clk) begin
 	tx_done_s <= {tx_done_s[1:0], tx_done_t};

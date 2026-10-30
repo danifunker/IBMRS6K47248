@@ -96,10 +96,16 @@ Mounted images are remembered and mounted again at every core load.
 | P2 Video | `Scale` | Normal, or integer scaling (V-Integer, Narrower or Wider HV-Integer: the framework's `video_freak`); at once |
 | P3 Input | `Swap Alt/Win keys` | swaps the Alt and Win keys (acts at once) |
 | P4 Audio | `Use MT32-pi`, `Synth`, `Munt ROM` / `SoundFont` | the MPU-401's MIDI to an MT32-pi on the user port, and its synth's settings (they act at once, like the Input page) |
+| P5 Advanced | `Model` | the planar ID the firmware reads at 0852: `7248-100` (F5, with SCSI) or `Power Series 850` (F1); at the next reset. OS/2 for PowerPC was made for the 850 (`PPC_INFO.STZ` has no 7248) |
 | P5 Advanced | `NVRAM image` | the file holding the 4 KB PReP NVRAM and the CMOS: the boot list, the console choice, SMS settings. Loaded at the mount, saved two seconds after AIX or the firmware writes them |
 | System page | `UART mode` | the framework's own setting. Any mode (PPP, Console, MIDI, Modem) connects the MiSTer's Linux to COM1. With `None`, a debug build (`IBMRS6K7248_DEBUG` in the `.qsf`) sends the bring-up log instead (POST codes, exceptions, PCI configuration accesses: read `/dev/ttyS1` at 115200); a release build carries COM1 (watch it with `picocom -b 9600 /dev/ttyS1` over ssh) |
 
 Memory and the aspect ratio take effect at the next reset; the UART mode at once. Media, Input, the MT32-pi rows and Network interface take effect at once.
+
+CD audio (PLAY AUDIO, PAUSE/RESUME, STOP, READ SUB-CHANNEL, the volume page) is built in when the `.qsf`
+sets `IBMRS6K7248_CDAUDIO`: the CD's audio tracks play into the core's sound output, mixed with the
+CS4232. It needs the Main's track table and audio window (`support/ibmrs6k` in Main_MiSTer); without the
+macro the CD answers as before (data only). Bench: `sim/cdaudio/run.sh`.
 
 The FM synthesiser is JTOPL by Jose Tejada (jotego), an OPL2, in `rtl/jtopl/` under the GPL v3. The rest of the core is GPL v2 or later, so the combined core is distributed under the GPL v3.
 
