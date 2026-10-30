@@ -585,7 +585,8 @@ sdramclk_ddr
 // ("W7=xxxxxxxx ", "R7=xxxxxxxx ") and any word read of RAM 0-7FC that differs
 // from the CPU's own last write there ("!aaa=expected/got "). A 4 KB queue in RAM.
 // the stream's optional parts (1 to build them; off for room, 2026-10-29: the floppy and NT's audio are done)
-localparam bit DBG_DEVLOG = 1'b0;           // the whole-address device log (NT's audio and video bring-up)
+localparam bit DBG_DEVLOG = 1'b1;           // the whole-address device log (NT's audio and video bring-up)
+localparam bit DBG_COM1TX = 1'b1;           // COM1's transmitted text in the stream (OS/2's boot talks on COM1)
 localparam bit DBG_FLOPPY = 1'b0;           // the floppy's controller, DMA ports and requests to the Main
 localparam bit DBG_GPR    = 1'b0;           // the 40 instructions and the GPRs they wrote after the first program exception
 wire        post_ev = io_ev & io_we & (io_addr == 32'h8000_0680) & (io_be == 4'hF);
@@ -704,6 +705,18 @@ always @(posedge clk_cpu) begin
 		if (!nq_io && !pk_ev) fds_pend <= 1'b0;
 	end
 	if (DBG_FLOPPY && (fds_s[2] ^ fds_s[1])) fds_pend <= 1'b1;
+end
+// (the OS/2 build) every byte the machine writes to COM1's transmit holding register (3F8, DLAB or not: the
+// divisor's low byte comes through too, rarely), as that byte with bit 7 set: the rest of the stream is
+// 7-bit, so a reader splits COM1's text off (dbgauto.py keeps it in its own file); a 64-entry FIFO
+reg  [7:0]  cq [64];
+reg  [5:0]  cq_w = 0, cq_r = 0, cq_wq = 0;
+reg  [7:0]  cq_e;
+wire        cq_ev = DBG_COM1TX & isi_armed & io_ev & io_we & (io_addr[31:2] == 30'h2000_00FE) & io_be[3];
+always @(posedge clk_cpu) begin
+	if (cq_ev && cq_w + 6'd1 != cq_r) begin cq[cq_w] <= io_wdata[31:24]; cq_w <= cq_w + 6'd1; end
+	cq_e  <= cq[cq_r];
+	cq_wq <= cq_w;
 end
 // (read a clock behind: a block RAM; the drain looks at the write pointer a clock late, so an entry is
 // read before it is taken, and after a take the stage is busy for 14 clocks)
@@ -919,6 +932,11 @@ always @(posedge clk_cpu) begin
 		stage   <= {hex(isi_pc[isi_r][15:12]), hex(isi_pc[isi_r][11:8]), hex(isi_pc[isi_r][7:4]), hex(isi_pc[isi_r][3:0]), 8'h3D,
 		            isi_vw[isi_r] ? hex8(isi_v[isi_r]) : {8{8'h2D}}, 8'h20};
 		isi_r   <= isi_r + 6'd1;
+	end
+	else if (cq_r != cq_wq) begin           // (cq_e: read a clock after cq_r moved, long before this)
+		stage_n <= 4'd1;
+		stage   <= {1'b1, cq_e[6:0], 104'h0};
+		cq_r    <= cq_r + 6'd1;
 	end
 	else if (c1_pendl) begin stage_n <= 4'd11; stage <= {8'h4C, 8'h3D, hex8(c1_minl), 8'h20, 24'h0}; c1_pendl <= 1'b0; end
 	else if (c1_pendh) begin stage_n <= 4'd11; stage <= {8'h48, 8'h3D, hex8(c1_minh), 8'h20, 24'h0}; c1_pendh <= 1'b0; end

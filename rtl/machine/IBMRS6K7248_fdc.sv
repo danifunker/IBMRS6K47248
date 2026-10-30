@@ -197,12 +197,14 @@ always_ff @(posedge clk) begin
 						case (ncmd == 4'd0 ? wdata : cmdb[0])
 							8'h03: begin spec1 <= cmdb[1]; spec2 <= wdata; end          // SPECIFY
 							8'h04: begin                                                   // SENSE DRIVE STATUS
-								res[0] <= {1'b0, img_ro && img_in, 1'b1, track[wdata[0]] == 8'd0, 1'b1, wdata[2:0]};
+								res[0] <= {1'b0, img_ro && img_in, 1'b1, wdata[1:0] == 2'd0 && track[0] == 8'd0, 1'b1, wdata[2:0]};
 								nres <= 4'd1; rpos <= 4'd0; in_result <= 1'b1;
 							end
 							8'h07: begin                                                   // RECALIBRATE
+								// (only drive 0 exists: on another the 82077 sees no TRK0 after 79 steps and ends
+								// with SE and EC, abnormal termination: ST0 71 for drive 1. OS/2's dd_flopp probes B)
 								cur <= wdata[1:0]; track[wdata[0]] <= 8'd0;
-								st0 <= 8'h20 | {6'd0, wdata[1:0]}; intp <= 1'b1;
+								st0 <= (wdata[1:0] == 2'd0 ? 8'h20 : 8'h70) | {6'd0, wdata[1:0]}; intp <= 1'b1;
 								if (img_in) dchg <= 1'b0;
 							end
 							8'h0F: begin                                                   // SEEK

@@ -1357,3 +1357,25 @@ Next: the bench from a snapshot at the prompt (`--save-exit`), COM1 input with `
 - Main: `is_ibmrs6k()` also takes the core name IBMPS850 (Main_MiSTer c640768, local), for the planned split into
   two Quartus revisions (IBMRS6K7248, IBMPS850) of the same RTL.
 
+
+## 2026-10-30 afternoon: OS/2's idle kernel: the evidence so far; COM1's text in the debug stream
+
+- **The IDE identify is fine.** The device log of the last board run (`board_os2_atapi9_dbg.raw`) read as
+  zeros for the data port only because the decoder printed the enabled lanes of entries whose data words
+  are mostly zero: the raw words are `C0850000` (word 0, 85C0 little-endian), `42494249`/`44434443` ("IBM CD")
+  and so on; dd_ide reads all 256 words twice (two IDENTIFY PACKET DEVICE after SET FEATURES 03/01), then
+  reads the task file (1F2 = 02, byte count 0) and writes 3F6 08, 0A. The board's COM1 transcript
+  (`/tmp/os2_com1.log`, 15979 bytes, longer than the copy in scratch/work) ends with dd_ide's four
+  instances: unit 0 "IDE CDROM found", "IKDD: start_ikdd service_port = 0xda"; unit 1 and both units of the
+  secondary channel (170/376) "io_ext_create FAILED rc=0x00000005" (KERN_FAILURE: the absent positions).
+  After the IDE the kernel initialises the floppy (CONFIGURE 00 48 00, DOR 2D, RECALIBRATE drive 1, SENSE
+  INTERRUPT: ST0 21) and idles; the 8042 was set up before the IDE (60/64 writes), video never touched.
+- **FDC:** RECALIBRATE of a drive other than 0 ends with SE and EC, abnormal termination (ST0 71 for drive
+  1), as the 82077 does with no TRK0 after 79 steps; SENSE DRIVE STATUS reports TRK0 only for drive 0.
+  `sim/floppy` has the case; all pass.
+- **COM1's text in the debug stream** (`DBG_COM1TX` in `IBMRS6K7248.sv`): every byte written to 3F8 goes
+  into the None-mode stream with bit 7 set (the rest of the stream is 7-bit); `scratch/work/dbgauto.py`
+  splits them into `LOGFILE.com1`. One run now gives the device log, the alive marks and the OS's text.
+  Lesson: a core load through the OSD re-applies the saved UART mode (the config file), so a live
+  `/sbin/uartmode 2` before the reload captured nothing (40 minutes). Build `scratch/work/IBMRS6K7248_os2a.rbf`:
+  41,529 ALMs, CPU slack -2.89 ns.
