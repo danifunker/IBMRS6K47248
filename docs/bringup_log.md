@@ -1379,3 +1379,12 @@ Next: the bench from a snapshot at the prompt (`--save-exit`), COM1 input with `
   Lesson: a core load through the OSD re-applies the saved UART mode (the config file), so a live
   `/sbin/uartmode 2` before the reload captured nothing (40 minutes). Build `scratch/work/IBMRS6K7248_os2a.rbf`:
   41,529 ALMs, CPU slack -2.89 ns.
+- **Runs os2b/os2c (the COM1-in-stream builds, `dbgauto.py` answering from the text):** the transcript ends
+  exactly where before, after dd_ide's four instances; the kernel then idles with nothing else ever printed
+  (5 minutes quiet). The stream's new entries: the interrupts the CPU acknowledges ("I=vv") are only
+  three IRQ 13 (the IDE identifies) and one IRQ 6 (the floppy's RECALIBRATE: the ISR's SENSE INTERRUPT
+  reads ST0 71 now); the masks end at 21 = B9, A1 = CF (IRQ 1, 2, 6, 12, 13 enabled; IRQ 0 masked: the
+  kernel's clock is the decrementer, not the PIT). The identify data port reads are fine. The kernel's
+  `RtcFrequency` divides the residual's ProcessorBusHz by TimeBaseDivisor (66,666,667 / 4000 x 1000 =
+  16.666 MHz, the core's TB_HZ): the clock is configured right, if it ticks. Next probe (build os2d):
+  the decrementer exceptions counted ("T=cccc"), COM2's text (OS/2's logger might use it).

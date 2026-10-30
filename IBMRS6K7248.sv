@@ -709,14 +709,48 @@ end
 // (the OS/2 build) every byte the machine writes to COM1's transmit holding register (3F8, DLAB or not: the
 // divisor's low byte comes through too, rarely), as that byte with bit 7 set: the rest of the stream is
 // 7-bit, so a reader splits COM1's text off (dbgauto.py keeps it in its own file); a 64-entry FIFO
-reg  [7:0]  cq [64];
+// (and COM2's, 2F8, as a 0x80 byte then the byte with bit 7 set: OS/2's logger may talk there)
+reg  [8:0]  cq [64];                      // {com2, the byte}
 reg  [5:0]  cq_w = 0, cq_r = 0, cq_wq = 0;
-reg  [7:0]  cq_e;
-wire        cq_ev = DBG_COM1TX & isi_armed & io_ev & io_we & (io_addr[31:2] == 30'h2000_00FE) & io_be[3];
+reg  [8:0]  cq_e;
+wire        cq_ev1 = io_we & (io_addr[31:2] == 30'h2000_00FE) & io_be[3];
+wire        cq_ev2 = io_we & (io_addr[31:2] == 30'h2000_00BE) & io_be[3];
+wire        cq_ev  = DBG_COM1TX & isi_armed & io_ev & (cq_ev1 | cq_ev2);
 always @(posedge clk_cpu) begin
-	if (cq_ev && cq_w + 6'd1 != cq_r) begin cq[cq_w] <= io_wdata[31:24]; cq_w <= cq_w + 6'd1; end
+	if (cq_ev && cq_w + 6'd1 != cq_r) begin cq[cq_w] <= {cq_ev2, io_wdata[31:24]}; cq_w <= cq_w + 6'd1; end
 	cq_e  <= cq[cq_r];
 	cq_wq <= cq_w;
+end
+// (the OS/2 build) the decrementer exceptions taken (vector 900) from the hand-off: "T=cccc " every 64 of them,
+// cccc the count so far (the kernel's clock: 100 a second expected)
+reg  [15:0] dec_n = 0;
+reg         dec_pend = 0;
+wire        dec_ev = DBG_COM1TX & isi_armed & trace_valid & trace_last & (trace_pc == 32'h0000_0900);
+always @(posedge clk_cpu) if (dec_ev) dec_n <= dec_n + 16'd1;
+wire        dec_hit = dec_ev & (dec_n[5:0] == 6'd63);
+// (the OS/2 build) the interrupts the CPU takes: each interrupt acknowledge (a read of BFFFFxxx) as "I=vv "
+// (vv the 8259s' vector, on every lane), and the writes of the 8259s' masks and the ELCR (21, A1, 4D0, 4D1)
+// as "Paaa=dd "; a 64-entry FIFO (a storm fills it; the first 64 win)
+reg  [20:0] iq [64];                      // {pic, port[11:0], data}
+reg  [5:0]  iq_w = 0, iq_r = 0, iq_wq = 0;
+reg  [20:0] iq_e;
+wire        iq_ack = ~io_we & (io_addr[31:12] == 20'hBFFFF);
+wire        iq_p21 = io_we & (io_addr[31:2] == 30'h2000_0008) & io_be[2];
+wire        iq_pa1 = io_we & (io_addr[31:2] == 30'h2000_0028) & io_be[2];
+wire        iq_e0  = io_we & (io_addr[31:2] == 30'h2000_0134) & io_be[3];
+wire        iq_e1  = io_we & (io_addr[31:2] == 30'h2000_0134) & io_be[2];
+wire        iq_ev  = DBG_COM1TX & isi_armed & io_ev & (iq_ack | iq_p21 | iq_pa1 | iq_e0 | iq_e1);
+always @(posedge clk_cpu) begin
+	if (iq_ev && iq_w + 6'd1 != iq_r) begin
+		iq[iq_w] <= iq_ack ? {1'b0, 12'h000, io_rdata[7:0]} :
+		            iq_p21 ? {1'b1, 12'h021, io_wdata[23:16]} :
+		            iq_pa1 ? {1'b1, 12'h0A1, io_wdata[23:16]} :
+		            iq_e0  ? {1'b1, 12'h4D0, io_wdata[31:24]} :
+		                     {1'b1, 12'h4D1, io_wdata[23:16]};
+		iq_w     <= iq_w + 6'd1;
+	end
+	iq_e  <= iq[iq_r];
+	iq_wq <= iq_w;
 end
 // (read a clock behind: a block RAM; the drain looks at the write pointer a clock late, so an entry is
 // read before it is taken, and after a take the stage is busy for 14 clocks)
@@ -873,6 +907,7 @@ always @(posedge clk_cpu) begin
 		usr_d <= io_wdata;
 	end
 	c1_pendl <= c1_pendl | c1_evl;
+	dec_pend <= dec_pend | dec_hit;
 	c1_pendh <= c1_pendh | c1_evh;
 	post_pend  <= post_pend  | post_ev;
 	reset_pend <= reset_pend | reset_ev;
@@ -934,9 +969,24 @@ always @(posedge clk_cpu) begin
 		isi_r   <= isi_r + 6'd1;
 	end
 	else if (cq_r != cq_wq) begin           // (cq_e: read a clock after cq_r moved, long before this)
-		stage_n <= 4'd1;
-		stage   <= {1'b1, cq_e[6:0], 104'h0};
+		stage_n <= cq_e[8] ? 4'd2 : 4'd1;
+		stage   <= cq_e[8] ? {8'h80, 1'b1, cq_e[6:0], 96'h0} : {1'b1, cq_e[6:0], 104'h0};
 		cq_r    <= cq_r + 6'd1;
+	end
+	else if (dec_pend) begin
+		stage_n  <= 4'd7;
+		stage    <= {8'h54, 8'h3D, hex(dec_n[15:12]), hex(dec_n[11:8]), hex(dec_n[7:4]), hex(dec_n[3:0]), 8'h20, 56'h0};
+		dec_pend <= 1'b0;
+	end
+	else if (iq_r != iq_wq) begin           // (iq_e: read a clock after iq_r moved, long before this)
+		if (iq_e[20]) begin
+			stage_n <= 4'd8;
+			stage   <= {8'h50, hex(iq_e[19:16]), hex(iq_e[15:12]), hex(iq_e[11:8]), 8'h3D, hex(iq_e[7:4]), hex(iq_e[3:0]), 8'h20, 48'h0};
+		end else begin
+			stage_n <= 4'd5;
+			stage   <= {8'h49, 8'h3D, hex(iq_e[7:4]), hex(iq_e[3:0]), 8'h20, 72'h0};
+		end
+		iq_r    <= iq_r + 6'd1;
 	end
 	else if (c1_pendl) begin stage_n <= 4'd11; stage <= {8'h4C, 8'h3D, hex8(c1_minl), 8'h20, 24'h0}; c1_pendl <= 1'b0; end
 	else if (c1_pendh) begin stage_n <= 4'd11; stage <= {8'h48, 8'h3D, hex8(c1_minh), 8'h20, 24'h0}; c1_pendh <= 1'b0; end
