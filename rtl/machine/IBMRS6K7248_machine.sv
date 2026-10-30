@@ -508,8 +508,14 @@ wire          dev_take = c_req & ~to_mem & ~dev_busy & ~dev_ack;
 logic [31:0]  p_a, p_wd;
 logic [3:0]   p_be;
 logic         d_go, d_go_q;
+// ia: p_a through the I/O map (0850), registered with it: discontiguous, address bits 22-12 are the port's
+// bits 15-5 and bits 4-0 its own; anything outside 8000_0000-807F_FFFF as it is
+logic         iomap;                                   // 0850 bit 0: 1 contiguous (reset), 0 discontiguous
+logic [31:0]  ia;
+wire  [31:0]  d_pa = {d_addr[31:5], d_line ? d_k : d_addr[4:2], 2'b00};
 always_ff @(posedge clk) begin
-	p_a    <= {d_addr[31:5], d_line ? d_k : d_addr[4:2], 2'b00};
+	p_a    <= d_pa;
+	ia     <= d_pa[31:23] == 9'h100 && !iomap ? {d_pa[31:23], 7'd0, d_pa[22:12], d_pa[4:0]} : d_pa;
 	p_wd   <= d_line ? d_wdata[255 - 32 * d_k -: 32] : d_wdata[31:0];
 	p_be   <= d_line ? 4'hF : d_be;
 	d_go   <= d_sel & ~reset;
@@ -564,10 +570,6 @@ end
 wire s_isa   = p_a[31:23] == 9'h100;                         // 80000000-807FFFFF
 wire s_pcicf = p_a[31:23] == 9'h101;                         // 80800000-80FFFFFF
 wire s_iack  = p_a[31:12] == 20'hBFFFF;
-// ia: the I/O address after the I/O map (0850): discontiguous, address bits 22-12 are the
-// port's bits 15-5 and bits 4-0 its own; the rest of the address space as it is
-logic       iomap;                                     // 0850 bit 0: 1 contiguous (reset), 0 discontiguous
-wire [31:0] ia   = s_isa & ~iomap ? {p_a[31:23], 7'd0, p_a[22:12], p_a[4:0]} : p_a;
 wire [15:0] port = ia[15:0];
 
 // the byte lane of a byte access (be[3] the lowest address); the ISA devices
@@ -657,6 +659,9 @@ IBMRS6K7248_s3 #(.CLK_HZ(CPU_HZ)) s3 (
 	.irq(s3_irq), .monitor_id(4'hF)
 );
 
+// the 830/850's planar IDs (F0-F3): the IDE planar
+wire        ide_planar = planar_id[7:2] == 6'b111100;
+
 // ---- the NCR 53C810 (PCI device 16): its registers at BAR0 in PCI I/O space, and at BAR1 in PCI
 // memory space (NT's symc810.sys uses that one only) -----------------------------------------------
 wire         s_pciio = p_a[31:30] == 2'b10 && !s_pcicf && !s_iack;      // 80000000-BF7FFFFF less the above
@@ -673,9 +678,69 @@ IBMRS6K7248_ncr810 #(.STO_UNIT(STO_UNIT)) ncr810 (
 	.sel(d_go & ncr_hit), .we(d_we), .off(ia[7:2]), .be(p_be), .wdata(p_wd), .rdata(ncr_q), .irq(ncr_irq),
 	.dm_req(ncr_dm_req), .dm_we(ncr_dm_we), .dm_addr(ncr_dm_addr), .dm_be(ncr_dm_be), .dm_wdata(ncr_dm_wdata),
 	.dm_ack(ncr_dm_ack), .dm_err, .dm_rdata,
-	.sb_sel, .sb_sel_id, .sb_sel_atn, .sb_sel_done, .sb_sel_fail, .sb_bsy, .sb_req, .sb_phase, .sb_tdata,
-	.sb_ack, .sb_idata, .sb_ackhold, .sb_atn, .sb_rst
+	.sb_sel(n_sel), .sb_sel_id(n_sel_id), .sb_sel_atn(n_sel_atn), .sb_sel_done(n_sel_done), .sb_sel_fail(n_sel_fail),
+	.sb_bsy(n_bsy), .sb_req(n_req), .sb_phase, .sb_tdata,
+	.sb_ack(n_ack), .sb_idata(n_idata), .sb_ackhold(n_ackhold), .sb_atn(n_atn), .sb_rst
 );
+
+// ---- the 850's ATAPI CD-ROM (IBMRS6K7248_ATAPI): the primary IDE channel's master, under the 830/850 planar
+// IDs only; a second initiator on the SCSI target's bus, given it while the 53C810 has nothing connected (a
+// 53C810 selection while it holds the bus is not seen: under the 850's personality the OSes use the IDE drive)
+logic        n_sel, n_sel_atn, n_sel_done, n_sel_fail, n_bsy, n_req, n_ack, n_ackhold, n_atn;
+logic [2:0]  n_sel_id;
+logic [7:0]  n_idata;
+logic [31:0] atapi_q;
+logic        atapi_irq, atapi_hit;
+`ifdef IBMRS6K7248_ATAPI
+wire         atapi_on = ide_planar;
+assign       atapi_hit = atapi_on && s_isa && (bport[15:3] == 13'h003E || bport == 16'h03F6);
+logic        at_want, at_sel, at_ack, at_own;
+logic [2:0]  at_sel_id;
+logic [7:0]  at_idata;
+always_ff @(posedge clk) begin
+	if (!at_own && at_want && !sb_bsy && !n_sel) at_own <= 1'b1;
+	else if (at_own && !at_want && !sb_bsy) at_own <= 1'b0;
+	if (reset) at_own <= 1'b0;
+end
+IBMRS6K7248_atapi atapi (
+	.clk, .reset, .en(atapi_on),
+	.sel(d_go & atapi_hit), .cs1(bport == 16'h03F6), .we(d_we), .reg_a(bport[2:0]), .be(p_be), .wd8(bwd), .wdata(p_wd),
+	.rdata(atapi_q), .irq(atapi_irq),
+	.want(at_want), .grant(at_own), .i_sel(at_sel), .i_sel_id(at_sel_id),
+	.sel_done(at_own & sb_sel_done), .sel_fail(at_own & sb_sel_fail), .bsy(at_own & sb_bsy), .req(at_own & sb_req),
+	.phase(sb_phase), .tdata(sb_tdata), .ack(at_ack), .idata(at_idata)
+);
+assign sb_sel     = at_own ? at_sel    : n_sel;
+assign sb_sel_id  = at_own ? at_sel_id : n_sel_id;
+assign sb_sel_atn = at_own ? 1'b0      : n_sel_atn;
+assign sb_ack     = at_own ? at_ack    : n_ack;
+assign sb_idata   = at_own ? at_idata  : n_idata;
+assign sb_ackhold = at_own ? 1'b0      : n_ackhold;
+assign sb_atn     = at_own ? 1'b0      : n_atn;
+assign n_sel_done = !at_own & sb_sel_done;
+assign n_sel_fail = !at_own & sb_sel_fail;
+assign n_bsy      = !at_own & sb_bsy;
+assign n_req      = !at_own & sb_req;
+// 0838, IRQ 13's request-active register (the Carolina's IDE share IRQ 13 with scatter/gather and power
+// management): bit 0 the primary channel's request, latched on its rise; a write of 0 to a bit clears it
+// (NT's HALCARO reads it, then writes the other bit's 1 back). IRQ 13 is the latched bits or scatter/gather's
+logic [1:0]  r838;
+logic        at_irq_q;
+wire         r838_hit = atapi_on && s_isa && bport == 16'h0838;
+always_ff @(posedge clk) begin
+	at_irq_q <= atapi_irq;
+	if (d_go & d_we & r838_hit) r838 <= r838 & bwd[1:0];
+	if (atapi_irq & ~at_irq_q) r838[0] <= 1'b1;
+	if (reset | ~atapi_on) r838 <= 2'b00;
+end
+`else
+assign atapi_hit = 1'b0;  assign atapi_q = '0;  assign atapi_irq = 1'b0;
+wire  [1:0]  r838 = 2'b00;
+wire         r838_hit = 1'b0;
+assign sb_sel = n_sel;  assign sb_sel_id = n_sel_id;  assign sb_sel_atn = n_sel_atn;  assign sb_ack = n_ack;
+assign sb_idata = n_idata;  assign sb_ackhold = n_ackhold;  assign sb_atn = n_atn;
+assign n_sel_done = sb_sel_done;  assign n_sel_fail = sb_sel_fail;  assign n_bsy = sb_bsy;  assign n_req = sb_req;
+`endif
 
 // ---- the AMD Am79C970 PCnet (PCI device 12): its registers at BAR0 in PCI I/O space ---------
 logic        pcn_io_on;
@@ -715,6 +780,9 @@ wire        iomap_hit = s_isa && bport == 16'h0850;
 wire        ee_hit   = s_isa && bport[15:3] == 13'h000F;
 // the IDE channels (1F0-1F7/3F6, 170-177/376): no drive on the 7248's SCSI planar; FF, as a
 // floating bus, ends the firmware's probe at once (a stub's 0 made it poll the status 65 K times)
+// (FF on the 7248's planar IDs; on the 830/850's, F0-F3, the IDE planar: an empty position reads 00,
+// BSY clear and no device, which OS/2's dd_ide takes as absent: FF kept it waiting on BSY, 7F made it
+// start a device)
 wire        ide_hit  = s_isa && (bport[15:3] == 13'h003E || bport == 16'h03F6 || bport[15:3] == 13'h002E || bport == 16'h0376);                              // 78-7F: the VPD EEPROM's controller
 wire        err_hit  = s_isa && bport >= 16'h0840 && bport <= 16'h0844;
 logic        aud_on;
@@ -859,7 +927,7 @@ end
 // the request lines: COM1's INTR as a PC board gates it, with OUT2
 // IRQ 15: every PCI device's interrupt (Carolina's routing): the S3's and the 53C810's
 // IRQ 13: the scatter/gather's list ends; IRQ 5: the codec, the Sound Blaster, the MPU-401
-assign irq = {s3_irq | ncr_irq | pcn_irq, 1'b0, sg_irq, irq12, 3'b000, irq8, 2'b00, aud_irq | sb_irq | mpu_irq, com1_irq & com1_out2, com2_irq & com2_out2, 1'b0, irq1, irq0} | (16'(irq6) << 6);
+assign irq = {s3_irq | ncr_irq | pcn_irq, 1'b0, sg_irq | (|r838), irq12, 3'b000, irq8, 2'b00, aud_irq | sb_irq | mpu_irq, com1_irq & com1_out2, com2_irq & com2_out2, 1'b0, irq1, irq0} | (16'(irq6) << 6);
 
 // the planar ID, the SIMMs' presence detect
 wire        planar_hit = s_isa && bport == 16'h0852;
@@ -918,7 +986,7 @@ IBMRS6K7248_firecoral firecoral (
 // the answer, the cycle after the access
 logic       q_sio, q_com2, q_dev14, q_fdc;
 logic       q_pic, q_pit, q_kbc, q_rtc, q_p92, q_err, q_aud, q_audc, q_ee, q_ide, q_dma, q_sb, q_fm, q_mpu, q_joy;
-logic       q_iomap;
+logic       q_iomap, q_atapi, q_838, q_atdp;
 logic       q_com1, q_planar, q_pd, q_cf8, q_cfc, q_dev0, q_dev11, q_fcio, q_pcicf, q_iack, q_dev16, q_ncr, q_dev12, q_pcn;
 logic [1:0] q_lane;
 always_ff @(posedge clk) if (d_go) begin
@@ -943,6 +1011,9 @@ always_ff @(posedge clk) if (d_go) begin
 	q_audc  <= aud_cfg;
 	q_planar <= planar_hit;
 	q_iomap  <= iomap_hit;
+	q_atapi  <= atapi_hit;
+	q_atdp   <= atapi_hit && bport[2:0] == 3'd0 && bport != 16'h03F6;   // (its data port: not logged)
+	q_838    <= r838_hit;
 	q_pd    <= pd_hit;
 	q_cf8   <= cf8_hit;
 	q_cfc   <= cfc_hit;
@@ -966,7 +1037,7 @@ wire [31:0] cfc_q = q_dev0 ? swap32(mpc_q) : q_dev11 ? swap32(fc_q) : q_dev14 ? 
                     q_dev16 ? swap32(ncr_cfg_q) : q_dev12 ? swap32(pcn_cfg_q) : 32'hFFFF_FFFF;
 wire        q_any = q_com1 | q_com2 | q_fdc | q_sio | q_pic | q_pit | q_kbc | q_rtc | q_ee | q_ide | q_p92 | q_err |
                     q_aud | q_sb | q_fm | q_mpu | q_joy | q_dma | q_planar | q_pd | q_fcio | q_cf8 | q_cfc | q_ncr |
-                    q_pcn | q_pcicf | q_iack | q_iomap;
+                    q_pcn | q_pcicf | q_iack | q_iomap | q_atapi | q_838;
 function automatic logic [31:0] when(input logic q, input logic [31:0] v);
 	when = {32{q}} & v;
 endfunction
@@ -980,7 +1051,9 @@ always_comb begin
 	            when(q_kbc,    {4{kbc_q}})        |
 	            when(q_rtc,    {4{rtc_q}})        |
 	            when(q_ee,     {4{ee_q}})         |
-	            when(q_ide,    32'hFFFF_FFFF)     |
+	            when(q_ide & ~q_atapi, ide_planar ? 32'h0000_0000 : 32'hFFFF_FFFF) |
+	            when(q_atapi,  atapi_q)           |
+	            when(q_838,    {4{6'd0, r838}})   |
 	            when(q_p92,    {4{p92}})          |
 	            when(q_aud,    {4{aud_q}})        |
 	            when(q_sb,     {4{sb_q}})         |
@@ -1007,10 +1080,10 @@ always_ff @(posedge clk) begin
 	io_ev <= w_done;
 	if (w_done) begin
 		io_we    <= d_we;
-		io_stub  <= ~(q_s3 | q_fdc | q_com1 | q_com2 | q_sio | q_planar | q_iomap | q_pd | q_fcio | q_cf8 | q_dev0 | q_dev11 | q_dev14 | q_dev16 | q_ncr | q_dev12 | q_pcn |
+		io_stub  <= ~(q_s3 | q_fdc | q_com1 | q_com2 | q_sio | q_planar | q_iomap | q_atapi | q_838 | q_pd | q_fcio | q_cf8 | q_dev0 | q_dev11 | q_dev14 | q_dev16 | q_ncr | q_dev12 | q_pcn |
 		              q_pic | q_pit | q_kbc | q_rtc | q_ee | q_ide | q_p92 | q_err | q_aud | q_audc | q_dma | q_sb | q_fm | q_mpu | q_joy | q_iack);
-		io_ncr   <= q_ncr;
-		io_addr  <= p_a;
+		io_ncr   <= q_ncr | (q_atapi & ~q_atdp) | q_838;   // (and the 850's IDE drive's registers, not its data port, and 0838: the top's debug log takes them)
+		io_addr  <= ia;                              // (an ISA port after the I/O map, 0850: its contiguous form)
 		io_be    <= p_be;
 		io_wdata <= p_wd;
 		io_rdata <= w_rdata;

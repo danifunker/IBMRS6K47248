@@ -732,12 +732,14 @@ wire        dv_mem = io_addr[31:30] == 2'b11;
 // 279, 300-38F, 530-53F, 604-60F, A79, E80-F4F (the WSS's other bases), and the PnP read port wherever it is
 // (203-3FF reads not named elsewhere); not the 8259s, the PIT, the 8042, the RTC, the video, COM1, the floppy)
 wire [15:0] dv_p   = io_addr[15:0];
-wire        dv_ev  = DBG_DEVLOG & isi_done & io_ev & ~ncr_ev & ~(&dv_n) & io_addr[31:16] == 16'h8000 &
-                     ((dv_p >= 16'h0100 && dv_p <= 16'h013F) || (dv_p >= 16'h0200 && dv_p <= 16'h023F) ||
-                      dv_p[15:2] == 14'h009E || (dv_p >= 16'h0300 && dv_p <= 16'h038F) ||
-                      (dv_p >= 16'h0530 && dv_p <= 16'h053F) || (dv_p >= 16'h0604 && dv_p <= 16'h060F) ||
-                      dv_p[15:2] == 14'h029E || (dv_p >= 16'h0E80 && dv_p <= 16'h0F4F) ||
-                      (!io_we && dv_p >= 16'h0240 && dv_p <= 16'h03AF && dv_p[15:4] != 12'h03B));
+// (the OS/2 build: from the boot hand-off, every ISA port (io_addr is the port after the I/O map) but the busy
+// ones: the 8259s, the PIT and port 61, the 8042, COM1, the ELCR, 080C; and PCI memory by 4 KB page)
+wire        dv_isa = io_addr[31:16] == 16'h8000 &&
+                     !(dv_p[15:1] == 15'h0010 || dv_p[15:1] == 15'h0050 || dv_p[15:2] == 14'h0010 || dv_p == 16'h0061 ||
+                       dv_p == 16'h0060 || dv_p == 16'h0064 || dv_p[15:3] == 13'h007F || dv_p[15:1] == 15'h0268 ||
+                       dv_p == 16'h080C);
+wire        dv_ev  = DBG_DEVLOG & isi_armed & io_ev & ~ncr_ev & ~(&dv_n) &
+                     (dv_isa || (dv_mem && io_addr[31:12] != dv_page));
 always @(posedge clk_cpu) begin
 	if (dv_ev && dv_w + 8'd1 != dv_r) begin
 		dv[dv_w] <= {io_we, io_addr[31:2], io_be, io_we ? io_wdata : io_rdata};

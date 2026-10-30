@@ -1334,3 +1334,26 @@ an empty boot device name, "Unknown device: automatic", and the prompt `[PN_BOOT
 (its names: `cd%d`, `hd%d`, `cdrom`, `ide_cdrom%d`, `floppy`). Typed `cd3`: echoed, then silence.
 Next: the bench from a snapshot at the prompt (`--save-exit`), COM1 input with `--com1-at`.
 
+## 2026-10-30: OS/2 on the 850 personality: the microkernel boots; an ATAPI CD on the planar IDE
+
+- **The planar ID matters.** OS/2's SCSI boot driver (the loader's `dev_extn/scsi`, `pciprobe` and `pci_word`)
+  finds the 53C810 by a platform type the loader passes it: type 1 is configuration address 8000_8000 (device 16,
+  ours); with the 7248's ID it probes device 12 (the PCnet) and gives up. With the OSD's Model at Power Series
+  850, `cd3` at the boot-device prompt and `cdrom` at the filesystem prompt, the IBM Microkernel loader reads
+  `boot.cfg` and some 150 servers and libraries from the CD and starts the kernel (COM1 at 9600; transcript
+  `scratch/work/os2_com1_20261030.log`). The loader cannot name the boot device itself ("boot_device_name is ''").
+- **The install CD's boot.cfg loads dd_ide only** (the 850's CD-ROM is IDE). New: `rtl/machine/IBMRS6K7248_atapi.sv`
+  (`IBMRS6K7248_ATAPI`), an ATAPI CD-ROM as the primary IDE master under the 830/850 planar IDs, a second
+  initiator on the SCSI target's bus (the same CD image and engine); bench `sim/atapi/run.sh`, six sections pass.
+  The Carolina's IDE interrupts on IRQ 13, demultiplexed by 0838 (NT's HALCARO.DLL: bit 0 and bit 1, a write of 0
+  clears a bit); 0838 is modelled under the 850 IDs, the drive's request latched in bit 0. Empty IDE positions read
+  00 on the 850 IDs (OS/2 took FF as busy forever and 7F as a device). On .92 OS/2's dd_ide reports "IDE CDROM
+  found", identifies it twice (SET FEATURES, IDENTIFY PACKET DEVICE, 0838 bit 0 set and cleared) and rejects the
+  empty positions; then the kernel idles (`idle_thread_continue`, `processor_idle`: MK_TEST.PPC has symbols). The
+  device log after the loader: the PCI scan, the RTC and NVRAM, the IDE identifies, the floppy's CONFIGURE and a
+  recalibrate of drive B (our FDC answers success for an absent drive), then nothing; no video access at all.
+- The 0850 translation is now registered with p_a (the combinational form cost 2 ns on the S3's decode); the debug
+  log's addresses are the ports after the map. Room: MISTER_DISABLE_ALSA and MISTER_DISABLE_YC are on for now.
+- Main: `is_ibmrs6k()` also takes the core name IBMPS850 (Main_MiSTer c640768, local), for the planned split into
+  two Quartus revisions (IBMRS6K7248, IBMPS850) of the same RTL.
+
