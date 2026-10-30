@@ -37,6 +37,9 @@
 //============================================================================
 
 module IBMRS6K7248_fdc
+#(
+	parameter int unsigned CLK_HZ = 70_000_000   // clk's rate: the seeks take their step time (SPECIFY's SRT, 1 ms units)
+)
 (
 	input  logic        clk,
 	input  logic        reset,
@@ -85,6 +88,18 @@ logic [7:0] st0;
 logic [2:0] sensei;                   // results owed after a reset
 logic [7:0] track [2];
 logic [1:0] cur;
+// a seek or recalibrate in progress: its interrupt comes when the steps are done, SRT per step (16 - SPECIFY's
+// high nibble, in ms: a real 82077 and its drive take that long; OS/2's dd_flopp signals its waiter from the
+// interrupt thread and the signal is lost when the interrupt comes before the wait does); meanwhile the MSR
+// shows the drive busy (bits 3:0) and SENSE INTERRUPT STATUS answers 80 (invalid)
+logic [31:0] seek_cnt;
+logic [1:0]  seek_drv;
+localparam int unsigned MS = CLK_HZ / 1000;
+wire  [7:0]  srt_ms = 8'd16 - {4'd0, spec1[7:4]};
+function automatic logic [31:0] seek_clocks(input logic [7:0] steps);
+	// at least one step time, so the quickest seek still outlasts a driver's return to its wait
+	seek_clocks = 32'(steps == 8'd0 ? 8'd1 : steps) * 32'(srt_ms) * MS;
+endfunction
 logic [7:0] spec1, spec2, config_r, precomp, perp;
 logic       lock;
 logic       dchg;                     // the disk change line
@@ -141,7 +156,8 @@ assign drq = !nd && dor[3] && ((x_rd && pf_ok) || x_wr);
 wire   dma_go = dack && dack_ch == 3'd2;
 // the FIFO, non-DMA: RQM while a byte can move
 wire   pio_rq = nd && ((x_rd && pf_ok) || x_wr);
-wire  [7:0] msr = in_result ? 8'hD0 : exec ? {pio_rq, x_rd, nd, 1'b1, 4'b0001} : (ncmd != 4'd0 ? 8'h90 : 8'h80);
+wire  [3:0] seek_busy = seek_cnt != 32'd0 ? 4'b0001 << seek_drv : 4'b0000;
+wire  [7:0] msr = in_result ? 8'hD0 : exec ? {pio_rq, x_rd, nd, 1'b1, 4'b0001} : (ncmd != 4'd0 ? 8'h90 : 8'h80) | {4'd0, seek_busy};
 
 // a byte to the host taken (DMA or the FIFO), or from it
 wire   took_rd = x_rd && pf_ok && ((dma_go && !nd) || (sel && !we && off == 3'd5 && nd));
@@ -168,6 +184,10 @@ always_ff @(posedge clk) begin
 	buf_we <= 1'b0;
 	if (img_mounted) dchg <= 1'b1;
 	if (dma_go && tc) tc_seen <= 1'b1;
+	if (seek_cnt != 32'd0) begin
+		seek_cnt <= seek_cnt - 32'd1;
+		if (seek_cnt == 32'd1) intp <= 1'b1;
+	end
 
 	if (sel) begin
 		if (we) begin
@@ -204,18 +224,22 @@ always_ff @(posedge clk) begin
 								// (only drive 0 exists: on another the 82077 sees no TRK0 after 79 steps and ends
 								// with SE and EC, abnormal termination: ST0 71 for drive 1. OS/2's dd_flopp probes B)
 								cur <= wdata[1:0]; track[wdata[0]] <= 8'd0;
-								st0 <= (wdata[1:0] == 2'd0 ? 8'h20 : 8'h70) | {6'd0, wdata[1:0]}; intp <= 1'b1;
+								st0 <= (wdata[1:0] == 2'd0 ? 8'h20 : 8'h70) | {6'd0, wdata[1:0]};
+								seek_cnt <= seek_clocks(wdata[1:0] == 2'd0 ? track[0] : 8'd79); seek_drv <= wdata[1:0];
 								if (img_in) dchg <= 1'b0;
 							end
 							8'h0F: begin                                                   // SEEK
 								cur <= cmdb[1][1:0]; track[cmdb[1][0]] <= wdata;
-								st0 <= 8'h20 | {6'd0, cmdb[1][1:0]}; intp <= 1'b1;
+								st0 <= 8'h20 | {6'd0, cmdb[1][1:0]};
+								seek_cnt <= seek_clocks(wdata > track[cmdb[1][0]] ? wdata - track[cmdb[1][0]] : track[cmdb[1][0]] - wdata);
+								seek_drv <= cmdb[1][1:0];
 								if (img_in) dchg <= 1'b0;
 							end
 							8'h8F, 8'hCF: begin                                            // RELATIVE SEEK
 								cur <= cmdb[1][1:0];
 								track[cmdb[1][0]] <= cmdb[0][6] ? track[cmdb[1][0]] - wdata : track[cmdb[1][0]] + wdata;
-								st0 <= 8'h20 | {6'd0, cmdb[1][1:0]}; intp <= 1'b1;
+								st0 <= 8'h20 | {6'd0, cmdb[1][1:0]};
+								seek_cnt <= seek_clocks(wdata); seek_drv <= cmdb[1][1:0];
 								if (img_in) dchg <= 1'b0;
 							end
 							8'h08: begin                                                   // SENSE INTERRUPT STATUS
@@ -399,7 +423,7 @@ always_ff @(posedge clk) begin
 
 	if (reset) begin
 		dor <= 8'h00; tdr <= 8'h00; ccr <= 8'h00; rate <= 2'd0; ncmd <= 4'd0; in_result <= 1'b0; intp <= 1'b0;
-		sensei <= 3'd0; st0 <= 8'hC0; track[0] <= 8'd0; track[1] <= 8'd0; cur <= 2'd0;
+		sensei <= 3'd0; st0 <= 8'hC0; track[0] <= 8'd0; track[1] <= 8'd0; cur <= 2'd0; seek_cnt <= 32'd0; seek_drv <= 2'd0;
 		spec1 <= 8'h00; spec2 <= 8'h00; config_r <= 8'h20; precomp <= 8'h00; perp <= 8'h00; lock <= 1'b0;
 		xs <= X_IDLE; dchg <= 1'b1; sec_req <= 1'b0; pf_ok <= 1'b0;
 	end

@@ -1388,3 +1388,27 @@ Next: the bench from a snapshot at the prompt (`--save-exit`), COM1 input with `
   `RtcFrequency` divides the residual's ProcessorBusHz by TimeBaseDivisor (66,666,667 / 4000 x 1000 =
   16.666 MHz, the core's TB_HZ): the clock is configured right, if it ticks. Next probe (build os2d):
   the decrementer exceptions counted ("T=cccc"), COM2's text (OS/2's logger might use it).
+
+## 2026-10-30 evening: why OS/2's kernel idles: the floppy's instant recalibrate loses dd_flopp's wake-up
+
+- Probes (builds os2c, os2d, run os2e): the decrementer ticks (~100 a second, 42,000 exceptions during the
+  idle), COM2 is silent, interrupts are delivered (three IRQ 13, one IRQ 6), and the servers after the
+  drivers never run: `set_boot -v` and `pagrinit -d1`, typed at their `[PN_FILE_ARGV]` prompts in the
+  loader's manual mode, print nothing. The device manager (`devmgr.dyn`, disassembled with capstone and its
+  PLT names) starts each driver and `condition_wait`s for its `DriverReady`; it exits, and the bootstrap goes
+  on, only after all three. The floppy stage is the last one started.
+- `dd_flopp.dyn` (symbols intact): `flop_device_init` locks, `start_drive` (DOR, a 0.5 s motor wait, the
+  DIR, `dd_timer_set`, "interrupt expected" = 1), `recal_start` (07, drive), then `condition_wait`. The
+  kernel-side ISR (`flop_int_handler`) polls the MSR, issues SENSE INTERRUPT STATUS, queues ST0/PCN and wakes
+  `flop_int_thread`, which calls `int_step`: cancel the timer, clear the flag, `condition_signal`. Our FDC
+  finished the RECALIBRATE in the clock it was written, so IRQ 6, the ISR, the interrupt thread (a higher
+  priority) and the signal all ran while `flop_device_init` was still in `recal_start`: a cthreads signal
+  with no waiter is lost, the timer was already cancelled, and the waiter sleeps forever. A real 82077 steps
+  the head for milliseconds (79 steps for an absent drive B), so the wait is always in place first. ST0 21
+  or 71 made no difference to this.
+- **FDC: seeks take their time.** RECALIBRATE, SEEK and RELATIVE SEEK now complete after steps x SRT
+  (SPECIFY's high nibble, 16 - n ms; at least one step), the MSR showing the drive busy meanwhile and SENSE
+  INTERRUPT STATUS answering 80 until then, as the chip does. `IBMRS6K7248_fdc` takes `CLK_HZ`
+  (`CPU_HZ` from the machine; 1 MHz in `sim/floppy`, whose seeks now wait for IRQ 6). All pass. To be
+  checked on the board besides OS/2: the firmware's diskette boot and NT's ARC diskette, which never had to
+  wait for a seek before.

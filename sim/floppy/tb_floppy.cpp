@@ -54,6 +54,9 @@ static void tick() { do step(); while (ph % 10); }        // one machine clock
 static void run(int n) { for (int i = 0; i < n; i++) tick(); }
 static void out8(int port, int v) { t->sel = 1; t->we = 1; t->port = port; t->wdata = v; tick(); t->sel = 0; t->we = 0; tick(); }
 static int in8(int port) { t->sel = 1; t->we = 0; t->port = port; tick(); t->sel = 0; tick(); return t->rdata; }
+static void expect(const char *what, long got, long want);
+// a seek or recalibrate takes its step time (fdtb's CLK_HZ 1 MHz: 3 ms a step at the default SRT): wait for IRQ 6
+static void seek_wait() { int n = 0; while (!t->irq6 && n++ < 4000000) tick(); expect("seek: IRQ 6", t->irq6, 1); }
 static void expect(const char *what, long got, long want) {
 	if (got != want) { printf("  %s: %lX, want %lX\n", what, got, want); fails++; }
 }
@@ -103,13 +106,13 @@ int main(int argc, char **argv) {
 
 	// 2. a 1.44 MB image mounted; RECALIBRATE clears the change line
 	mount(false);
-	fcmd({0x07, 0x00}); run(10); fcmd({0x08}); fres();
+	fcmd({0x07, 0x00}); seek_wait(); fcmd({0x08}); fres();
 	expect("disk change cleared", in8(0x3F7) & 0x80, 0x00);
 	// RECALIBRATE of drive 1 (absent): SE, EC, abnormal termination (OS/2's dd_flopp probes B)
-	fcmd({0x07, 0x01}); run(10); fcmd({0x08});
+	fcmd({0x07, 0x01}); seek_wait(); fcmd({0x08});
 	{ auto r = fres(); expect("drive B: 2 results", r.size(), 2); if (r.size() == 2) expect("drive B ST0", r[0], 0x71); }
 	fcmd({0x04, 0x01}); { auto r = fres(); if (r.size() == 1) expect("drive B SENSE DRIVE STATUS: no TRK0", r[0] & 0x10, 0); }
-	fcmd({0x07, 0x00}); run(10); fcmd({0x08});
+	fcmd({0x07, 0x00}); seek_wait(); fcmd({0x08});
 	{ auto r = fres(); if (r.size() == 2) expect("drive A ST0", r[0], 0x20); }
 	printf("%-46s %s\n", "mounted, the change line, drive B absent", fails != f0 ? "FAIL" : "pass"); f0 = fails;
 
@@ -165,7 +168,7 @@ int main(int argc, char **argv) {
 
 	// 7. FORMAT: track 5 head 0, 18 sectors (IDs 5 0 r 2), filler F6
 	for (int s = 0; s < 18; s++) { mem[0x40000 + 4 * s] = 5; mem[0x40001 + 4 * s] = 0; mem[0x40002 + 4 * s] = s + 1; mem[0x40003 + 4 * s] = 2; }
-	fcmd({0x0F, 0x00, 5}); run(10); fcmd({0x08}); fres();  // SEEK to 5
+	fcmd({0x0F, 0x00, 5}); seek_wait(); fcmd({0x08}); fres();  // SEEK to 5
 	dma2(0x4A, 72, 0x40000);
 	fcmd({0x4D, 0x00, 2, 18, 0x54, 0xF6});
 	{
@@ -179,7 +182,7 @@ int main(int argc, char **argv) {
 
 	// 8. a read-only image: WRITE ends "not writable"
 	mount(true);
-	fcmd({0x07, 0x00}); run(10); fcmd({0x08}); fres();
+	fcmd({0x07, 0x00}); seek_wait(); fcmd({0x08}); fres();
 	dma2(0x4A, 512, 0x20000);
 	fcmd({0xC5, 0x00, 0, 0, 1, 2, 18, 0x1B, 0xFF});
 	{ auto r = fres(); if (r.size() == 7) { expect("RO ST0", r[0] & 0xC0, 0x40); expect("RO ST1", r[1], 0x02); } else expect("RO: 7 results", r.size(), 7); }

@@ -606,7 +606,7 @@ logic        dma_dack, dma_tc;                // (the ISA DMA's, below)
 logic  [2:0] dma_dack_ch, dma_dev_ch;
 logic [15:0] dma_dack_data;
 wire        fdc_hit = s_isa && fdc_on && bport[15:3] == (fdc_alt ? 13'h006E : 13'h007E) && bport[2:0] != 3'd6;
-IBMRS6K7248_fdc fdc (
+IBMRS6K7248_fdc #(.CLK_HZ(CPU_HZ)) fdc (
 	.clk, .reset,
 	.sel(d_go & fdc_hit), .we(d_we), .off(bport[2:0]), .wdata(bwd), .rdata(fdc_q),
 	.irq6,

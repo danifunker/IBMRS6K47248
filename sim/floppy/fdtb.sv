@@ -14,7 +14,7 @@ logic in, ro, mnt, req, fwe, ack, bwe; logic [12:0] blocks, lba; logic [8:0] ba;
 wire fdh = port[15:3] == 13'h007E && port[2:0] != 3'd6;
 logic q; always_ff @(posedge clk) if (sel) q <= fdh;
 assign rdata = q ? fdc_q : dma_q;
-IBMRS6K7248_fdc fdc (.clk, .reset, .sel(sel & fdh), .we, .off(port[2:0]), .wdata, .rdata(fdc_q), .irq6,
+IBMRS6K7248_fdc #(.CLK_HZ(1_000_000)) fdc (.clk, .reset, .sel(sel & fdh), .we, .off(port[2:0]), .wdata, .rdata(fdc_q), .irq6,
 	.drq(fdrq), .dack, .dack_ch, .dack_data(dack_data[7:0]), .tc, .dev_byte(fdc_byte),
 	.img_in(in), .img_ro(ro), .img_blocks(blocks), .img_mounted(mnt), .sec_req(req), .sec_we(fwe), .sec_lba(lba), .sec_ack(ack),
 	.buf_a(ba), .buf_q(bq), .buf_we(bwe), .buf_d(bd));
