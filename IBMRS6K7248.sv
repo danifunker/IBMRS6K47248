@@ -445,7 +445,6 @@ IBMRS6K7248_system #(.CPU_HZ(CPU_MHZ * 1_000_000), .TB_HZ(TB_HZ)) system
 	.joy1(joystick_0[5:0]), .joy2(joystick_1[5:0]), .ana1(joystick_l_analog_0), .ana2(joystick_l_analog_1),
 	.midi_tx, .midi_rx,
 	.fd_in, .fd_ro, .fd_blocks, .fd_mounted, .fd_req, .fd_we, .fd_lba, .fd_ack, .fd_buf_a, .fd_buf_q, .fd_buf_we, .fd_buf_d,
-	.hd_present(img_present[0]), .hd_blocks(img_blocks[0]),
 
 	// the S3's VRAM in DDR3 and its picture, in the memory clock
 	.net_on(status[8:6] != 3'd1),

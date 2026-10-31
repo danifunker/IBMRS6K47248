@@ -165,6 +165,11 @@ request handled, `R`/`n` its registration and failure, `f`/`F` insmain's two "co
 units 0-1, "io_ext_create FAILED rc=5" for the absent ones) will be needed for the install screen's
 target in any case.
 
+**Run os2m:** `R u e U X` — utilfs registers and serves; insmain's "Running Media Preparation..." send
+(02009000: `port_create` + a UFS message) is handled by utilfs (`U`), then insmain's `GEN_XferData` send
+fails; no "couldn't find UFS", `GetPercentage` never reached, utilfs never exits. The hard disk is the
+thing to give it: build os2n (`IBMRS6K7248_idehd`, the OSD's disk 0 image as the IDE slave).
+
 ## Open issues and the next step
 
 1. insmain's failure above: the boot_device node / GETPERS. Start with `PERSONAL/INSMAIN`'s strings and

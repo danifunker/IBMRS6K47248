@@ -1466,3 +1466,30 @@ Next: the bench from a snapshot at the prompt (`--save-exit`), COM1 input with `
   the boot device...", GETPERS resolves and reads the node, then `mach_msg_overwrite` fails with
   0x10000003 (MACH_SEND_INVALID_DEST): most likely the hand-made `boot_device` node (set_boot's argument
   path adds only `name`). Hand-off: `docs/resume_os2.md`.
+
+## 2026-10-31: insmain read from the binaries; two probe runs; an IDE hard disk for the 850
+
+- `PERSONAL/INSMAIN` and `PERSONAL/PAGRINIT` disassembled (new tools in `scratch/work`: `idis.py`, `xref6.py`,
+  `callers.py`, `grepdis.py`, `gotstore.py`, for the stripped GOT-relative servers). GETPERS resolves
+  `file/system` and wants its `name` attribute; pagrinit builds that node as a copy of BVM's volume node
+  (its 16 attributes, `name` the last); the FS server's own node is `filesets/<fileset>`; `NS_Resolve` flag
+  4 forbids forwarding. Statically it all fits, so **run os2l** watched nine (PC, instruction) points in
+  the debug stream (`~c` tokens, `IBMRS6K7248.sv`): pagrinit's leaf add returned 0 and GETPERS *found*
+  `name` (17 attributes compared, hit). The name space was never the problem; the first "RC = 23" is a
+  response-file check before GETPERS. The fatal step is after the message catalogs: `port_create`, then
+  `GEN_XferData`'s `mach_msg_overwrite` fails with `MACH_SEND_INVALID_DEST`.
+- **Run os2m** watched utilfs and insmain's UFS traffic: `R u e U X`: utilfs registered `servers/utilfs`
+  (rc 0) and serves (its loop never ends); insmain, right after printing "Running Media Preparation...",
+  sends its request (the `e` point is that function's send, 02009000: `port_create`, a message to the
+  UFS); utilfs handles one request (`U`); insmain's next send, `GEN_XferData` (`X`), fails. No "couldn't
+  find UFS" on either side, `GetPercentage` never reached. The messages insmain holds for what follows
+  ("Partitions Found", "Drive Not Found", "Hard drive not Large Enough", UFS_FDISK/UFS_FORMAT) say what
+  the media preparation is: the target hard disk, which the 850 personality does not have (the IDE CD
+  only; the disk image is on the SCSI bus this OS/2 has no driver for). The dead destination is most
+  likely the per-request port utilfs hands back and closes when the preparation fails.
+- **An IDE hard disk** (`IBMRS6K7248_idehd`, the primary channel's slave, the OSD's disk 0 image through
+  SCSI READ/WRITE(10) at the disk's target as a third initiator; IDENTIFY, READ/WRITE SECTORS and
+  MULTIPLE (8), CHS 16x63 and LBA, READ VERIFY, the 2 ms first-answer latency of the CD-ROM's model).
+  `sim/idehd` (both devices on one task file, the disk and CD slots answered as hps_io does, writes read
+  back): all pass. Build os2n carries it with the os2m watch points; CD audio is off since os2l (the
+  probe did not fit with it).
