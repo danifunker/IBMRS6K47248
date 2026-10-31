@@ -146,6 +146,25 @@ the CD boots; `OS2/PAGRINIT` differs) say:
   succeeded. `scratch/work/run_os2l.sh TAG` stages, starts dbgauto, presses the OSD keys and fetches
   the stream (`Y:\ibmrs6k-bench-logs\board_TAG_dbg.raw`) and prints the token sequence.
 
+**Run os2l (the probe) answered it:** the token sequence was `pqr` then
+`GaaA GaA GaaA GaA GaaA GaA Gx Ga×12A Ga×17Ag Ga×12A`: pagrinit's leaf add returned 0, and insmain's
+GETPERS lookup **found** `name` (17 attributes compared, hit, `g`) — the "Setting boot volume to" line
+simply does not reach COM1. The `Gx` with no attribute compared is the benign response-file check. So the
+name space is fine, and the fatal step is the one *after* GETPERS and the two message catalogs: insmain's
+`format_and_send_msg` / `GetPercentage` ("Sending to UFS Port = %d") talk to the **UFS server** (utilfs:
+the fdisk/format/chkdsk service, `servers/utilfs`, registered by utilfs's `RegSrvPort`), and the send in
+`GEN_XferData` fails with `MACH_SEND_INVALID_DEST`: the port name insmain holds for the UFS is dead or null
+(MACH_PORT_NULL gives the same code). insmain's messages ("Partitions Found", "Drive Not Found", "Hard
+drive not Large Enough for system") say what comes next: the installer looks for the **hard disk** to
+partition and format through utilfs — and the 850 personality gives OS/2 no hard disk at all (only the IDE
+CD; the disk image is on the SCSI bus this OS/2 has no driver for). Whether the dead port is utilfs having
+exited, or a lookup that never happened, the os2m probe (`u` utilfs serving, `t` its loop ended, `U` a
+request handled, `R`/`n` its registration and failure, `f`/`F` insmain's two "couldn't find UFS" sites,
+`k` GetPercentage's send, `e` Ins_Exit, `X` GEN_XferData's send) tells; an **IDE hard disk model** on the
+850's primary channel (unit 1, or the secondary channel: OS/2's dd_ide probes 1F0 units 0-1 and 170
+units 0-1, "io_ext_create FAILED rc=5" for the absent ones) will be needed for the install screen's
+target in any case.
+
 ## Open issues and the next step
 
 1. insmain's failure above: the boot_device node / GETPERS. Start with `PERSONAL/INSMAIN`'s strings and
