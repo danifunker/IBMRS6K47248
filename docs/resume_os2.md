@@ -77,8 +77,15 @@ and mounted `volumes/hd0.0` but as a HARD_DISK, could not load `os2/vpmisrv` or 
 MODE SENSE(10) 3F, READ CAPACITY and then **READ CD (BE)** (LBA 0, 1 block, user data only, byte count
 4096), which the CD target refused (sense 5/20, invalid opcode) forty times; it then fell back to the
 CD's MBR (the PReP boot partition, type 41) as a hard disk. The target now serves READ CD's user-data
-form like READ(10) (the raw forms: 5/24). `sim/atapi` covers it. The run after that build (os2h) is the
-first that can reach `insmain`.
+form like READ(10) (the raw forms: 5/24). `sim/atapi` covers it.
+
+**Fixed (next commit): the ATAPI answer came too soon.** With READ CD served, run os2h read LBA 0 (one block,
+then two, delivered as two 2 KB DRQ chunks, taken fine) and then hung on a later packet: its DRQ interrupt
+came (IRQ 13, status 58, I/O, 2048 bytes) and the driver never read the data. The floppy's race again:
+dd_ide's thread sends the packet, then waits for its interrupt thread's signal, and a block the target
+already held answered within microseconds. `IBMRS6K7248_atapi` now holds a command's first DRQ or status
+(and the interrupt) for 2 ms after the command or the packet's last byte, a CD-ROM's order of latency.
+Build os2i carries it; its run is the first that can reach `insmain`.
 
 What should follow: pagrinit "Boot volume is a CD", the CD mounted with its file system, `vpmisrv` (the
 base video server) and `logovid` (the logo) loaded from it, the swapper, then `personal/insmain`: the
@@ -86,14 +93,15 @@ first video accesses (the S3 864 through its VGA ports and the linear frame buff
 `docs/s3_nt_driver.md` is the reference for what the core's S3 can do).
 ## Open issues and the next step
 
-- Build os2h (READ CD) and its run: `scratch/work/IBMRS6K7248_os2h.rbf` if the build finished;
-  logs `Y:\ibmrs6k-bench-logsoard_os2h_dbg.raw`, `scratch/work/os2_com1_os2h.log` if the run did. The
+- Build os2i (READ CD + the ATAPI latency) and its run: `scratch/work/IBMRS6K7248_os2i.rbf` if the
+  build finished; logs `Y:\ibmrs6k-bench-logsoard_os2i_dbg.raw`, `scratch/work/os2_com1_os2i.log` if the run did. The
   ATAPI packets in a decoded stream: `Wnq F7:A0` then the CDB as 16-bit writes to 1F0 (`Ddv 800001F0`),
   the data as reads; the session's extraction snippet is in the bringup log's method (a PACKET, its CDB,
   byte count, data words, status/error). BVM may ask for more than READ CD: watch for new 5/20 refusals
   (READ TOC, READ DISC INFO, GET CONFIGURATION, MODE SENSE pages).
-- The earlier runs' logs: os2g (`board_os2g_dbg.raw`, `os2_com1_os2g.log`) holds the READ CD refusals and
-  pagrinit's messages.
+- The earlier runs' logs: os2g holds the READ CD refusals and pagrinit's messages; os2h the hang after
+  the third READ CD. The stream's device log (`DBG_DEVLOG`) stops after 16383 entries: a run with many
+  data-port reads loses the later CDBs (raise `dv_n`'s width or exclude 1F0 reads to see them).
 - The FDC's seek time is new: re-check the firmware's diskette boot (SMS from the configuration diskette)
   and NT's ARC diskette on the board; both polled or waited on the interrupt before, but never had to wait.
 - `dd_ide` units 1-3 fail `io_ext_create` (rc 5) for the absent positions, printed as errors; harmless so far.
