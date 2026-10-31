@@ -64,6 +64,11 @@ localparam logic [2:0] P_DOUT = 3'b000, P_DIN = 3'b001, P_CMD = 3'b010, P_STAT =
 // the task file
 logic [7:0] err, ireason, sect, bcl, bch, drv;
 logic       bsy_s, drdy, drq, errb, nien;
+// an interrupt pending (a DRQ block ready, a command done): INTRQ while nIEN is clear; it stays pending through
+// nIEN and is cleared by a read of the status register or a new command, as the ATA interrupt is (OS/2's
+// dd_ide keeps nIEN set while it takes a block's data and expects the completion interrupt once it clears it)
+logic       ipend;
+assign      irq = ipend & ~nien;
 wire        dev1 = drv[4];
 wire  [7:0] status = {bsy_s, drdy, 1'b0, 1'b1, drq, 2'b00, errb};   // DSC (bit 4) always
 
@@ -155,7 +160,7 @@ always_ff @(posedge clk) begin
 		nien <= wd8[1];
 		if (wd8[2]) begin                                     // SRST: the packet signature
 			a <= A_IDLE; pkt <= 1'b0; drq <= 1'b0; bsy_s <= 1'b0; drdy <= 1'b0; errb <= 1'b0; err <= 8'h01;
-			sect <= 8'h01; ireason <= 8'h01; bcl <= 8'h14; bch <= 8'hEB; irq <= 1'b0; out_dir <= 1'b0; tptr <= 13'd0;
+			sect <= 8'h01; ireason <= 8'h01; bcl <= 8'h14; bch <= 8'hEB; ipend <= 1'b0; out_dir <= 1'b0; tptr <= 13'd0;
 		end
 	end
 	if (sel && en && we && !cs1) case (reg_a)
@@ -165,7 +170,7 @@ always_ff @(posedge clk) begin
 		3'd5: bch <= wd8;
 		3'd6: drv <= wd8;
 		3'd7: if (!dev1) begin                                // a command
-			irq <= 1'b0; errb <= 1'b0; err <= 8'h00;
+			ipend <= 1'b0; errb <= 1'b0; err <= 8'h00;
 			lat_cnt <= 32'(CLK_HZ / 1_000_000) * LATENCY_US;
 			case (wd8)
 				8'hA0: begin                                  // PACKET: the 12 bytes first
@@ -178,13 +183,13 @@ always_ff @(posedge clk) begin
 				8'h08, 8'h90: begin                           // DEVICE RESET, EXECUTE DEVICE DIAGNOSTIC
 					sect <= 8'h01; ireason <= 8'h01; bcl <= 8'h14; bch <= 8'hEB;
 					err <= 8'h01; drdy <= 1'b0; drq <= 1'b0; a <= A_IDLE; pkt <= 1'b0;
-					irq <= wd8 == 8'h90 && !nien;
+					ipend <= wd8 == 8'h90;
 				end
 				8'hEF, 8'hE0, 8'hE1, 8'hE3, 8'hE5, 8'hE7, 8'h91: begin   // SET FEATURES, power, flush: done
-					drdy <= 1'b1; irq <= !nien;
+					drdy <= 1'b1; ipend <= 1'b1;
 				end
 				default: begin                                // IDENTIFY DEVICE and the rest: aborted
-					errb <= 1'b1; err <= 8'h04; irq <= !nien;
+					errb <= 1'b1; err <= 8'h04; ipend <= 1'b1;
 					if (wd8 == 8'hEC) begin sect <= 8'h01; ireason <= 8'h01; bcl <= 8'h14; bch <= 8'hEB; end
 				end
 			endcase
@@ -192,7 +197,7 @@ always_ff @(posedge clk) begin
 		default: ;
 	endcase
 	// reading the status acknowledges the interrupt
-	if (sel && en && !we && !cs1 && reg_a == 3'd7) irq <= 1'b0;
+	if (sel && en && !we && !cs1 && reg_a == 3'd7) ipend <= 1'b0;
 
 	// ---- the packet, and the identify data
 	case (a)
@@ -201,7 +206,7 @@ always_ff @(posedge clk) begin
 			else begin bwe <= 1'b1; bwa <= {2'b00, idw[7:1]}; bwd <= {idv, acc[15:0]}; end
 			if (idw != 8'd255 || lat_ok) idw <= idw + 8'd1;
 			if (idw == 8'd255 && lat_ok) begin
-				bsy_s <= 1'b0; drq <= 1'b1; hptr <= 13'd0; hlen <= 13'd512; ireason <= 8'h02; irq <= !nien;
+				bsy_s <= 1'b0; drq <= 1'b1; hptr <= 13'd0; hlen <= 13'd512; ireason <= 8'h02; ipend <= 1'b1;
 				a <= A_HOST; out_dir <= 1'b0;
 			end
 		end
@@ -232,7 +237,7 @@ always_ff @(posedge clk) begin
 							out_dir <= 1'b1; a <= A_HOST;
 							drq <= 1'b1; hptr <= 13'd0; hlen <= lim_e;
 							bcl <= lim_e[7:0]; bch <= {3'd0, lim_e[12:8]};
-							ireason <= 8'h00; bsy_s <= 1'b0; irq <= !nien;
+							ireason <= 8'h00; bsy_s <= 1'b0; ipend <= 1'b1;
 						end
 						else begin
 							bra <= tptr[11:2];
@@ -256,7 +261,7 @@ always_ff @(posedge clk) begin
 				if (tptr[1:0] != 2'd0) begin bwe <= 1'b1; bwa <= tptr[11:2]; bwd <= acc; end
 				drq <= 1'b1; hptr <= 13'd0; hlen <= tptr;
 				bcl <= tptr[7:0]; bch <= {3'd0, tptr[12:8]};
-				ireason <= 8'h02; bsy_s <= 1'b0; irq <= !nien;
+				ireason <= 8'h02; bsy_s <= 1'b0; ipend <= 1'b1;
 				tptr <= 13'd0;
 			end
 		end
@@ -265,14 +270,14 @@ always_ff @(posedge clk) begin
 			bsy_s <= 1'b0; drdy <= 1'b1; drq <= 1'b0; pkt <= 1'b0;
 			ireason <= 8'h03;                                 // C/D and I/O: the status
 			errb <= stat_b != 8'h00; err <= stat_b != 8'h00 ? 8'h54 : 8'h00;
-			irq <= !nien; a <= A_IDLE;
+			ipend <= 1'b1; a <= A_IDLE;
 		end
 		default: ;
 	endcase
 
 	if (reset || !en) begin
 		a <= A_IDLE; pkt <= 1'b0; drq <= 1'b0; bsy_s <= 1'b0; drdy <= 1'b0; errb <= 1'b0; err <= 8'h01;
-		sect <= 8'h01; ireason <= 8'h01; bcl <= 8'h14; bch <= 8'hEB; irq <= 1'b0;
+		sect <= 8'h01; ireason <= 8'h01; bcl <= 8'h14; bch <= 8'hEB; ipend <= 1'b0;
 		out_dir <= 1'b0; tptr <= 13'd0; drv <= 8'h00; nien <= 1'b0; lat_cnt <= 32'd0;
 	end
 end

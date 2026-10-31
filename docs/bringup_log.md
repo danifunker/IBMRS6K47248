@@ -1452,3 +1452,9 @@ Next: the bench from a snapshot at the prompt (`--save-exit`), COM1 input with `
   lost. A real drive gives the 4096 bytes in one DRQ block. **ATAPI buffer 4 KB** (`IBMRS6K7248_atapi`:
   byte counts up to 4096 honoured in one block; `sim/atapi`: a two-block read is one DRQ block now; all
   pass). Build os2j.
+- **Run os2j (the 4 KB buffer):** the two-block read comes in one DRQ block and completes cleanly; the next
+  packet, READ CD of LBA 16 (the ISO volume descriptor), delivers its block, the driver clears nIEN again
+  (3F6 = 08) and waits for the completion interrupt, which never comes: the model sampled nIEN at
+  completion (`irq <= !nien`, nIEN still set from the ISR) and dropped the pending state. A drive keeps the
+  interrupt pending and asserts INTRQ when nIEN clears. **ATAPI: `ipend`**, set by a DRQ block or a
+  completion, cleared by a status read or a command, `irq = ipend & ~nien`. `sim/atapi` passes. Build os2k.
