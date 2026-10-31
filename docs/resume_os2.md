@@ -85,7 +85,13 @@ came (IRQ 13, status 58, I/O, 2048 bytes) and the driver never read the data. Th
 dd_ide's thread sends the packet, then waits for its interrupt thread's signal, and a block the target
 already held answered within microseconds. `IBMRS6K7248_atapi` now holds a command's first DRQ or status
 (and the interrupt) for 2 ms after the command or the packet's last byte, a CD-ROM's order of latency.
-Build os2i carries it; its run is the first that can reach `insmain`.
+Build os2i carried it, and hung the same way; the stream then showed the real mechanism: dd_ide asks 4096
+bytes a DRQ (1F4/1F5 = 1000) and the 2 KB buffer split BVM's two-block read into two DRQ blocks; the driver
+polls the alternate status through the second block without waiting for its interrupt, whose 0838 latch
+(set again by the completion interrupt after the ISR's clear) is then taken as the *next* packet's
+interrupt before that packet's CDB exists, and the real DRQ's wake-up is lost. **Fixed (commit after
+`8f605e9`): a 4 KB ATAPI buffer**, a 4096-byte count served in one DRQ block as a real drive does. Build
+os2j carries it; its run is the first that can reach `insmain`.
 
 What should follow: pagrinit "Boot volume is a CD", the CD mounted with its file system, `vpmisrv` (the
 base video server) and `logovid` (the logo) loaded from it, the swapper, then `personal/insmain`: the
@@ -93,8 +99,10 @@ first video accesses (the S3 864 through its VGA ports and the linear frame buff
 `docs/s3_nt_driver.md` is the reference for what the core's S3 can do).
 ## Open issues and the next step
 
-- Build os2i (READ CD + the ATAPI latency) and its run: `scratch/work/IBMRS6K7248_os2i.rbf` if the
-  build finished; logs `Y:\ibmrs6k-bench-logsoard_os2i_dbg.raw`, `scratch/work/os2_com1_os2i.log` if the run did. The
+- Build os2j (READ CD, the ATAPI latency, the 4 KB buffer) and its run: `scratch/work/IBMRS6K7248_os2j.rbf`
+  if the build finished; logs `Y:\ibmrs6k-bench-logsoard_os2j_dbg.raw`, `scratch/work/os2_com1_os2j.log`
+  if the run did. If BVM's reads go past 4096 bytes a packet, the chunking returns: raise the buffer or
+  look at how dd_ide handles the second DRQ block (it polls the alternate status). The
   ATAPI packets in a decoded stream: `Wnq F7:A0` then the CDB as 16-bit writes to 1F0 (`Ddv 800001F0`),
   the data as reads; the session's extraction snippet is in the bringup log's method (a PACKET, its CDB,
   byte count, data words, status/error). BVM may ask for more than READ CD: watch for new 5/20 refusals
