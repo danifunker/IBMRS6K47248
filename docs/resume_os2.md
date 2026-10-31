@@ -61,31 +61,39 @@ real 82077 steps for milliseconds (79 steps for an absent drive). The FDC now ta
 busy in the MSR, SENSE INTERRUPT STATUS 80 meanwhile); ST0 71 for the absent drive B. With it the boot goes
 on: "FS Server is up (multi-threaded mode)", then `set_boot`.
 
-**Now: `set_boot` crashes on the firmware's boot path.** `set_boot` (no argument) reads the NVRAM's
-`fw-boot-device` from the name space: ours is the 7248 firmware's SCSI CD path
-`/pci@80000000/pci1000,1@10,0/cdrom@3,0`; `GetNSBootDevice` (set_boot+0xD58) counts the path's components,
-looks for a ':' after the second one, finds none, and does `strlen(NULL)` + `lbz -1(0)`: KERN_INVALID_ADDRESS
-at 0x02001130 ("Master Server exception handler (task=.../os2/set_boot)"). The device names it builds are
-`devices/hd0`, `devices/hd2` ("Defaulting to IDE CDROM at HD2": the real 850 has its CD on the secondary
-channel; ours is the primary master, hd0 in `logdev.stz`: `isa0/planar_ide_0:-8` unit 0, whose dev_subclass
-dd_ide changes to `cdrom`). `set_boot` takes the device as a plain argument instead ("Boot device set to %s
-as specified", then `AddBootDevice`: node `boot_device`, attribute `name`), so the run in progress at
-hand-off types `devices/hd0` at set_boot's `[PN_FILE_ARGV=""]` prompt (dbgauto rule
-`'set_boot@PN_FILE_ARGV=>devices/hd0'`; pagrinit `-d1` for its messages). Longer term the firmware's
-`fw-boot-device` (what the 850's own firmware writes for an IDE CD: probably with a ':' partition suffix)
-or a modelled NVRAM string would make the untouched boot.cfg work.
+**Worked around: `set_boot` crashes on the firmware's boot path.** Without an argument it parses the NVRAM's
+`fw-boot-device` (ours: the 7248 firmware's SCSI CD path `/pci@80000000/pci1000,1@10,0/cdrom@3,0`) and does
+`strlen(NULL)` when the path has no ':' (`GetNSBootDevice`, SET_BOOT+0xD58, KERN_INVALID_ADDRESS at
+0x02001130). Its device names are `devices/hd0`-`hd3` (the real 850's CD is `hd2`, the secondary master;
+ours is the primary master, `hd0`). Typing `devices/hd0` at set_boot's `[PN_FILE_ARGV=""]` prompt makes it
+take that as the boot device ("Boot device set to %s as specified"); dbgauto's rule
+`'set_boot@PN_FILE_ARGV=>devices/hd0'` does it (and `'pagrinit@PN_FILE_ARGV="-s60"=>-d1'` for pagrinit's
+messages). A proper fix would be the IDE path the 850's firmware writes (unknown; it needs a ':' after the
+second component) or set_boot's input in a modelled NVRAM string.
 
-What should follow set_boot: `bvm`, `ade`, `initld`, `initldev`, `utilfs`, `pagrinit` (WAIT: mounts the system
-volume through BVM, which reads the CD through dd_ide: the first PACKET commands to the ATAPI model on the
-board; `sim/atapi` covers INQUIRY, READ, short byte counts), then `personal/insmain`, the install program,
-which should finally touch the S3 (nothing has yet: the console driver's video init is lazy).
+**Fixed (commit `eb671bb`): BVM could not read the disc.** With the boot device set, pagrinit found the volume
+and mounted `volumes/hd0.0` but as a HARD_DISK, could not load `os2/vpmisrv` or `os2/logovid` or open
+`os2/swapper`, and died ("*** FATAL ERROR ***"). The stream's ATAPI traffic: BVM recognises the disc with
+MODE SENSE(10) 3F, READ CAPACITY and then **READ CD (BE)** (LBA 0, 1 block, user data only, byte count
+4096), which the CD target refused (sense 5/20, invalid opcode) forty times; it then fell back to the
+CD's MBR (the PReP boot partition, type 41) as a hard disk. The target now serves READ CD's user-data
+form like READ(10) (the raw forms: 5/24). `sim/atapi` covers it. The run after that build (os2h) is the
+first that can reach `insmain`.
+
+What should follow: pagrinit "Boot volume is a CD", the CD mounted with its file system, `vpmisrv` (the
+base video server) and `logovid` (the logo) loaded from it, the swapper, then `personal/insmain`: the
+first video accesses (the S3 864 through its VGA ports and the linear frame buffer; NT's s3.dll path in
+`docs/s3_nt_driver.md` is the reference for what the core's S3 can do).
 ## Open issues and the next step
 
-- The run with `devices/hd0` (log `Y:\ibmrs6k-bench-logsoard_os2g_dbg.raw`, transcript
-  `scratch/work/os2_com1_os2g.log`): read its end; if BVM/pagrinit mount the CD, expect the first ATAPI
-  PACKET commands (`Wnq F7:A0` in the decoded stream) and then video. If `set_boot` still fails, its
-  messages are in `OS2/SET_BOOT` (strings base 0x02000138: `kdis.py`'s output with the anchor
-  `fw-boot-device` at +0x1d8).
+- Build os2h (READ CD) and its run: `scratch/work/IBMRS6K7248_os2h.rbf` if the build finished;
+  logs `Y:\ibmrs6k-bench-logsoard_os2h_dbg.raw`, `scratch/work/os2_com1_os2h.log` if the run did. The
+  ATAPI packets in a decoded stream: `Wnq F7:A0` then the CDB as 16-bit writes to 1F0 (`Ddv 800001F0`),
+  the data as reads; the session's extraction snippet is in the bringup log's method (a PACKET, its CDB,
+  byte count, data words, status/error). BVM may ask for more than READ CD: watch for new 5/20 refusals
+  (READ TOC, READ DISC INFO, GET CONFIGURATION, MODE SENSE pages).
+- The earlier runs' logs: os2g (`board_os2g_dbg.raw`, `os2_com1_os2g.log`) holds the READ CD refusals and
+  pagrinit's messages.
 - The FDC's seek time is new: re-check the firmware's diskette boot (SMS from the configuration diskette)
   and NT's ARC diskette on the board; both polled or waited on the interrupt before, but never had to wait.
 - `dd_ide` units 1-3 fail `io_ext_create` (rc 5) for the absent positions, printed as errors; harmless so far.
