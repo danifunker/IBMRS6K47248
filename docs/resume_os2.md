@@ -90,6 +90,62 @@ vpmisrv (mode 1 set on the S3 864), logovid (the logo drawn through the VGA wind
 | `197bda1` | **ATAPI: the interrupt stays pending through nIEN** (dd_ide waits for the completion interrupt after re-enabling). |
 | `fb3ea29` | The device log off (the build did not fit with it). |
 
+## insmain's failure, read from the binaries (2026-10-31, afternoon)
+
+`PERSONAL/INSMAIN` (extracted from the ISO with `isoinfo -x`; stripped, GOT-relative code: the session's
+`scratch/work/idis.py` disassembles it with the strings resolved, `xref6.py` finds a string's users,
+`callers.py` a function's callers, `grepdis.py` an instruction pattern) and `PERSONAL/PAGRINIT` (the one
+the CD boots; `OS2/PAGRINIT` differs) say:
+
+- **GETPERS** (`Ins_GetBootDevice`, 020093D0): `NS_Resolve("file/system", flags 4)` → `NS_ReadNode` →
+  `NS_GetAttr(node, L"name")` → on success "Setting boot volume to volumes/<name>" (gated by the same
+  flag that printed the banner, so it would have shown); on failure it prints "GETPERS: Failed to get
+  attribute" into a buffer that is never flushed and calls `Ins_Exit(15)` (02009000: `port_create`, then
+  a message to a port it does not hold → the `MACH_SEND_INVALID_DEST` line). So **the `name` attribute
+  was not found on `file/system`**. `NS_GetAttr` is libns's (ns_attrs_get_attr: name length halfword at
+  +4 of the 20-byte record must equal, then memcmp): no IPC, a local search of the ReadNode buffer
+  (count at +0xA, records at +0xC).
+- The earlier `RC = 23 ... filertns.c ... NS_GetAttr` is `Ins_GetInstallType` opening a response file on
+  the boot volume *before* GETPERS has set it (the buffer at 020BABD8 is still empty): `format_type` is
+  looked up on whatever "" resolves to. Benign.
+- **Who puts `name` on `file/system`: pagrinit** (020047C8, after `FS_Mount`): `name_FindFromRoot
+  ("volumes/hd0.0", flags 0x24)`, `name_GetNodeInfo` (NS_ReadNode: count, attribute records), then
+  `name_AddDirNode("file")` and `name_AddLeafNode("system", count, records, FS port)` (02009494 /
+  020092F0): the leaf is a type-2 node carrying **the volume node's 16 attributes copied as they are**.
+  BVM's `RNSInsertEntry` (02002DA8) gives every volume node these 16: device_path, device_flags,
+  device_type, reference_record, start_record, volmgr_flags, volmgr_label, volume_type, volume_size,
+  volume_flags, format_type, format_id, format_label, format_serial, format_flags, **name** (`SetName`:
+  "hd0" + "." + partition → "hd0.0"); names stored with length strlen+1, as insmain asks for them.
+  Both adds tolerate rc 24008001/8002/8004/8006/8007 silently ("name_AddLeafNode() failed" prints only
+  for other codes). pagrinit's hard-disk-boot path (02004D28, "file/system" → `name`) and insmain2's
+  `GetSourceVolume` rely on the same attribute, so this is the design, not an accident.
+- **The FS server does not create `file/system`**: `LFS_Mount` → `fs_Mount_Mgr_Add` → `CreateLeafNode`
+  makes `filesets/<fileset>` (the "filesets/bootstrap_fs" of the log), with zero attributes.
+- `NS_Resolve` flag 4 means *no forwarding* (`NS_ResolveForward` returns at once when bit 4 is set), so
+  insmain gets the `file/system` node itself, as pagrinit does. The name server is `RNS.dyn` on
+  `LIBCNA.SO` (SOM classes; `nsd_ReadNode` → `get_attrs`, which returns the stored records when asked
+  for 0xFFFF of them, as both programs do).
+- Nobody else names `file`/`file/system` (all binaries on the CD scanned, ASCII and UTF-16), so pagrinit's
+  node is the one insmain reads, and statically it must carry `name`. **Statically everything is
+  right; at run time the attribute is not there.** Suspects: pagrinit's leaf add failing with a
+  tolerated code (then `file/system` would not exist — but the loader did load
+  `file/system/os2/vpmisrv` through it), or the 16-attribute node (a ~1.2 KB IPC reply, out-of-line
+  memory, where the one-attribute `boot_device` node that pagrinit does read correctly is inline) being
+  read back wrong: a VM/MMU/cache problem of the core rather than OS/2's.
+- Also learned: the CD boots `/BOOT.CFG` (root), whose pagrinit line is `-s60 -mdummy -odummy -rdummy
+  -ipersonal/insmain -kpersonal/insmain2`; `/BOOT/BOOT.CFG` is the installed system's. dbgauto's
+  `pagrinit@PN_FILE_ARGV="-s60"=>-d1` *replaces* `-s60` by `-d1` (the pager size falls back to its
+  default, 60: harmless). `-d1` only gates prints; the step it seems to skip (`RunChkDsk`) is gated by a
+  boot-volume field, not by the debug level.
+- **The probe (build os2l):** nine (PC, instruction-word) watch points in the debug stream, each hit a
+  "~c" token: insmain's lookup (`G` the NS_GetAttr call, `a` per attribute compared, `A` found, `x` not
+  found, `g` GETPERS's check) and pagrinit's AddLeafNode return code (`p` reached, `q` not 24008002, `r`
+  none of the tolerated codes, `s` not 0). `G a×16 x g` means the attributes are there but none is
+  `name` (data); `G a x g` means one attribute (the `file` directory's: a partial resolve); `G x g`
+  means an empty list; `p` alone means the leaf already existed; `p q r` and no `s` means the add
+  succeeded. `scratch/work/run_os2l.sh TAG` stages, starts dbgauto, presses the OSD keys and fetches
+  the stream (`Y:\ibmrs6k-bench-logs\board_TAG_dbg.raw`) and prints the token sequence.
+
 ## Open issues and the next step
 
 1. insmain's failure above: the boot_device node / GETPERS. Start with `PERSONAL/INSMAIN`'s strings and

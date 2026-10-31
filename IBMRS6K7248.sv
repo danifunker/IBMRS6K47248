@@ -728,6 +728,42 @@ reg         dec_pend = 0;
 wire        dec_ev = DBG_COM1TX & isi_armed & trace_valid & trace_last & (trace_pc == 32'h0000_0900);
 always @(posedge clk_cpu) if (dec_ev) dec_n <= dec_n + 16'd1;
 wire        dec_hit = dec_ev & (dec_n[5:0] == 6'd63);
+// (the OS/2 build) nine (PC, instruction) watch points in OS/2's user programs, each hit queued as "~c" (c a
+// letter): insmain's NS_GetAttr (G the call, a each attribute compared, A found, x not found, g GETPERS's
+// check of the result) and pagrinit's AddLeafNode return code (p reached, q not "exists", r not tolerated,
+// s not 0); the instruction word tells the program's copy of the code from another's at the same address
+// (every server is linked at 02000000); a 64-entry FIFO
+reg  [3:0]  wq [64];
+reg  [5:0]  wq_w = 0, wq_r = 0, wq_wq = 0;
+reg  [3:0]  wq_e;
+logic [3:0] w_hit;
+logic       w_any;
+logic [7:0] w_ch;
+always_comb begin
+	w_any = 1'b1;
+	case ({trace_pc, trace_insn})
+		{32'h0205_4058, 32'h4800_1471}: w_hit = 4'd0;   // insmain NS_GetAttr: bl ns_attrs_get_attr
+		{32'h0205_5500, 32'hA19F_0004}: w_hit = 4'd1;   // ... the loop: lhz r12, 4(r31) (an attribute's name length)
+		{32'h0205_5524, 32'h63E3_0000}: w_hit = 4'd2;   // ... found
+		{32'h0205_5538, 32'h3860_0000}: w_hit = 4'd3;   // ... not found
+		{32'h0200_96E0, 32'h2C03_0000}: w_hit = 4'd4;   // insmain GETPERS: cmpwi r3, 0 after NS_GetAttr(file/system, name)
+		{32'h0200_93F4, 32'h7C0B_6000}: w_hit = 4'd5;   // pagrinit AddLeafNode: rc compared with 24008002
+		{32'h0200_93FC, 32'h3D80_2400}: w_hit = 4'd6;   // ... rc was not 24008002
+		{32'h0200_9448, 32'h817E_FFE4}: w_hit = 4'd7;   // ... rc none of the tolerated codes
+		{32'h0200_9454, 32'h819F_0068}: w_hit = 4'd8;   // ... rc not 0 (the error print follows)
+		default: begin w_hit = 4'd0; w_any = 1'b0; end
+	endcase
+	case (wq_e)
+		4'd0: w_ch = 8'h47; 4'd1: w_ch = 8'h61; 4'd2: w_ch = 8'h41; 4'd3: w_ch = 8'h78; 4'd4: w_ch = 8'h67;
+		4'd5: w_ch = 8'h70; 4'd6: w_ch = 8'h71; 4'd7: w_ch = 8'h72; default: w_ch = 8'h73;
+	endcase
+end
+wire        wq_ev = DBG_COM1TX & isi_armed & trace_valid & trace_last & w_any;
+always @(posedge clk_cpu) begin
+	if (wq_ev && wq_w + 6'd1 != wq_r) begin wq[wq_w] <= w_hit; wq_w <= wq_w + 6'd1; end
+	wq_e  <= wq[wq_r];
+	wq_wq <= wq_w;
+end
 // (the OS/2 build) the interrupts the CPU takes: each interrupt acknowledge (a read of BFFFFxxx) as "I=vv "
 // (vv the 8259s' vector, on every lane), and the writes of the 8259s' masks and the ELCR (21, A1, 4D0, 4D1)
 // as "Paaa=dd "; a 64-entry FIFO (a storm fills it; the first 64 win)
@@ -977,6 +1013,11 @@ always @(posedge clk_cpu) begin
 		stage_n  <= 4'd7;
 		stage    <= {8'h54, 8'h3D, hex(dec_n[15:12]), hex(dec_n[11:8]), hex(dec_n[7:4]), hex(dec_n[3:0]), 8'h20, 56'h0};
 		dec_pend <= 1'b0;
+	end
+	else if (wq_r != wq_wq) begin           // (wq_e: read a clock after wq_r moved, long before this)
+		stage_n <= 4'd2;
+		stage   <= {8'h7E, w_ch, 96'h0};
+		wq_r    <= wq_r + 6'd1;
 	end
 	else if (iq_r != iq_wq) begin           // (iq_e: read a clock after iq_r moved, long before this)
 		if (iq_e[20]) begin
