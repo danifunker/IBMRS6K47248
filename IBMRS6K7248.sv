@@ -461,6 +461,7 @@ IBMRS6K7248_system #(.CPU_HZ(CPU_MHZ * 1_000_000), .TB_HZ(TB_HZ)) system
 	.sd_ack(sd_ack[2:0]), .sd_buff_addr, .sd_buff_dout, .sd_buff_din(scsi_buff_din), .sd_buff_wr,
 	.nv_m_addr, .nv_m_we, .nv_m_wdata, .nv_m_q, .nv_m_ok, .nv_wr_seq,
 	.cd_change(|cd_change_s), .scsi_activity(scsi_act),
+	.hd_st_irq, .hd_st_blk, .hd_st_disk, .hd_st_host,
 
 	.io_ev, .io_we, .io_stub(), .io_ncr, .io_addr, .io_be, .io_wdata, .io_rdata,
 	.trace_valid, .trace_last, .trace_pc, .trace_insn, .trace_msr, .trace_lr, .trace_ctr,
@@ -646,6 +647,33 @@ reg  [31:0] usr_d;
 reg         c1_q = 1'b1;
 reg  [31:0] c1_len = 32'd0, c1_minl = 32'hFFFFFFFF, c1_minh = 32'hFFFFFFFF;
 reg         c1_evl = 1'b0, c1_evh = 1'b0, c1_pendl = 1'b0, c1_pendh = 1'b0;
+// (the OS/2 build) the IDE disk's second, when it moved anything: "Hiiiibbbb " its interrupts and the host's
+// blocks, "Mddddhhhh " the milliseconds on the disk side (the SCSI target and the Main's image access) and on
+// the host's (its interrupt latency and PIO): where a transfer's time goes (2026-10-31: the install's writes)
+wire        hd_st_irq, hd_st_blk, hd_st_disk, hd_st_host;
+reg  [16:0] hs_cnt = 17'd0;
+reg  [9:0]  hs_ms = 10'd0;
+reg  [15:0] hs_irq = 16'd0, hs_blk = 16'd0;
+reg  [9:0]  hs_disk = 10'd0, hs_host = 10'd0;
+// (the counters stand still from the second's end until the stage has them, a few microseconds: no copies)
+wire [31:0] hs_a = {hs_irq, hs_blk}, hs_b = {6'd0, hs_disk, 6'd0, hs_host};
+reg         hs_pend = 1'b0, hs_half = 1'b0, hs_take = 1'b0;
+always @(posedge clk_cpu) begin
+	hs_cnt <= hs_cnt + 17'd1;
+	if (hd_st_irq && !hs_pend) hs_irq <= hs_irq + 16'd1;
+	if (hd_st_blk && !hs_pend) hs_blk <= hs_blk + 16'd1;
+	if (hs_cnt == 17'(CPU_MHZ * 1000 - 1)) begin            // a millisecond: the sides sampled
+		hs_cnt <= 17'd0;
+		hs_ms  <= hs_ms + 10'd1;
+		if (hd_st_disk && !hs_pend) hs_disk <= hs_disk + 10'd1;
+		if (hd_st_host && !hs_pend) hs_host <= hs_host + 10'd1;
+		if (hs_ms == 10'd999) begin
+			hs_ms <= 10'd0;
+			if (hs_irq != 16'd0 || hs_blk != 16'd0 || hs_disk != 10'd0) hs_pend <= 1'b1;
+		end
+	end
+	if (hs_take) begin hs_pend <= 1'b0; hs_irq <= 16'd0; hs_blk <= 16'd0; hs_disk <= 10'd0; hs_host <= 10'd0; end
+end
 always @(posedge clk_cpu) begin
 	c1_q   <= com1_txd;
 	c1_evl <= 1'b0;
@@ -655,7 +683,7 @@ always @(posedge clk_cpu) begin
 		if (!c1_q && c1_len < c1_minl) begin c1_minl <= c1_len; c1_evl <= 1'b1; end
 		if ( c1_q && c1_len < c1_minh) begin c1_minh <= c1_len; c1_evh <= 1'b1; end
 	end
-	else if (~&c1_len) c1_len <= c1_len + 32'd1;
+	else if (1'b0 && ~&c1_len) c1_len <= c1_len + 32'd1;   // (off with it: the counter alone was a dozen LABs, 2026-10-31)
 end
 // (the SCSI and keyboard build) from the hand-off on, through a 64-entry FIFO so a burst is kept,
 // "Wbaa=dddddddd " / "Rbaa=dddddddd " (b the byte lanes, aa the offset, the data as on the bus):
@@ -938,6 +966,7 @@ reg          k92_pend = 0;
 reg  [7:0]   k92_d;
 wire         k92_ev = io_ev & io_we & (io_addr[31:2] == 30'h2000_0024) & io_be[1];   // port 92 (the byte in bits 15-8)
 always @(posedge clk_cpu) begin
+	hs_take <= 1'b0;
 	if (post_ev) begin post_code <= io_wdata[31:24]; post_pc <= pc_prev[31:12] == 20'h00007 ? 32'd0 : pc_prev; end
 	if (k92_ev) k92_d <= io_wdata[15:8];
 	k92_pend   <= k92_pend | k92_ev;
@@ -1034,6 +1063,8 @@ always @(posedge clk_cpu) begin
 		end
 		iq_r    <= iq_r + 6'd1;
 	end
+	else if (hs_half) begin stage_n <= 4'd10; stage <= {8'h4D, hex8(hs_b), 8'h20, 32'h0}; hs_half <= 1'b0; hs_take <= 1'b1; end
+	else if (hs_pend && !hs_take) begin stage_n <= 4'd10; stage <= {8'h48, hex8(hs_a), 8'h20, 32'h0}; hs_half <= 1'b1; end
 	else if (c1_pendl) begin stage_n <= 4'd11; stage <= {8'h4C, 8'h3D, hex8(c1_minl), 8'h20, 24'h0}; c1_pendl <= 1'b0; end
 	else if (c1_pendh) begin stage_n <= 4'd11; stage <= {8'h48, 8'h3D, hex8(c1_minh), 8'h20, 24'h0}; c1_pendh <= 1'b0; end
 	else if (dv_half) begin

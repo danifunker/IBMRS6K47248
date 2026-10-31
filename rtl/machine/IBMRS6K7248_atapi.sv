@@ -188,8 +188,11 @@ always_ff @(posedge clk) begin
 				8'hEF, 8'hE0, 8'hE1, 8'hE3, 8'hE5, 8'hE7, 8'h91: begin   // SET FEATURES, power, flush: done
 					drdy <= 1'b1; ipend <= 1'b1;
 				end
-				default: begin                                // IDENTIFY DEVICE and the rest: aborted
-					errb <= 1'b1; err <= 8'h04; ipend <= 1'b1;
+				default: begin                                // IDENTIFY DEVICE and the rest: aborted, the device ready
+					// (DRDY with the abort, as a drive that has come out of reset: dd_ide probes each unit with a NOP
+					// and gives the channel up on 11 instead of 51 - the installed system's boot never used the CD
+					// before, so the loader had not set it, 2026-10-31)
+					errb <= 1'b1; err <= 8'h04; ipend <= 1'b1; drdy <= 1'b1;
 					if (wd8 == 8'hEC) begin sect <= 8'h01; ireason <= 8'h01; bcl <= 8'h14; bch <= 8'hEB; end
 				end
 			endcase

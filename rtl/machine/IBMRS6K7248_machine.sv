@@ -207,6 +207,10 @@ module IBMRS6K7248_machine
 	// the hard disk image (the OSD's disk 0, the 850's IDE disk): present, its 512-byte blocks
 	input  logic         hd_present,
 	input  logic [31:0]  hd_blocks,
+	output logic         hd_st_irq,                 // the disk's statistics (see IBMRS6K7248_idehd)
+	output logic         hd_st_blk,
+	output logic         hd_st_disk,
+	output logic         hd_st_host,
 	output logic         fd_req,
 	output logic         fd_we,
 	output logic [12:0]  fd_lba,
@@ -723,11 +727,17 @@ IBMRS6K7248_idehd #(.CLK_HZ(CPU_HZ)) idehd (
 	.clk, .reset, .en(atapi_on & hd_present),
 	.sel(d_go & atapi_hit), .cs1(bport == 16'h03F6), .we(d_we), .reg_a(bport[2:0]), .be(p_be), .wd8(bwd), .wdata(p_wd),
 	.rdata(hd_q), .irq(hd_irq), .selected(hd_selected), .blocks(hd_blocks),
+	.st_irq(hd_st_irq), .st_blk(hd_st_blk), .st_disk(hd_st_disk), .st_host(hd_st_host),
 	.want(hd_want), .grant(hd_own), .i_sel(hd_sel), .i_sel_id(hd_sel_id),
 	.sel_done(hd_own & sb_sel_done), .sel_fail(hd_own & sb_sel_fail), .bsy(hd_own & sb_bsy), .req(hd_own & sb_req),
 	.phase(sb_phase), .tdata(sb_tdata), .ack(hd_ack), .idata(hd_idata)
 );
-assign sb_sel     = at_own ? at_sel    : hd_own ? hd_sel    : n_sel;
+// the disk image is the IDE disk's under the 850 personality: the 53C810 finds nobody at ID 0 (the
+// firmware booted the PReP partition OS/2's installer wrote there instead of the CD, 2026-10-31)
+wire         hd_hide = atapi_on && hd_present && n_sel_id == 3'd0;
+logic        hd_hide_fail;
+always_ff @(posedge clk) hd_hide_fail <= !i_own && n_sel && hd_hide;
+assign sb_sel     = at_own ? at_sel    : hd_own ? hd_sel    : (n_sel & ~hd_hide);
 assign sb_sel_id  = at_own ? at_sel_id : hd_own ? hd_sel_id : n_sel_id;
 assign sb_sel_atn = i_own  ? 1'b0      : n_sel_atn;
 assign sb_ack     = at_own ? at_ack    : hd_own ? hd_ack    : n_ack;
@@ -735,7 +745,7 @@ assign sb_idata   = at_own ? at_idata  : hd_own ? hd_idata  : n_idata;
 assign sb_ackhold = i_own  ? 1'b0      : n_ackhold;
 assign sb_atn     = i_own  ? 1'b0      : n_atn;
 assign n_sel_done = !i_own & sb_sel_done;
-assign n_sel_fail = !i_own & sb_sel_fail;
+assign n_sel_fail = !i_own & (sb_sel_fail | hd_hide_fail);
 assign n_bsy      = !i_own & sb_bsy;
 assign n_req      = !i_own & sb_req;
 // 0838, IRQ 13's request-active register (the Carolina's IDE share IRQ 13 with scatter/gather and power
@@ -754,6 +764,8 @@ end
 `else
 assign atapi_hit = 1'b0;  assign atapi_q = '0;  assign atapi_irq = 1'b0;
 wire [31:0]  hd_q = '0;
+wire         hd_selected = 1'b0;
+assign {hd_st_irq, hd_st_blk, hd_st_disk, hd_st_host} = 4'b0000;
 wire  [1:0]  r838 = 2'b00;
 wire         r838_hit = 1'b0;
 assign sb_sel = n_sel;  assign sb_sel_id = n_sel_id;  assign sb_sel_atn = n_sel_atn;  assign sb_ack = n_ack;
@@ -1005,7 +1017,7 @@ IBMRS6K7248_firecoral firecoral (
 // the answer, the cycle after the access
 logic       q_sio, q_com2, q_dev14, q_fdc;
 logic       q_pic, q_pit, q_kbc, q_rtc, q_p92, q_err, q_aud, q_audc, q_ee, q_ide, q_dma, q_sb, q_fm, q_mpu, q_joy;
-logic       q_iomap, q_atapi, q_838, q_atdp;
+logic       q_iomap, q_atapi, q_838, q_atdp, q_atcmd;
 logic       q_com1, q_planar, q_pd, q_cf8, q_cfc, q_dev0, q_dev11, q_fcio, q_pcicf, q_iack, q_dev16, q_ncr, q_dev12, q_pcn;
 logic [1:0] q_lane;
 always_ff @(posedge clk) if (d_go) begin
@@ -1032,6 +1044,8 @@ always_ff @(posedge clk) if (d_go) begin
 	q_iomap  <= iomap_hit;
 	q_atapi  <= atapi_hit;
 	q_atdp   <= atapi_hit && bport[2:0] == 3'd0 && bport != 16'h03F6;   // (its data port: not logged)
+	q_atcmd  <= atapi_hit && ((bport == 16'h01F7 && d_we) ||            // a command, and the CD-ROM's registers (the disk's saturated the stream, 2026-10-31)
+	                          (!hd_selected && !(bport[2:0] == 3'd0 && bport != 16'h03F6)));
 	q_838    <= r838_hit;
 	q_pd    <= pd_hit;
 	q_cf8   <= cf8_hit;
@@ -1101,7 +1115,7 @@ always_ff @(posedge clk) begin
 		io_we    <= d_we;
 		io_stub  <= ~(q_s3 | q_fdc | q_com1 | q_com2 | q_sio | q_planar | q_iomap | q_atapi | q_838 | q_pd | q_fcio | q_cf8 | q_dev0 | q_dev11 | q_dev14 | q_dev16 | q_ncr | q_dev12 | q_pcn |
 		              q_pic | q_pit | q_kbc | q_rtc | q_ee | q_ide | q_p92 | q_err | q_aud | q_audc | q_dma | q_sb | q_fm | q_mpu | q_joy | q_iack);
-		io_ncr   <= q_ncr | (q_atapi & ~q_atdp) | q_838;   // (and the 850's IDE drive's registers, not its data port, and 0838: the top's debug log takes them)
+		io_ncr   <= q_ncr | q_atcmd;   // (and the 850's IDE commands: the top's debug log takes them)
 		io_addr  <= ia;                              // (an ISA port after the I/O map, 0850: its contiguous form)
 		io_be    <= p_be;
 		io_wdata <= p_wd;

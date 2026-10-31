@@ -92,7 +92,7 @@ and `rc.boot` give the order in which the core's gaps will be hit:
 | 53C810 under AIX | medium | interrupts (IRQ15 level), DMA to arbitrary kernel buffers, the message and status phases the driver uses; the firmware's boot path already covers reads |
 | 16550 under AIX | small | FIFO control, modem status, interrupts; already real for the firmware |
 | Floppy | done | one drive, the OSD's image |
-| IDE hard disk (the 850 personality) | done (2026-10-31, `IBMRS6K7248_idehd`) | the primary channel's slave beside the ATAPI CD-ROM, the OSD's disk 0 image through the SCSI target's disk; PIO only (READ/WRITE SECTORS and MULTIPLE, CHS 16x63 and LBA, IDENTIFY, READ VERIFY); no DMA, no SMART; OS/2's dd_ide is its first user, untested on a board yet |
+| IDE hard disk (the 850 personality) | done (2026-10-31, `IBMRS6K7248_idehd`) | the primary channel's slave beside the ATAPI CD-ROM, the OSD's disk 0 image through the SCSI target's disk; PIO only (READ/WRITE SECTORS and MULTIPLE, CHS 16x63 and LBA, IDENTIFY, READ VERIFY); the disk side in 32-sector chunks (one SCSI command, one Main round trip a chunk), the host per sector; no DMA, no SMART; OS/2's installer formats and copies through it (2026-10-31), slowly: dd_ide takes an interrupt a sector (no SET MULTIPLE), and the Main's round trip is serialised with the host's blocks (double-buffering is the next step if the os2p counters say the disk side dominates) |
 | S3 for AIX (S15 driver) | large | the accelerator and the driver's register expectations; see `s3_design.md` |
 | PCnet Ethernet | done | works under AIX on .92 with the Main branch `ibmrs6k`; known issue: AIX's pings get duplicate replies |
 

@@ -1497,3 +1497,10 @@ Next: the bench from a snapshot at the prompt (`--save-exit`), COM1 input with `
   Installation Program" (`docs/images/os2_warp_ppc_install_20261031.png`): insmain's media preparation
   reads the IDE boot loader record through utilfs (`fd_sys.c`), `GetSystemPartitionData` returns, the
   panel is drawn. Slack -2.63 ns; CD audio, the IACK FIFO and the watch points off to fit.
+- **Run os2o (the chunked disk): the installation runs.** Easy Installation, a 340 MB FAT partition:
+  the format (an hour) and the file copy ("File 1178 of 2045" at 15:23, ~8 files a minute). The stream,
+  saturated by the IDE register tokens, still shows dd_ide's protocol: READ/WRITE SECTORS with an
+  interrupt and nine register accesses a sector, never SET MULTIPLE; the Main's round trip once a
+  32-sector chunk. The board's ARM at 0 % idle (an sftp-server reading /sys since the 27th, the kvm's)
+  and `/media/fat` mounted sync (8 ms a 16 KB write). Build os2p: the IDE log reduced to commands, and
+  per-second counters (`H`/`M` tokens) splitting a transfer's time between the disk side and the host's.

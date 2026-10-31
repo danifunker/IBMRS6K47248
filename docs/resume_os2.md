@@ -188,6 +188,73 @@ installer yet (the 8042 works for the firmware and NT). The next steps are the i
 through its panels (partitioning through utilfs's fdisk/format on the IDE disk, then the file copy
 from the CD), with the COM1 transcript watching for the next complaint.
 
+## The installation runs (2026-10-31, afternoon): the format, the file copy, and where the time goes
+
+Build os2o (commit `aba4cdd`: the disk side in chunks of 32 sectors, one READ/WRITE(10) a chunk, the
+host still seeing ATA's per-sector blocks) took the installer through Easy Installation (a 340 MB FAT
+primary partition, formatted) and into the file copy: "File 1178 of 2045" at 15:23, 1260 at 15:33
+(`OS2/DLL/...`), so ~8 files a minute and the copy about two hours in all. The format of 340 MB had
+taken about an hour. The user's verdict: "disk writes are still horrendously slow".
+
+What the debug stream says (`/tmp/os2_dbg.log` on the board; the `W/R` tokens parsed by the scripts in
+the session's scratchpad: `tok2.sh`, `tok3.sh`): the stream was saturated (every IDE register access
+was a 14-byte token at 115200 baud, 820 a second at most, the 64-entry FIFO dropping the rest), so
+counts are samples, but the per-sector protocol of OS/2's dd_ide is plain in the complete bursts right
+after a command: READ/WRITE SECTORS only (no SET MULTIPLE ever; A0 = 160-sector writes, 256-sector
+reads), and for each sector an interrupt, then `R1F7 W3F6=0A R3F6 R1F7 R3F6 R3F6 W3F6=08` (status,
+nIEN on, the data, alt status, status, nIEN off) and the 0838 latch read and cleared. An apparent
+interrupt storm (six 0838 acknowledges a status read) is the FIFO's sampling of those bursts, not the
+core (the latch is edge-set from `ipend`, which only a 1F7 read or a command clears).
+
+So a sector costs the OS's interrupt path (the Mach interrupt, the driver thread's wake-up, 256 PIO
+reads) plus, per 32-sector chunk, the Main's round trip; the format's rate (680K sectors in ~55 min if
+it writes them all) puts the sum near 5 ms a sector, and the stream cannot say how it splits. Two
+things found on the board meanwhile: the ARM is at 0 % idle (Main 30 %, an `sftp-server` 25 % that has
+read `/sys` continuously since 2026-10-27 - the kvm tooling's USB/IP watch, it seems - and the stream
+reader 11 %; load average 4.4 on two cores), which stretches every Main round trip; and `/media/fat` is
+mounted `sync,dirsync`, a 16 KB write costing 8.4 ms median (0.26 ms a sector: not the problem).
+
+Build os2p (uncommitted while it compiles) measures instead of guessing: the machine logs only the IDE
+commands (1F7 writes) to the stream, and the top emits, each second the disk moved anything,
+`Hiiiibbbb ` (interrupts raised, host blocks done) and `Mddddhhhh ` (milliseconds on the disk side -
+the SCSI target and the Main - and on the host's: its interrupt latency and PIO). If the disk side
+dominates, double-buffer `IBMRS6K7248_idehd` (fetch the next chunk while the host drains this one,
+write the last while the host fills the next: the "write cache" the user asked about); if the host's
+does, the per-sector interrupt is the driver's and only a DMA path (the Carolina's scatter/gather, which
+shares IRQ 13 with the IDE: unknown registers) would change it.
+
+Boot time (the user's "35 minutes"): the run's 5-minute settle in `run_os2l.sh` and dbgauto's 2 s quiet
+time (now 0.8 s) are the PC side; the OS's own boot from CD is ~12 minutes of the rest.
+
+## Booting the installed system (2026-10-31, evening)
+
+"Installation Complete, remove the CD-ROM and restart the PowerPC" came at 16:06 (the copy's second
+half ran three times faster once the stream reader on the board was stopped: the ARM's contention
+again). The restart, with the CD still mounted (the firmware boots the loader from it) and dbgauto's
+disk rules (`RULES` in `run_os2l.sh`; mind its sed delimiter, now `%`), found three things:
+
+1. **The firmware booted the disk's PReP partition.** The installer wrote a type-41 partition at
+   sector 63 (the "IDE boot loader record") and the firmware, which sees the same image as SCSI disk 0,
+   loaded it instead of the CD and spun at 6F50 with nothing on COM1. Workaround on the image: its type
+   byte (offset 450) set to 40 so the firmware skips it (put 41 back if OS/2's own boot path is ever
+   wanted). The core's fix (`IBMRS6K7248_machine`, build os2r): under the 850 personality with a disk
+   image mounted, the 53C810 finds nobody at ID 0 (its selection is dropped and answered with a
+   selection failure); the IDE disk still reaches the image as its own initiator.
+2. **The loader takes `ide_hd1` and `FAT_HARDDISK`** at its device and file-system prompts (first try)
+   and walks the installed `BOOT.CFG` (the full driver set: pcmciabm, dd_pp, dd_seria, dd_trs, midi,
+   audio, the i*.so kernel extensions, kernel symbols and the dump name), then `set_boot`'s argument
+   (`devices/hd1`, offered twice: the installed config comments its argument out and leaves an empty
+   one) and pagrinit's `-d1`.
+3. **dd_ide gave up the whole channel: `io_ext_create FAILED rc=5` for all four units**, and PAGRINIT
+   ended with `BVM_GetNextEntry() failed, rc = 0xC` / `BOOT VOLUME NOT FOUND` / FATAL. Not the extra
+   drivers (a boot with the CD's driver set, BOOT.CFG patched and restored, failed the same way) and
+   not the binaries (every `mk/` file on the disk matches the CD's). The stream shows the probe:
+   device 0 selected, nIEN set, a NOP (command 00), the status read. The CD boot read 51 (DRDY, ERR)
+   and went on to IDENTIFY both units; the disk boot read 11 (no DRDY) and stopped. The ATAPI model
+   keeps DRDY clear from reset until a command sets it, and the CD boot's loader had used the CD; the
+   disk boot's had not. Fix (`IBMRS6K7248_atapi`): the aborted-command path sets DRDY too, as a drive
+   out of reset would (sim/atapi and sim/idehd pass). Build os2s carries it with os2r's changes.
+
 ## Open issues and the next step
 
 1. (closed: the install screen is up) insmain's failure was the missing hard disk; the name space was fine. Start with `PERSONAL/INSMAIN`'s strings and
