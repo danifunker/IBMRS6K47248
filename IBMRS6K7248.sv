@@ -445,6 +445,7 @@ IBMRS6K7248_system #(.CPU_HZ(CPU_MHZ * 1_000_000), .TB_HZ(TB_HZ)) system
 	.joy1(joystick_0[5:0]), .joy2(joystick_1[5:0]), .ana1(joystick_l_analog_0), .ana2(joystick_l_analog_1),
 	.midi_tx, .midi_rx,
 	.fd_in, .fd_ro, .fd_blocks, .fd_mounted, .fd_req, .fd_we, .fd_lba, .fd_ack, .fd_buf_a, .fd_buf_q, .fd_buf_we, .fd_buf_d,
+	.hd_present(img_present[0]), .hd_blocks(img_blocks[0]),
 
 	// the S3's VRAM in DDR3 and its picture, in the memory clock
 	.net_on(status[8:6] != 3'd1),
@@ -741,21 +742,24 @@ logic       w_any;
 logic [7:0] w_ch;
 always_comb begin
 	w_any = 1'b1;
+	// (the os2l set, insmain's attribute lookup and pagrinit's leaf add, answered its question: see
+	// docs/resume_os2.md; the os2m set below watches utilfs and insmain's UFS traffic)
 	case ({trace_pc, trace_insn})
-		{32'h0205_4058, 32'h4800_1471}: w_hit = 4'd0;   // insmain NS_GetAttr: bl ns_attrs_get_attr
-		{32'h0205_5500, 32'hA19F_0004}: w_hit = 4'd1;   // ... the loop: lhz r12, 4(r31) (an attribute's name length)
-		{32'h0205_5524, 32'h63E3_0000}: w_hit = 4'd2;   // ... found
-		{32'h0205_5538, 32'h3860_0000}: w_hit = 4'd3;   // ... not found
-		{32'h0200_96E0, 32'h2C03_0000}: w_hit = 4'd4;   // insmain GETPERS: cmpwi r3, 0 after NS_GetAttr(file/system, name)
-		{32'h0200_93F4, 32'h7C0B_6000}: w_hit = 4'd5;   // pagrinit AddLeafNode: rc compared with 24008002
-		{32'h0200_93FC, 32'h3D80_2400}: w_hit = 4'd6;   // ... rc was not 24008002
-		{32'h0200_9448, 32'h817E_FFE4}: w_hit = 4'd7;   // ... rc none of the tolerated codes
-		{32'h0200_9454, 32'h819F_0068}: w_hit = 4'd8;   // ... rc not 0 (the error print follows)
+		{32'h0200_4FE0, 32'h4807_3591}: w_hit = 4'd0;   // utilfs ufs_service_loop: bl mk_msg_server (serving)
+		{32'h0200_4FE8, 32'h4800_1565}: w_hit = 4'd1;   // utilfs: cthread_exit after the loop (the server ended)
+		{32'h0200_4884, 32'h7C08_02A6}: w_hit = 4'd2;   // utilfs do_UFS_HandleRequest (a request taken)
+		{32'h0200_5D0C, 32'h4806_4D4D}: w_hit = 4'd3;   // utilfs RegSrvPort: bl NS_AddNode (servers/utilfs)
+		{32'h0200_5D34, 32'h4800_0008}: w_hit = 4'd4;   // ... its rc was not 0
+		{32'h0206_8934, 32'h386C_0764}: w_hit = 4'd5;   // insmain UFS_PNS_Service_Entry: "couldn't find UFS"
+		{32'h0206_756C, 32'h386C_0314}: w_hit = 4'd6;   // insmain format_and_send_msg: "(GetPort) couldn't find UFS"
+		{32'h0201_33B4, 32'h4803_865D}: w_hit = 4'd7;   // insmain GetPercentage: the send
+		{32'h0200_9000, 32'h7C08_02A6}: w_hit = 4'd8;   // insmain Ins_Exit
+		{32'h0206_9828, 32'h4BFE_5F35}: w_hit = 4'd9;   // insmain GEN_XferData: the send (mach_msg_overwrite)
 		default: begin w_hit = 4'd0; w_any = 1'b0; end
 	endcase
 	case (wq_e)
-		4'd0: w_ch = 8'h47; 4'd1: w_ch = 8'h61; 4'd2: w_ch = 8'h41; 4'd3: w_ch = 8'h78; 4'd4: w_ch = 8'h67;
-		4'd5: w_ch = 8'h70; 4'd6: w_ch = 8'h71; 4'd7: w_ch = 8'h72; default: w_ch = 8'h73;
+		4'd0: w_ch = 8'h75; 4'd1: w_ch = 8'h74; 4'd2: w_ch = 8'h55; 4'd3: w_ch = 8'h52; 4'd4: w_ch = 8'h6E;
+		4'd5: w_ch = 8'h66; 4'd6: w_ch = 8'h46; 4'd7: w_ch = 8'h6B; 4'd8: w_ch = 8'h65; default: w_ch = 8'h58;
 	endcase
 end
 wire        wq_ev = DBG_COM1TX & isi_armed & trace_valid & trace_last & w_any;

@@ -204,6 +204,9 @@ module IBMRS6K7248_machine
 	input  logic         fd_ro,
 	input  logic [12:0]  fd_blocks,
 	input  logic         fd_mounted,
+	// the hard disk image (the OSD's disk 0, the 850's IDE disk): present, its 512-byte blocks
+	input  logic         hd_present,
+	input  logic [31:0]  hd_blocks,
 	output logic         fd_req,
 	output logic         fd_we,
 	output logic [12:0]  fd_lba,
@@ -694,13 +697,19 @@ logic        atapi_irq, atapi_hit;
 `ifdef IBMRS6K7248_ATAPI
 wire         atapi_on = ide_planar;
 assign       atapi_hit = atapi_on && s_isa && (bport[15:3] == 13'h003E || bport == 16'h03F6);
-logic        at_want, at_sel, at_ack, at_own;
-logic [2:0]  at_sel_id;
-logic [7:0]  at_idata;
+// ... and the channel's slave, an IDE hard disk on the OSD's disk 0 image (IBMRS6K7248_idehd), a third
+// initiator of the same bus: the CD-ROM first, then the disk, while the 53C810 has nothing on it
+logic        at_want, at_sel, at_ack, at_own, hd_want, hd_sel, hd_ack, hd_own, hd_irq, hd_selected;
+logic [2:0]  at_sel_id, hd_sel_id;
+logic [7:0]  at_idata, hd_idata;
+logic [31:0] hd_q;
+wire         i_own = at_own | hd_own;
 always_ff @(posedge clk) begin
-	if (!at_own && at_want && !sb_bsy && !n_sel) at_own <= 1'b1;
+	if (!i_own && at_want && !sb_bsy && !n_sel) at_own <= 1'b1;
 	else if (at_own && !at_want && !sb_bsy) at_own <= 1'b0;
-	if (reset) at_own <= 1'b0;
+	if (!i_own && !at_want && hd_want && !sb_bsy && !n_sel) hd_own <= 1'b1;
+	else if (hd_own && !hd_want && !sb_bsy) hd_own <= 1'b0;
+	if (reset) begin at_own <= 1'b0; hd_own <= 1'b0; end
 end
 IBMRS6K7248_atapi #(.CLK_HZ(CPU_HZ)) atapi (
 	.clk, .reset, .en(atapi_on),
@@ -710,31 +719,41 @@ IBMRS6K7248_atapi #(.CLK_HZ(CPU_HZ)) atapi (
 	.sel_done(at_own & sb_sel_done), .sel_fail(at_own & sb_sel_fail), .bsy(at_own & sb_bsy), .req(at_own & sb_req),
 	.phase(sb_phase), .tdata(sb_tdata), .ack(at_ack), .idata(at_idata)
 );
-assign sb_sel     = at_own ? at_sel    : n_sel;
-assign sb_sel_id  = at_own ? at_sel_id : n_sel_id;
-assign sb_sel_atn = at_own ? 1'b0      : n_sel_atn;
-assign sb_ack     = at_own ? at_ack    : n_ack;
-assign sb_idata   = at_own ? at_idata  : n_idata;
-assign sb_ackhold = at_own ? 1'b0      : n_ackhold;
-assign sb_atn     = at_own ? 1'b0      : n_atn;
-assign n_sel_done = !at_own & sb_sel_done;
-assign n_sel_fail = !at_own & sb_sel_fail;
-assign n_bsy      = !at_own & sb_bsy;
-assign n_req      = !at_own & sb_req;
+IBMRS6K7248_idehd #(.CLK_HZ(CPU_HZ)) idehd (
+	.clk, .reset, .en(atapi_on & hd_present),
+	.sel(d_go & atapi_hit), .cs1(bport == 16'h03F6), .we(d_we), .reg_a(bport[2:0]), .be(p_be), .wd8(bwd), .wdata(p_wd),
+	.rdata(hd_q), .irq(hd_irq), .selected(hd_selected), .blocks(hd_blocks),
+	.want(hd_want), .grant(hd_own), .i_sel(hd_sel), .i_sel_id(hd_sel_id),
+	.sel_done(hd_own & sb_sel_done), .sel_fail(hd_own & sb_sel_fail), .bsy(hd_own & sb_bsy), .req(hd_own & sb_req),
+	.phase(sb_phase), .tdata(sb_tdata), .ack(hd_ack), .idata(hd_idata)
+);
+assign sb_sel     = at_own ? at_sel    : hd_own ? hd_sel    : n_sel;
+assign sb_sel_id  = at_own ? at_sel_id : hd_own ? hd_sel_id : n_sel_id;
+assign sb_sel_atn = i_own  ? 1'b0      : n_sel_atn;
+assign sb_ack     = at_own ? at_ack    : hd_own ? hd_ack    : n_ack;
+assign sb_idata   = at_own ? at_idata  : hd_own ? hd_idata  : n_idata;
+assign sb_ackhold = i_own  ? 1'b0      : n_ackhold;
+assign sb_atn     = i_own  ? 1'b0      : n_atn;
+assign n_sel_done = !i_own & sb_sel_done;
+assign n_sel_fail = !i_own & sb_sel_fail;
+assign n_bsy      = !i_own & sb_bsy;
+assign n_req      = !i_own & sb_req;
 // 0838, IRQ 13's request-active register (the Carolina's IDE share IRQ 13 with scatter/gather and power
 // management): bit 0 the primary channel's request, latched on its rise; a write of 0 to a bit clears it
 // (NT's HALCARO reads it, then writes the other bit's 1 back). IRQ 13 is the latched bits or scatter/gather's
 logic [1:0]  r838;
 logic        at_irq_q;
 wire         r838_hit = atapi_on && s_isa && bport == 16'h0838;
+wire         ide_irq = atapi_irq | hd_irq;
 always_ff @(posedge clk) begin
-	at_irq_q <= atapi_irq;
+	at_irq_q <= ide_irq;
 	if (d_go & d_we & r838_hit) r838 <= r838 & bwd[1:0];
-	if (atapi_irq & ~at_irq_q) r838[0] <= 1'b1;
+	if (ide_irq & ~at_irq_q) r838[0] <= 1'b1;
 	if (reset | ~atapi_on) r838 <= 2'b00;
 end
 `else
 assign atapi_hit = 1'b0;  assign atapi_q = '0;  assign atapi_irq = 1'b0;
+wire [31:0]  hd_q = '0;
 wire  [1:0]  r838 = 2'b00;
 wire         r838_hit = 1'b0;
 assign sb_sel = n_sel;  assign sb_sel_id = n_sel_id;  assign sb_sel_atn = n_sel_atn;  assign sb_ack = n_ack;
@@ -1052,7 +1071,7 @@ always_comb begin
 	            when(q_rtc,    {4{rtc_q}})        |
 	            when(q_ee,     {4{ee_q}})         |
 	            when(q_ide & ~q_atapi, ide_planar ? 32'h0000_0000 : 32'hFFFF_FFFF) |
-	            when(q_atapi,  atapi_q)           |
+	            when(q_atapi,  atapi_q | hd_q)    |
 	            when(q_838,    {4{6'd0, r838}})   |
 	            when(q_p92,    {4{p92}})          |
 	            when(q_aud,    {4{aud_q}})        |
