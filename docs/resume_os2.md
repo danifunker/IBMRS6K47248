@@ -50,22 +50,45 @@ forever without touching video (below). Work through blockers one at a time; com
 
 ## Where it stands
 
-The transcript always ends at dd_ide's four instances (unit 0 "IDE CDROM found", "IKDD: start_ikdd
-service_port = 0xda"; unit 1 and the secondary channel "io_ext_create FAILED rc=0x00000005", the absent
-positions); the floppy driver then probes drive B (CONFIGURE, DOR 2D, RECALIBRATE 1, its IRQ 6, SENSE
-INTERRUPT: ST0 71) and reads the MSR once more; then the kernel idles (`idle_thread_continue`,
-`processor_idle`) with nothing more printed, no video access, no PACKET command ever sent to the CD. The
-whole kernel phase is about 1 s of instructions. Interrupts taken in all: three IRQ 13 (the identifies), one
-IRQ 6. Masks at the end: 21 = B9, A1 = CF (IRQ 0 masked: the clock is the decrementer). The 8042 dialogue
-(keyboard reset, scan set 1, mouse reset FA AA 00, E9 status) completes. The IDE identify data is read
-correctly (256 words, twice).
+**Fixed (commit `0a61ebf`): the idle kernel.** The floppy driver `dd_flopp` probes drive B at init: `start_drive`
+(DOR, a 0.5 s motor wait, a timeout timer, "interrupt expected" = 1), `recal_start` (RECALIBRATE), then
+`condition_wait` in `flop_device_init`. Our FDC finished the recalibrate in the clock the command was written,
+so IRQ 6, the kernel-side ISR (SENSE INTERRUPT STATUS), the higher-priority interrupt thread and its
+`int_step` (cancel the timer, `condition_signal`) all ran before the waiter waited; a cthreads signal with no
+waiter is lost, so `flop_device_init` slept forever, `DriverReady` never reached the device manager, which
+`condition_wait`s for it before exiting, and the bootstrap never started the servers after the drivers. A
+real 82077 steps for milliseconds (79 steps for an absent drive). The FDC now takes SRT per step (the drive
+busy in the MSR, SENSE INTERRUPT STATUS 80 meanwhile); ST0 71 for the absent drive B. With it the boot goes
+on: "FS Server is up (multi-threaded mode)", then `set_boot`.
 
-What should follow: the bootstrap task starts, in boot.cfg's order, `ffpnserv`, `fs` ("FS Server is up" is
-printed only in verbose mode), `set_boot` (WAIT; it looks for the NVRAM's `fw-boot-device` in the name
-space: "SET_BOOT: Looking for IDE CDROM at %s", "Defaulting to IDE CDROM at HD2"), `bvm`, `ade`, `initld`,
-`initldev`, `utilfs`, `pagrinit` (WAIT: mounts the system volume through BVM, which would read the CD
-through dd_ide). Nothing of that is visible on COM1 by default.
+**Now: `set_boot` crashes on the firmware's boot path.** `set_boot` (no argument) reads the NVRAM's
+`fw-boot-device` from the name space: ours is the 7248 firmware's SCSI CD path
+`/pci@80000000/pci1000,1@10,0/cdrom@3,0`; `GetNSBootDevice` (set_boot+0xD58) counts the path's components,
+looks for a ':' after the second one, finds none, and does `strlen(NULL)` + `lbz -1(0)`: KERN_INVALID_ADDRESS
+at 0x02001130 ("Master Server exception handler (task=.../os2/set_boot)"). The device names it builds are
+`devices/hd0`, `devices/hd2` ("Defaulting to IDE CDROM at HD2": the real 850 has its CD on the secondary
+channel; ours is the primary master, hd0 in `logdev.stz`: `isa0/planar_ide_0:-8` unit 0, whose dev_subclass
+dd_ide changes to `cdrom`). `set_boot` takes the device as a plain argument instead ("Boot device set to %s
+as specified", then `AddBootDevice`: node `boot_device`, attribute `name`), so the run in progress at
+hand-off types `devices/hd0` at set_boot's `[PN_FILE_ARGV=""]` prompt (dbgauto rule
+`'set_boot@PN_FILE_ARGV=>devices/hd0'`; pagrinit `-d1` for its messages). Longer term the firmware's
+`fw-boot-device` (what the 850's own firmware writes for an IDE CD: probably with a ':' partition suffix)
+or a modelled NVRAM string would make the untouched boot.cfg work.
 
+What should follow set_boot: `bvm`, `ade`, `initld`, `initldev`, `utilfs`, `pagrinit` (WAIT: mounts the system
+volume through BVM, which reads the CD through dd_ide: the first PACKET commands to the ATAPI model on the
+board; `sim/atapi` covers INQUIRY, READ, short byte counts), then `personal/insmain`, the install program,
+which should finally touch the S3 (nothing has yet: the console driver's video init is lazy).
 ## Open issues and the next step
 
-- (filled in below from the os2d run)
+- The run with `devices/hd0` (log `Y:\ibmrs6k-bench-logsoard_os2g_dbg.raw`, transcript
+  `scratch/work/os2_com1_os2g.log`): read its end; if BVM/pagrinit mount the CD, expect the first ATAPI
+  PACKET commands (`Wnq F7:A0` in the decoded stream) and then video. If `set_boot` still fails, its
+  messages are in `OS2/SET_BOOT` (strings base 0x02000138: `kdis.py`'s output with the anchor
+  `fw-boot-device` at +0x1d8).
+- The FDC's seek time is new: re-check the firmware's diskette boot (SMS from the configuration diskette)
+  and NT's ARC diskette on the board; both polled or waited on the interrupt before, but never had to wait.
+- `dd_ide` units 1-3 fail `io_ext_create` (rc 5) for the absent positions, printed as errors; harmless so far.
+- The loader crashes (Program Exception at 0xCC14, dar A0000040) after some 60 stray Enters at its device
+  prompt: answer prompts from the text, never blindly.
+- The stream's DBG_DEVLOG/COM1TX probes cost ~250 ALMs; the core is at 99 %. CD audio is still on.
