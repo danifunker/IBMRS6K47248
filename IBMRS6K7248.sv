@@ -585,7 +585,7 @@ sdramclk_ddr
 // ("W7=xxxxxxxx ", "R7=xxxxxxxx ") and any word read of RAM 0-7FC that differs
 // from the CPU's own last write there ("!aaa=expected/got "). A 4 KB queue in RAM.
 // the stream's optional parts (1 to build them; off for room, 2026-10-29: the floppy and NT's audio are done)
-localparam bit DBG_DEVLOG = 1'b1;           // the whole-address device log (NT's audio and video bring-up)
+localparam bit DBG_DEVLOG = 1'b0;           // the whole-address device log (NT's audio and video bring-up)
 localparam bit DBG_COM1TX = 1'b1;           // COM1's transmitted text in the stream (OS/2's boot talks on COM1)
 localparam bit DBG_FLOPPY = 1'b0;           // the floppy's controller, DMA ports and requests to the Main
 localparam bit DBG_GPR    = 1'b0;           // the 40 instructions and the GPRs they wrote after the first program exception
