@@ -170,9 +170,27 @@ target in any case.
 fails; no "couldn't find UFS", `GetPercentage` never reached, utilfs never exits. The hard disk is the
 thing to give it: build os2n (`IBMRS6K7248_idehd`, the OSD's disk 0 image as the IDE slave).
 
+## Where it stands (2026-10-31 12:30): the installation screen
+
+**"Welcome to the OS/2 Warp (PowerPC Edition) Installation Program"** is on the display
+(`docs/images/os2_warp_ppc_install_20261031.png`; build os2n = commit `c463242`, `scratch/work/
+IBMRS6K7248_os2n.rbf`, staged in `_Unstable`; the transcript `scratch/work/os2_com1_os2n.log`, the stream
+`Y:\ibmrs6k-bench-logsoard_os2n_dbg.raw`). With the IDE hard disk (the OSD's disk 0 image,
+`OS2_warp_ppc.img`) insmain's media preparation goes through: `fd_sys.c: Prepared to read the IDE boot
+loader record`, `GetSystemPartitionData returned 0 (144049 bytes)`, vpmisrv sets mode 1 again and the
+installer's first panel is drawn (F1 Help, F3 Exit, Enter Continue). dd_ide still prints nothing for
+unit 1 (its "io_ext_create FAILED rc=5" lines are the secondary channel's two units); the disk is
+reached, so the slave was found.
+
+The boot procedure is the one above (`scratch/work/run_os2l.sh TAG` does all of it from this PC: stage,
+dbgauto with the four rules, the OSD keys, the wait, the logs). The keyboard has not been tried on the
+installer yet (the 8042 works for the firmware and NT). The next steps are the installer's own: Enter
+through its panels (partitioning through utilfs's fdisk/format on the IDE disk, then the file copy
+from the CD), with the COM1 transcript watching for the next complaint.
+
 ## Open issues and the next step
 
-1. insmain's failure above: the boot_device node / GETPERS. Start with `PERSONAL/INSMAIN`'s strings and
+1. (closed: the install screen is up) insmain's failure was the missing hard disk; the name space was fine. Start with `PERSONAL/INSMAIN`'s strings and
    code (capstone through `kdis.py`/`strref.py`, which resolve a function's string references), and with
    what `GetNSBootDevice` would have added. Re-run with the same dbgauto rules (`dbg_run.sh` in the
    session's scratchpad; copy it and `devlog.py`, `kdis.py`, `strref.py`, `syms.py` into `tools/`).

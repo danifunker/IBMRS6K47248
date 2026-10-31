@@ -1493,3 +1493,7 @@ Next: the bench from a snapshot at the prompt (`--save-exit`), COM1 input with `
   `sim/idehd` (both devices on one task file, the disk and CD slots answered as hps_io does, writes read
   back): all pass. Build os2n carries it with the os2m watch points; CD audio is off since os2l (the
   probe did not fit with it).
+- **Run os2n (the IDE disk): the installation screen.** "Welcome to the OS/2 Warp (PowerPC Edition)
+  Installation Program" (`docs/images/os2_warp_ppc_install_20261031.png`): insmain's media preparation
+  reads the IDE boot loader record through utilfs (`fd_sys.c`), `GetSystemPartitionData` returns, the
+  panel is drawn. Slack -2.63 ns; CD audio, the IACK FIFO and the watch points off to fit.
