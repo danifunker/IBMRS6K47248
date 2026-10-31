@@ -20,7 +20,7 @@ logic i_sel, sel_done, sel_fail, bsy, req, ack, want;
 logic [2:0] sel_id, phase;
 logic [7:0] tdata, idata;
 logic [7:0] din [3];
-IBMRS6K7248_atapi atapi (.clk, .reset(rst), .en(1'b1), .sel, .cs1, .we, .reg_a, .be, .wd8(wdata[31:24]), .wdata, .rdata, .irq,
+IBMRS6K7248_atapi #(.CLK_HZ(1_000_000)) atapi (.clk, .reset(rst), .en(1'b1), .sel, .cs1, .we, .reg_a, .be, .wd8(wdata[31:24]), .wdata, .rdata, .irq,
 	.want, .grant(1'b1), .i_sel, .i_sel_id(sel_id), .sel_done, .sel_fail, .bsy, .req, .phase, .tdata, .ack, .idata);
 IBMRS6K7248_scsitgt scsi (.clk, .rst, .clk_h, .sel(i_sel), .sel_id, .sel_atn(1'b0), .sel_done, .sel_fail, .bsy, .req,
 	.phase, .tdata, .ack, .idata, .ackhold(1'b0), .atn(1'b0), .brst(1'b0), .img_present(3'b111), .img_blocks,

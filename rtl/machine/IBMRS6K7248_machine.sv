@@ -702,7 +702,7 @@ always_ff @(posedge clk) begin
 	else if (at_own && !at_want && !sb_bsy) at_own <= 1'b0;
 	if (reset) at_own <= 1'b0;
 end
-IBMRS6K7248_atapi atapi (
+IBMRS6K7248_atapi #(.CLK_HZ(CPU_HZ)) atapi (
 	.clk, .reset, .en(atapi_on),
 	.sel(d_go & atapi_hit), .cs1(bport == 16'h03F6), .we(d_we), .reg_a(bport[2:0]), .be(p_be), .wd8(bwd), .wdata(p_wd),
 	.rdata(atapi_q), .irq(atapi_irq),

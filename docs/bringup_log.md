@@ -1437,3 +1437,10 @@ Next: the bench from a snapshot at the prompt (`--save-exit`), COM1 input with `
   2048-byte blocks like READ(10), the length from bytes 6-8; no data (00000) ends at once; the raw forms
   (sync, headers, EDC) are refused with ILLEGAL REQUEST, invalid field (5/24). `sim/atapi` has the case; all
   pass. Build os2h next: the run types `devices/hd0` and `-d1` as above.
+- **Run os2h (READ CD):** BVM's READ CD of LBA 0 (one block, then two: the two come as two 2 KB DRQ chunks,
+  which dd_ide takes) returns data; a later packet gets its DRQ interrupt (IRQ 13, status 58, I/O, 2048
+  bytes) and the driver never reads the data: the kernel idles. The same race as the floppy's: dd_ide
+  sends the packet, then waits for its interrupt thread's signal; a block already fetched answered within
+  microseconds, before the wait. **ATAPI: a 2 ms command latency** (`IBMRS6K7248_atapi`, `CLK_HZ` from the
+  machine): a command's first DRQ or status, and its interrupt, come no sooner than 2 ms after the command
+  or the packet's last byte (the identify too); `sim/atapi` at 1 MHz; all pass. Build os2i.

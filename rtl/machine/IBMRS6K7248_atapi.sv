@@ -26,7 +26,9 @@
 //  54 (sense key 5, ABRT), the host's REQUEST SENSE gives the real sense.
 //============================================================================
 
-module IBMRS6K7248_atapi (
+module IBMRS6K7248_atapi #(
+	parameter int unsigned CLK_HZ = 70_000_000   // clk's rate: a command's answer waits LATENCY_US after it
+) (
 	input  logic        clk,
 	input  logic        reset,
 	input  logic        en,                    // the 850's personality: else no device
@@ -77,6 +79,12 @@ logic [31:0] acc;                              // bytes gathered into a word (th
 logic [3:0]  ci;                               // the CDB byte the target takes next
 logic [7:0]  stat_b;
 logic [7:0]  idw;                              // the identify word being written
+// a command's first answer (its DRQ or its status, with the interrupt) comes no sooner than 2 ms after the
+// command or the packet's last byte: a CD-ROM takes longer than that, and OS/2's dd_ide, which sends the packet
+// and then waits for its interrupt thread's signal, lost the signal when a cached block answered at once
+localparam int unsigned LATENCY_US = 2000;
+logic [31:0] lat_cnt;
+wire         lat_ok = lat_cnt == 32'd0;
 
 // the data buffer: 2 KB, a word a line (byte k of a line at bits 8k+7:8k)
 logic [31:0] buf_mem [512];
@@ -119,6 +127,8 @@ always_ff @(posedge clk) begin
 	ack   <= 1'b0;
 	i_sel <= 1'b0;
 
+	if (lat_cnt != 32'd0) lat_cnt <= lat_cnt - 32'd1;
+
 	// ---- the data port
 	if (dsel) begin
 		hptr <= hnext;
@@ -134,7 +144,7 @@ always_ff @(posedge clk) begin
 		end
 		if (hnext >= hlen) begin
 			drq <= 1'b0;
-			if (a == A_PKT) begin a <= A_WANT; bsy_s <= 1'b1; pkt <= 1'b1; end
+			if (a == A_PKT) begin a <= A_WANT; bsy_s <= 1'b1; pkt <= 1'b1; lat_cnt <= 32'(CLK_HZ / 1_000_000) * LATENCY_US; end
 			else if (a == A_HOST) a <= !pkt ? A_IDLE : out_dir ? A_RUN : A_FILL;
 		end
 	end
@@ -155,6 +165,7 @@ always_ff @(posedge clk) begin
 		3'd6: drv <= wd8;
 		3'd7: if (!dev1) begin                                // a command
 			irq <= 1'b0; errb <= 1'b0; err <= 8'h00;
+			lat_cnt <= 32'(CLK_HZ / 1_000_000) * LATENCY_US;
 			case (wd8)
 				8'hA0: begin                                  // PACKET: the 12 bytes first
 					a <= A_PKT; drq <= 1'b1; hptr <= 12'd0; hlen <= 12'd12;
@@ -187,8 +198,8 @@ always_ff @(posedge clk) begin
 		A_ID: begin                                           // two words a line, the even word low
 			if (!idw[0]) acc[15:0] <= idv;
 			else begin bwe <= 1'b1; bwa <= {1'b0, idw[7:1]}; bwd <= {idv, acc[15:0]}; end
-			idw <= idw + 8'd1;
-			if (idw == 8'd255) begin
+			if (idw != 8'd255 || lat_ok) idw <= idw + 8'd1;
+			if (idw == 8'd255 && lat_ok) begin
 				bsy_s <= 1'b0; drq <= 1'b1; hptr <= 12'd0; hlen <= 12'd512; ireason <= 8'h02; irq <= !nien;
 				a <= A_HOST; out_dir <= 1'b0;
 			end
@@ -216,7 +227,7 @@ always_ff @(posedge clk) begin
 						if (tptr + 12'd1 >= lim_e) begin a <= A_HOST; out_dir <= 1'b0; end   // a block is full
 					end
 					P_DOUT: begin
-						if (tptr == 12'd0 && !out_dir) begin            // the host gives a block first
+						if (tptr == 12'd0 && !out_dir && lat_ok) begin  // the host gives a block first
 							out_dir <= 1'b1; a <= A_HOST;
 							drq <= 1'b1; hptr <= 12'd0; hlen <= lim_e;
 							bcl <= lim_e[7:0]; bch <= {4'd0, lim_e[11:8]};
@@ -240,7 +251,7 @@ always_ff @(posedge clk) begin
 		end
 		A_HOST: begin
 			// hand a gathered DATA IN block to the host (once); it drains it through the data port
-			if (pkt && !drq && !out_dir && tptr != 12'd0) begin
+			if (pkt && !drq && !out_dir && tptr != 12'd0 && lat_ok) begin
 				if (tptr[1:0] != 2'd0) begin bwe <= 1'b1; bwa <= tptr[10:2]; bwd <= acc; end
 				drq <= 1'b1; hptr <= 12'd0; hlen <= tptr;
 				bcl <= tptr[7:0]; bch <= {4'd0, tptr[11:8]};
@@ -249,7 +260,7 @@ always_ff @(posedge clk) begin
 			end
 		end
 		A_FILL: begin bsy_s <= 1'b1; a <= A_RUN; end
-		A_END: begin
+		A_END: if (lat_ok) begin
 			bsy_s <= 1'b0; drdy <= 1'b1; drq <= 1'b0; pkt <= 1'b0;
 			ireason <= 8'h03;                                 // C/D and I/O: the status
 			errb <= stat_b != 8'h00; err <= stat_b != 8'h00 ? 8'h54 : 8'h00;
@@ -261,7 +272,7 @@ always_ff @(posedge clk) begin
 	if (reset || !en) begin
 		a <= A_IDLE; pkt <= 1'b0; drq <= 1'b0; bsy_s <= 1'b0; drdy <= 1'b0; errb <= 1'b0; err <= 8'h01;
 		sect <= 8'h01; ireason <= 8'h01; bcl <= 8'h14; bch <= 8'hEB; irq <= 1'b0;
-		out_dir <= 1'b0; tptr <= 12'd0; drv <= 8'h00; nien <= 1'b0;
+		out_dir <= 1'b0; tptr <= 12'd0; drv <= 8'h00; nien <= 1'b0; lat_cnt <= 32'd0;
 	end
 end
 
