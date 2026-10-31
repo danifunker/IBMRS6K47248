@@ -1,6 +1,6 @@
 // IBMRS6K7248 - the ATAPI CD-ROM's bench (atapitb.sv: IBMRS6K7248_atapi as the initiator of
 // IBMRS6K7248_scsitgt's CD-ROM): the packet signature after reset, IDENTIFY PACKET DEVICE, INQUIRY,
-// READ CAPACITY, READ(10) of two blocks in 2 KB DRQ blocks (16-bit and 32-bit data port reads),
+// READ CAPACITY, READ(10) of two blocks in one 4 KB DRQ block (16-bit and 32-bit data port reads),
 // a short byte count (512-byte blocks), an unknown packet (ERR), IDENTIFY DEVICE (aborted). ./run.sh.
 
 #include "Vatapitb.h"
@@ -125,7 +125,7 @@ int main(int argc, char **argv) {
 	for (int pass = 0; pass < 2; pass++) {
 		d.clear(); std::vector<int> bl;
 		s = packet({0x28, 0, 0, 0, 0, 16, 0, 0, 2, 0}, 0xFFFF, &d, pass == 1, &bl);
-		expect("READ(10) ERR", s & 1, 0); expect("bytes", d.size(), 4096); expect("blocks", bl.size(), 2);
+		expect("READ(10) ERR", s & 1, 0); expect("bytes", d.size(), 4096); expect("blocks (one DRQ of 4 KB)", bl.size(), 1);
 		int bad = 0;
 		for (size_t i = 0; i < d.size(); i++) if (d[i] != img(64 + i / 512, i % 512)) { if (bad++ < 3) printf("  byte %zu: %02X, want %02X\n", i, d[i], img(64 + i / 512, i % 512)); }
 		if (bad) fails++;

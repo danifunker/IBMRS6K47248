@@ -1444,3 +1444,11 @@ Next: the bench from a snapshot at the prompt (`--save-exit`), COM1 input with `
   microseconds, before the wait. **ATAPI: a 2 ms command latency** (`IBMRS6K7248_atapi`, `CLK_HZ` from the
   machine): a command's first DRQ or status, and its interrupt, come no sooner than 2 ms after the command
   or the packet's last byte (the identify too); `sim/atapi` at 1 MHz; all pass. Build os2i.
+- **Run os2i (the latency):** the same hang, and the stream shows its mechanism: dd_ide asks 4096 bytes a
+  DRQ (1F4/1F5 = 1000) and our 2 KB buffer split BVM's two-block READ CD into two DRQ blocks; the driver
+  polled the alternate status through the second block and read it without waiting for its interrupt,
+  whose 0838 latch (set again by the completion interrupt after the ISR's clear) was then taken for the
+  next packet's interrupt before that packet's CDB was even written: a phantom, the real DRQ's wake-up
+  lost. A real drive gives the 4096 bytes in one DRQ block. **ATAPI buffer 4 KB** (`IBMRS6K7248_atapi`:
+  byte counts up to 4096 honoured in one block; `sim/atapi`: a two-block read is one DRQ block now; all
+  pass). Build os2j.

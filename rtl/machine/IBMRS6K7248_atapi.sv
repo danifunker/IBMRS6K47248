@@ -22,7 +22,7 @@
 //  signature in 1F4/1F5, as ATAPI asks), SET FEATURES and the power commands
 //  (done, nothing changes); anything else aborted.
 //  A packet's data comes in blocks of at most the host's byte count (1F4/
-//  1F5, even, 2048 at most); a CHECK CONDITION ends it with ERR and error
+//  1F5, even, 4096 at most); a CHECK CONDITION ends it with ERR and error
 //  54 (sense key 5, ABRT), the host's REQUEST SENSE gives the real sense.
 //============================================================================
 
@@ -72,9 +72,9 @@ ast_t a;
 logic        pkt;                              // a packet is on the bus (from its selection to its status)
 logic        out_dir;                          // the host's block goes to the target (DATA OUT)
 logic [15:0] limit;                            // the host's byte count limit for a packet
-wire  [11:0] lim_e = (limit == 16'd0 || limit > 16'd2048) ? 12'd2048 : {limit[11:1], 1'b0};   // even, 2 KB at most
-logic [11:0] hptr, hlen;                       // the host's byte position in the block, the block's length
-logic [11:0] tptr;                             // the target's byte position
+wire  [12:0] lim_e = (limit == 16'd0 || limit > 16'd4096) ? 13'd4096 : {limit[12:1], 1'b0};   // even, 4 KB at most (the buffer)
+logic [12:0] hptr, hlen;                       // the host's byte position in the block, the block's length
+logic [12:0] tptr;                             // the target's byte position
 logic [31:0] acc;                              // bytes gathered into a word (the target's, the host's)
 logic [3:0]  ci;                               // the CDB byte the target takes next
 logic [7:0]  stat_b;
@@ -86,13 +86,14 @@ localparam int unsigned LATENCY_US = 2000;
 logic [31:0] lat_cnt;
 wire         lat_ok = lat_cnt == 32'd0;
 
-// the data buffer: 2 KB, a word a line (byte k of a line at bits 8k+7:8k)
-logic [31:0] buf_mem [512];
-logic [8:0]  bwa, bra, bra_q;                  // bra_q: the line brq holds
+// the data buffer: 4 KB (a host's byte count of 4096 in one DRQ block, as OS/2's dd_ide asks), a word a line
+// (byte k of a line at bits 8k+7:8k)
+logic [31:0] buf_mem [1024];
+logic [9:0]  bwa, bra, bra_q;                  // bra_q: the line brq holds
 logic [31:0] bwd, brq;
 logic        bwe;
 wire         host_rd = a == A_HOST && !out_dir;
-wire  [8:0]  rda = host_rd ? hptr[10:2] : bra;
+wire  [9:0]  rda = host_rd ? hptr[11:2] : bra;
 always_ff @(posedge clk) begin
 	if (bwe) buf_mem[bwa] <= bwd;
 	brq   <= buf_mem[rda];
@@ -119,7 +120,7 @@ wire [15:0] idv = ident(idw);
 // the data port's lanes: aligned, lane k the byte at dbase + k (16-bit: hptr[1] * 2, 32-bit: 0)
 wire [1:0]  dbase = {hptr[1] & ~be[1], 1'b0};
 wire [2:0]  nb    = be[1] ? 3'd4 : be[2] ? 3'd2 : 3'd1;
-wire [11:0] hnext = hptr + 12'(nb);
+wire [12:0] hnext = hptr + 13'(nb);
 wire        dsel  = sel && en && !dev1 && !cs1 && reg_a == 3'd0 && drq;
 
 always_ff @(posedge clk) begin
@@ -136,7 +137,7 @@ always_ff @(posedge clk) begin
 			for (int k = 0; k < 4; k++)
 				if (k < nb) acc[8 * (dbase + 2'(k)) +: 8] <= wdata[31 - 8 * k -: 8];
 			if (hnext[1:0] == 2'd0 || hnext >= hlen) begin
-				bwe <= 1'b1; bwa <= hptr[10:2];
+				bwe <= 1'b1; bwa <= hptr[11:2];
 				bwd <= acc;
 				for (int k = 0; k < 4; k++)
 					if (k < nb) bwd[8 * (dbase + 2'(k)) +: 8] <= wdata[31 - 8 * k -: 8];
@@ -154,7 +155,7 @@ always_ff @(posedge clk) begin
 		nien <= wd8[1];
 		if (wd8[2]) begin                                     // SRST: the packet signature
 			a <= A_IDLE; pkt <= 1'b0; drq <= 1'b0; bsy_s <= 1'b0; drdy <= 1'b0; errb <= 1'b0; err <= 8'h01;
-			sect <= 8'h01; ireason <= 8'h01; bcl <= 8'h14; bch <= 8'hEB; irq <= 1'b0; out_dir <= 1'b0; tptr <= 12'd0;
+			sect <= 8'h01; ireason <= 8'h01; bcl <= 8'h14; bch <= 8'hEB; irq <= 1'b0; out_dir <= 1'b0; tptr <= 13'd0;
 		end
 	end
 	if (sel && en && we && !cs1) case (reg_a)
@@ -168,7 +169,7 @@ always_ff @(posedge clk) begin
 			lat_cnt <= 32'(CLK_HZ / 1_000_000) * LATENCY_US;
 			case (wd8)
 				8'hA0: begin                                  // PACKET: the 12 bytes first
-					a <= A_PKT; drq <= 1'b1; hptr <= 12'd0; hlen <= 12'd12;
+					a <= A_PKT; drq <= 1'b1; hptr <= 13'd0; hlen <= 13'd12;
 					ireason <= 8'h01; limit <= {bch, bcl};
 				end
 				8'hA1: begin                                  // IDENTIFY PACKET DEVICE: into the buffer, then the host
@@ -197,14 +198,14 @@ always_ff @(posedge clk) begin
 	case (a)
 		A_ID: begin                                           // two words a line, the even word low
 			if (!idw[0]) acc[15:0] <= idv;
-			else begin bwe <= 1'b1; bwa <= {1'b0, idw[7:1]}; bwd <= {idv, acc[15:0]}; end
+			else begin bwe <= 1'b1; bwa <= {2'b00, idw[7:1]}; bwd <= {idv, acc[15:0]}; end
 			if (idw != 8'd255 || lat_ok) idw <= idw + 8'd1;
 			if (idw == 8'd255 && lat_ok) begin
-				bsy_s <= 1'b0; drq <= 1'b1; hptr <= 12'd0; hlen <= 12'd512; ireason <= 8'h02; irq <= !nien;
+				bsy_s <= 1'b0; drq <= 1'b1; hptr <= 13'd0; hlen <= 13'd512; ireason <= 8'h02; irq <= !nien;
 				a <= A_HOST; out_dir <= 1'b0;
 			end
 		end
-		A_WANT: if (grant && !bsy) begin i_sel <= 1'b1; a <= A_SEL; ci <= 4'd0; tptr <= 12'd0; bra <= 9'd0; end
+		A_WANT: if (grant && !bsy) begin i_sel <= 1'b1; a <= A_SEL; ci <= 4'd0; tptr <= 13'd0; bra <= 10'd0; end
 		A_SEL: begin
 			if (sel_fail) begin a <= A_END; stat_b <= 8'h02; end   // no CD target: aborted
 			else if (sel_done) a <= A_RUN;
@@ -214,31 +215,31 @@ always_ff @(posedge clk) begin
 			else if (req && !ack) begin
 				case (phase)
 					P_CMD: begin                              // the CDB: the packet's first bytes
-						bra <= 9'(ci >> 2);
+						bra <= 10'(ci >> 2);
 						idata <= brq[8 * ci[1:0] +: 8];
-						if (bra == 9'(ci >> 2) && bra_q == 9'(ci >> 2)) begin ack <= 1'b1; ci <= ci + 4'd1; end
+						if (bra == 10'(ci >> 2) && bra_q == 10'(ci >> 2)) begin ack <= 1'b1; ci <= ci + 4'd1; end
 					end
 					P_DIN: begin
 						acc[8 * tptr[1:0] +: 8] <= tdata;
-						bwe <= 1'b1; bwa <= tptr[10:2];
+						bwe <= 1'b1; bwa <= tptr[11:2];
 						bwd <= acc; bwd[8 * tptr[1:0] +: 8] <= tdata;
-						tptr <= tptr + 12'd1;
+						tptr <= tptr + 13'd1;
 						ack  <= 1'b1;
-						if (tptr + 12'd1 >= lim_e) begin a <= A_HOST; out_dir <= 1'b0; end   // a block is full
+						if (tptr + 13'd1 >= lim_e) begin a <= A_HOST; out_dir <= 1'b0; end   // a block is full
 					end
 					P_DOUT: begin
-						if (tptr == 12'd0 && !out_dir && lat_ok) begin  // the host gives a block first
+						if (tptr == 13'd0 && !out_dir && lat_ok) begin  // the host gives a block first
 							out_dir <= 1'b1; a <= A_HOST;
-							drq <= 1'b1; hptr <= 12'd0; hlen <= lim_e;
-							bcl <= lim_e[7:0]; bch <= {4'd0, lim_e[11:8]};
+							drq <= 1'b1; hptr <= 13'd0; hlen <= lim_e;
+							bcl <= lim_e[7:0]; bch <= {3'd0, lim_e[12:8]};
 							ireason <= 8'h00; bsy_s <= 1'b0; irq <= !nien;
 						end
 						else begin
-							bra <= tptr[10:2];
+							bra <= tptr[11:2];
 							idata <= brq[8 * tptr[1:0] +: 8];
-							if (bra == tptr[10:2] && bra_q == tptr[10:2]) begin
-								ack <= 1'b1; tptr <= tptr + 12'd1;
-								if (tptr + 12'd1 >= hlen) begin tptr <= 12'd0; out_dir <= 1'b0; end
+							if (bra == tptr[11:2] && bra_q == tptr[11:2]) begin
+								ack <= 1'b1; tptr <= tptr + 13'd1;
+								if (tptr + 13'd1 >= hlen) begin tptr <= 13'd0; out_dir <= 1'b0; end
 							end
 						end
 					end
@@ -246,17 +247,17 @@ always_ff @(posedge clk) begin
 					default: ack <= 1'b1;                     // MESSAGE IN (COMMAND COMPLETE)
 				endcase
 				// DATA IN ended short of a block: the rest goes to the host before the status
-				if (phase != P_DIN && tptr != 12'd0 && !out_dir) a <= A_HOST;
+				if (phase != P_DIN && tptr != 13'd0 && !out_dir) a <= A_HOST;
 			end
 		end
 		A_HOST: begin
 			// hand a gathered DATA IN block to the host (once); it drains it through the data port
-			if (pkt && !drq && !out_dir && tptr != 12'd0 && lat_ok) begin
-				if (tptr[1:0] != 2'd0) begin bwe <= 1'b1; bwa <= tptr[10:2]; bwd <= acc; end
-				drq <= 1'b1; hptr <= 12'd0; hlen <= tptr;
-				bcl <= tptr[7:0]; bch <= {4'd0, tptr[11:8]};
+			if (pkt && !drq && !out_dir && tptr != 13'd0 && lat_ok) begin
+				if (tptr[1:0] != 2'd0) begin bwe <= 1'b1; bwa <= tptr[11:2]; bwd <= acc; end
+				drq <= 1'b1; hptr <= 13'd0; hlen <= tptr;
+				bcl <= tptr[7:0]; bch <= {3'd0, tptr[12:8]};
 				ireason <= 8'h02; bsy_s <= 1'b0; irq <= !nien;
-				tptr <= 12'd0;
+				tptr <= 13'd0;
 			end
 		end
 		A_FILL: begin bsy_s <= 1'b1; a <= A_RUN; end
@@ -272,7 +273,7 @@ always_ff @(posedge clk) begin
 	if (reset || !en) begin
 		a <= A_IDLE; pkt <= 1'b0; drq <= 1'b0; bsy_s <= 1'b0; drdy <= 1'b0; errb <= 1'b0; err <= 8'h01;
 		sect <= 8'h01; ireason <= 8'h01; bcl <= 8'h14; bch <= 8'hEB; irq <= 1'b0;
-		out_dir <= 1'b0; tptr <= 12'd0; drv <= 8'h00; nien <= 1'b0; lat_cnt <= 32'd0;
+		out_dir <= 1'b0; tptr <= 13'd0; drv <= 8'h00; nien <= 1'b0; lat_cnt <= 32'd0;
 	end
 end
 
