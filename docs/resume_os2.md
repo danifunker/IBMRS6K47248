@@ -1,16 +1,18 @@
 # Resume: OS/2 Warp for PowerPC on the IBMRS6K7248 core (the Power Series 850 personality)
 
-(Written 2026-10-30 at the end of the session that took OS/2 from the loader's prompt to an idle microkernel
-and instrumented the core to see why it idles. Paste from "The task" down into a new session in this
-repository. The day's details are in `docs/bringup_log.md`, sections 2026-10-29 to 2026-10-30.)
+(Written 2026-10-31 at the end of the session that took OS/2 from an idle microkernel to its logo on the
+display. Paste from "The task" down into a new session in this repository. The day's details are in
+`docs/bringup_log.md`, sections 2026-10-29 to 2026-10-31.)
 
 ---
 
 ## The task
 
 Get OS/2 Warp for PowerPC (the CD `OS2-Warp-PowerPC.iso`, the PReP loader "IBM Microkernel Bootloader") to its
-installation screen on the display. The microkernel boots, its drivers initialise, and the system then idles
-forever without touching video (below). Work through blockers one at a time; commit to master locally.
+**installation screen** on the display, and save a screenshot of it in `docs/images/`. Today the boot gets
+as far as the Warp logo; the installer `insmain` then fails on the name space before drawing anything
+("Where it stands", below). Work through blockers one at a time; commit to master locally; keep this file,
+`docs/bringup_log.md` and `docs/stubbed-hardware.md` current.
 
 ## How to boot it on .92 (the board)
 
@@ -40,13 +42,6 @@ forever without touching video (below). Work through blockers one at a time; com
   `scratch/work/mksyms.sh ADDR...` names kernel addresses (MK_TEST.PPC has function symbols; no data
   symbols). `kdis.py MK_TEST.PPC VADDR LEN` disassembles it (capstone, in WSL); `kdis.py ... scan` lists
   its decrementer/timebase/PVR accesses.
-
-## What was done this session (all on master)
-
-| Commit | What |
-|---|---|
-| `c65ae47` | FDC: RECALIBRATE of a drive other than 0 ends with equipment check (ST0 71), as the 82077 with no TRK0; SENSE DRIVE STATUS's TRK0 only for drive 0; `sim/floppy` case. COM1's text in the debug stream (`DBG_COM1TX`). |
-| `dba46f6` | The stream's interrupt acknowledges, PIC mask and ELCR writes, decrementer-exception count, COM2 text. |
 
 ## Where it stands (2026-10-31 03:15)
 
