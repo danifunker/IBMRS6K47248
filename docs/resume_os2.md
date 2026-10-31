@@ -50,7 +50,7 @@ commit `fb3ea29`, `scratch/work/IBMRS6K7248_os2k.rbf`, staged in `_Unstable`): p
 ("Boot volume is a CD"), loads `os2/vpmisrv` (the video server: PCI walk, "adapter found" 88c05333 at
 8000_7000, `s3_864.pmi` loaded, "PMIREQUEST_SETMODE mode id: 1", SETCLUT) and `os2/logovid` (the logo), then
 `personal/insmain`, and polls "Waiting for PI to complete..." (200 times, then it stops polling; the
-transcript `scratch/work/os2_com1_os2k.log`, the stream `Y:\ibmrs6k-bench-logsoard_os2k_dbg.raw`).
+transcript `scratch/work/os2_com1_os2k.log`, the stream `Y:\ibmrs6k-bench-logs\board_os2k_dbg.raw`).
 
 **The blocker now: `insmain` fails before drawing anything.** Its text on COM1:
 `Error: RC = 23: NS Convert Error / Occurred in file filertns.c / Function NS_GetAttr Failed.`, then
