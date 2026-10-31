@@ -1412,3 +1412,28 @@ Next: the bench from a snapshot at the prompt (`--save-exit`), COM1 input with `
   (`CPU_HZ` from the machine; 1 MHz in `sim/floppy`, whose seeks now wait for IRQ 6). All pass. To be
   checked on the board besides OS/2: the firmware's diskette boot and NT's ARC diskette, which never had to
   wait for a seek before.
+
+## 2026-10-30 night: past the floppy: set_boot's crash, pagrinit, and READ CD
+
+- With the FDC's seek time (build os2f) the boot goes on: "WPOS FS 3.1 ... FS Server is up (multi-threaded
+  mode)", then `set_boot` (typed `-v`): it finds the NVRAM's `fw-boot-device` =
+  `/pci@80000000/pci1000,1@10,0/cdrom@3,0` (our 7248 firmware's SCSI CD path), and `GetNSBootDevice`
+  (SET_BOOT+0xD58) dies on it: it looks for a ':' after the path's second component, gets NULL from
+  strchr, and does `lbz -1(strlen(NULL))`: "Master Server exception handler (task=.../os2/set_boot)",
+  KERN_INVALID_ADDRESS at 0x02001130. Its own names are `devices/hd0`-`hd3` ("Defaulting to IDE CDROM at
+  HD2": a real 850's CD is the secondary master; ours is `hd0`, logdev.stz's `isa0/planar_ide_0:-8` unit 0).
+  `set_boot` takes the device as a plain argument ("Boot device set to %s as specified", `AddBootDevice`:
+  node `boot_device`, attribute `name`): typed `devices/hd0` at its `[PN_FILE_ARGV=""]` prompt (dbgauto's
+  per-file rules, `FILE@KEY=>REPLY`).
+- Then `pagrinit -d1` (typed at its `-s60` line): "Found >boot_device<", "Boot volume found", "Current
+  system volume = >hd0.0<", "Mounting volume >volumes/hd0.0<", then `LDR_LoadProgram(file/system/os2/vpmisrv)`
+  and `logovid` fail (rc 0x2401000A), "Boot volume is HARD_DISK", `FS_Open(os2/swapper)` fails
+  (0x9000004), FATAL. The stream's ATAPI traffic says why: BVM's recognition of the disc is MODE SENSE(10) 3F,
+  READ CAPACITY (both answered), then **READ CD (BE)**, LBA 0, 1 block, byte 9 = 10 (user data), byte count
+  4096, which the CD target refused (CHECK CONDITION, sense 5/20: invalid opcode) some forty times with
+  REQUEST SENSE in between; BVM then took the device for a hard disk with one partition (the CD's MBR holds
+  the PReP boot partition, type 41) and mounted nonsense.
+- **READ CD (BE) in `IBMRS6K7248_scsitgt`:** the user-data form (byte 9 bits 7:3 = 00010) reads our
+  2048-byte blocks like READ(10), the length from bytes 6-8; no data (00000) ends at once; the raw forms
+  (sync, headers, EDC) are refused with ILLEGAL REQUEST, invalid field (5/24). `sim/atapi` has the case; all
+  pass. Build os2h next: the run types `devices/hd0` and `-d1` as above.

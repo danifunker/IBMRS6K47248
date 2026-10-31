@@ -132,6 +132,22 @@ int main(int argc, char **argv) {
 	}
 	report("READ(10) of 2 blocks: 16-bit, then 32-bit reads", f0);
 
+	// READ CD (BE), user data only: the same blocks; the raw form is refused (OS/2's BVM reads the disc with BE)
+	f0 = fails;
+	{
+		d.clear(); std::vector<int> bl2;
+		s = packet({0xBE, 0, 0, 0, 0, 16, 0, 0, 2, 0x10, 0, 0}, 0x1000, &d, false, &bl2);
+		expect("READ CD ERR", s & 1, 0); expect("READ CD bytes", d.size(), 4096);
+		int bad = 0;
+		for (size_t i = 0; i < d.size(); i++) if (d[i] != img(64 + i / 512, i % 512)) { if (bad++ < 3) printf("  byte %zu: %02X, want %02X\n", i, d[i], img(64 + i / 512, i % 512)); }
+		if (bad) fails++;
+		d.clear(); s = packet({0xBE, 0, 0, 0, 0, 16, 0, 0, 1, 0xF8, 0, 0}, 0x1000, &d);
+		expect("READ CD raw: ERR", s & 1, 1);
+		d.clear(); s = packet({0x03, 0, 0, 0, 18, 0}, 18, &d);
+		if (d.size() >= 13) { expect("sense key", d[2] & 0xF, 5); expect("ASC invalid field", d[12], 0x24); }
+	}
+	report("READ CD: user data, the raw form refused", f0);
+
 	f0 = fails;
 	d.clear(); std::vector<int> bl;
 	s = packet({0x28, 0, 0, 0, 0, 3, 0, 0, 1, 0}, 512, &d, false, &bl);

@@ -19,7 +19,9 @@ log = open(sys.argv[2], 'ab')
 txt = open(sys.argv[2] + '.com1', 'ab')
 txt2 = open(sys.argv[2] + '.com2', 'ab')
 com2 = False
+# a rule FILE@KEY=>REPLY applies only while the last [PN_FILE_NAME="..."] prompt seen named FILE
 rules = [a.split('=>', 1) for a in sys.argv[3:]]
+lastfile = ''
 def say(s):
     speed(termios.B9600); os.write(fd, s.encode()); termios.tcdrain(fd); speed(termios.B115200)
     log.write(('\n<< %r\n' % s).encode()); log.flush()
@@ -49,9 +51,11 @@ while time.time() < end:
                 say('\r'); manual = True; tbuf = b''
     elif tbuf.rstrip().endswith(b']') and time.time() - last > 1.5:
         prompt = tbuf[tbuf.rfind(b'['):].decode('latin1')
+        if 'PN_FILE_NAME=' in prompt and not prompt.startswith('[#'): lastfile = prompt
         reply = ''
         for k, v in rules:
-            if k in prompt:
+            f, _, kk = k.rpartition('@')
+            if kk in prompt and (not f or f in lastfile):
                 reply = v
                 break
         say(reply + '\r')

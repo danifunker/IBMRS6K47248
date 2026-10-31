@@ -756,9 +756,16 @@ module IBMRS6K7248_scsitgt #(
                                 else begin st <= T_DIN; req <= 1'b0; phase <= P_DIN; pending <= 1'b1; end
                             end
                         end
-                        8'h08, 8'h28: begin                                   // READ
+                        8'h08, 8'h28, 8'hBE: begin                            // READ; READ CD (user data only)
+                            // (READ CD, MMC: the length in bytes 6-8, byte 9 what of each sector: 10 the user
+                            // data, our 2048-byte blocks; OS/2's BVM reads the disc with it; the raw forms
+                            // (sync, headers, EDC: F8) are not kept: ILLEGAL REQUEST, invalid field)
+                            if (op == 8'hBE) cnt = {8'd0, cdb[6], cdb[7], cdb[8]};
                             if (is_cd) a_stop <= 1'b1;                        // a data read ends a play
-                            if (((lba + cnt) << bshift) > blocks) begin
+                            if (op == 8'hBE && cdb[9][7:3] != 5'b00010 && cdb[9][7:3] != 5'b00000) begin
+                                skey[dev] <= 4'h5; sasc[dev] <= 8'h24; go_status(8'h02);
+                            end else if (op == 8'hBE && cdb[9][7:3] == 5'b00000) go_status(8'h00);
+                            else if (((lba + cnt) << bshift) > blocks) begin
                                 skey[dev] <= 4'h5; sasc[dev] <= 8'h21; go_status(8'h02);
                             end else if (cnt == 0) go_status(8'h00);
                             else begin
