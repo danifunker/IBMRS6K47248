@@ -91,7 +91,12 @@ polls the alternate status through the second block without waiting for its inte
 (set again by the completion interrupt after the ISR's clear) is then taken as the *next* packet's
 interrupt before that packet's CDB exists, and the real DRQ's wake-up is lost. **Fixed (commit after
 `8f605e9`): a 4 KB ATAPI buffer**, a 4096-byte count served in one DRQ block as a real drive does. Build
-os2j carries it; its run is the first that can reach `insmain`.
+os2j carried it: the two-block read is one DRQ block and completes cleanly; then READ CD of LBA 16 (the
+ISO volume descriptor) delivered its block and the driver, clearing nIEN after taking the data, waited for
+the completion interrupt that the model had dropped (`irq <= !nien` sampled nIEN while the ISR still had
+it set). **Fixed (commit after `195f49e`): the ATAPI interrupt is a pending state**, `irq = ipend & ~nien`,
+cleared by a status read or a command. Build os2k carries it; its run is the first that can reach
+`insmain`.
 
 What should follow: pagrinit "Boot volume is a CD", the CD mounted with its file system, `vpmisrv` (the
 base video server) and `logovid` (the logo) loaded from it, the swapper, then `personal/insmain`: the
@@ -99,9 +104,9 @@ first video accesses (the S3 864 through its VGA ports and the linear frame buff
 `docs/s3_nt_driver.md` is the reference for what the core's S3 can do).
 ## Open issues and the next step
 
-- Build os2j (READ CD, the ATAPI latency, the 4 KB buffer) and its run: `scratch/work/IBMRS6K7248_os2j.rbf`
-  if the build finished; logs `Y:\ibmrs6k-bench-logsoard_os2j_dbg.raw`, `scratch/work/os2_com1_os2j.log`
-  if the run did. If BVM's reads go past 4096 bytes a packet, the chunking returns: raise the buffer or
+- Build os2k (READ CD, the ATAPI latency, the 4 KB buffer, the pending interrupt) and its run:
+  `scratch/work/IBMRS6K7248_os2k.rbf` if the build finished; logs `Y:\ibmrs6k-bench-logsoard_os2k_dbg.raw`,
+  `scratch/work/os2_com1_os2k.log` if the run did. If BVM's reads go past 4096 bytes a packet, the chunking returns: raise the buffer or
   look at how dd_ide handles the second DRQ block (it polls the alternate status). The
   ATAPI packets in a decoded stream: `Wnq F7:A0` then the CDB as 16-bit writes to 1F0 (`Ddv 800001F0`),
   the data as reads; the session's extraction snippet is in the bringup log's method (a PACKET, its CDB,
