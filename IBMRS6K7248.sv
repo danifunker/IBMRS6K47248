@@ -618,7 +618,8 @@ wire        vec_at = trace_pc[7:0] == 8'h00 && (trace_pc[31:12] == 20'd0 || trac
                      trace_pc[11:8] != 4'h0 && (trace_pc[11:8] != 4'h5 || isi_armed) && trace_pc[11:8] != 4'h9 &&
                      (trace_pc[11:8] <= 4'h8 || trace_pc[11:8] == 4'hF);
 // (not the firmware's DSIs from 7364, its I/O routine's probes: hundreds of them filled the stream)
-wire        pc_hit = trace_valid & trace_last & vec_at & (pc_prev != trace_pc - 32'd4) &
+localparam bit DBG_PC = 1'b0;             // (off in the OS/2 build, for room: COM1 tells; 2026-10-31)
+wire        pc_hit = DBG_PC & trace_valid & trace_last & vec_at & (pc_prev != trace_pc - 32'd4) &
                      ~(pc_prev == 32'h0000_7364 && trace_pc[11:0] == 12'h300);
 always @(posedge clk_cpu) begin
 	if (trace_valid & trace_last) pc_prev <= trace_pc;

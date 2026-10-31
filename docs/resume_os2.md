@@ -254,6 +254,32 @@ disk rules (`RULES` in `run_os2l.sh`; mind its sed delimiter, now `%`), found th
    keeps DRDY clear from reset until a command sets it, and the CD boot's loader had used the CD; the
    disk boot's had not. Fix (`IBMRS6K7248_atapi`): the aborted-command path sets DRDY too, as a drive
    out of reset would (sim/atapi and sim/idehd pass). Build os2s carries it with os2r's changes.
+4. **With both (builds os2s, os2t: the PReP type back at 41, the 53C810 kept off ID 0 - verified), dd_ide
+   starts the CD and the disk** ("IDE CDROM found", service ports 87 and BB) and PAGRINIT reaches
+   `LD_InitPhysical: Before AddNodes`, then waits for good. The CD's registers (logged for device 0
+   alone, build os2t) show the kernel's probe packets completing by polling the alternate status - no
+   status-register read, no interrupt - and the second READ CAPACITY waiting after its packet. In the
+   CD boot the same packets went through the 0838 latch (read, acknowledged, status read). The loader
+   had left the disk's interrupt pending; the kernel's first nIEN toggle re-raised it into the latch
+   while nothing listened, and dd_ide never clears 0838 first: IRQ 13, edge-triggered at the PIC, stayed
+   high. The installed BOOT.CFG's extra drivers are innocent (the CD's driver set hangs the same way;
+   the config was patched and restored twice, `/tmp/os2hd` loop-mounted on the board at offset
+   3024*512). Fix (build os2u): 0838 bit 0 is the IDE request as it stands (`ide_irq`, the Carolina's
+   "request-active" register), not a latch; the acknowledging writes clear nothing.
+5. **Build os2u boots the installed system** (commit after `0b2ec3c`; `scratch/work/IBMRS6K7248_os2u.rbf`,
+   staged in `_Unstable`): PAGRINIT finds the boot volume, dsi sets it to `hd1.1`, `os2/rs` writes
+   `\boot.dat` and `\registry.dat`, `os2srv -V hd1.1` comes up ("OS/2 Server Initialization Complete"),
+   PMWIN creates the desktop, STARTUP.CMD runs, the Workplace Shell comes up with the "Introducing OS/2"
+   tutorial, which F3 from the kvm closes (the keyboard works under PM): the OS/2 System folder, the
+   LaunchPad, STARTUP.CMD's window at `C:\MVM` (`docs/images/os2_warp_ppc_desktop_20261031.png`, 19:00).
+   The boot takes ~13 minutes from the core load (firmware, the loader walking the config at 9600 baud
+   with dbgauto's Enters, the kernel), the desktop ~6 more. The counters over the whole boot
+   (`Y:\ibmrs6k-bench-logs\board_os2u_dbg.raw`, `hm.py`): 67,310 host blocks, 0.67 ms a block on the
+   disk side against 6.23 ms on the host's. So the Main's round trip is a tenth of the disk's time; the
+   rest is OS/2's own per-block interrupt path (dd_ide's thread wake-up and PIO on the 70 MHz CPU).
+   Double-buffering the disk would gain that tenth at most; the user's "fast write cache" question has
+   this answer. The exception tracer (`DBG_PC`) and the COM1 bit timing are off for room; the fit is at
+   the device's edge (4191 LABs).
 
 ## Open issues and the next step
 

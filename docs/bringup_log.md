@@ -1504,3 +1504,15 @@ Next: the bench from a snapshot at the prompt (`--save-exit`), COM1 input with `
   32-sector chunk. The board's ARM at 0 % idle (an sftp-server reading /sys since the 27th, the kvm's)
   and `/media/fat` mounted sync (8 ms a 16 KB write). Build os2p: the IDE log reduced to commands, and
   per-second counters (`H`/`M` tokens) splitting a transfer's time between the disk side and the host's.
+- **Runs os2q-os2u: the installed system boots from the IDE disk.** "Installation Complete" at 16:06; the
+  restart (the loader from the CD, `ide_hd1` / `FAT_HARDDISK` at its prompts) hit three things in turn:
+  the firmware booting the type-41 PReP partition the installer wrote (the image is SCSI disk 0 too: the
+  53C810 now finds nobody at ID 0 under the 850 personality with a disk image); dd_ide giving the channel
+  up on the CD's NOP probe reading 11 (the ATAPI's DRDY set with an aborted command); and, with both
+  fixed, dd_ide polling the CD's packets and hanging at a READ CAPACITY because IRQ 13 stood high: the
+  0838 latch held the loader's last disk interrupt, re-raised by the kernel's nIEN toggle, and dd_ide
+  never clears it first. 0838 bit 0 is now the request as it stands (level), not a latch. Build os2u:
+  boot volume hd1.1, the registry written, "OS/2 Server Initialization Complete", the Workplace Shell
+  desktop, F3 from the kvm closing its tutorial (`docs/images/os2_warp_ppc_desktop_20261031.png`). The disk's per-second counters (H/M tokens) put the
+  whole boot at 0.67 ms a block on the disk side against 6.23 ms on the host's: OS/2's per-block
+  interrupt path, not the Main's round trip, is the disk's time.

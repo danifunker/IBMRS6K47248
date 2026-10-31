@@ -749,18 +749,20 @@ assign n_sel_fail = !i_own & (sb_sel_fail | hd_hide_fail);
 assign n_bsy      = !i_own & sb_bsy;
 assign n_req      = !i_own & sb_req;
 // 0838, IRQ 13's request-active register (the Carolina's IDE share IRQ 13 with scatter/gather and power
-// management): bit 0 the primary channel's request, latched on its rise; a write of 0 to a bit clears it
-// (NT's HALCARO reads it, then writes the other bit's 1 back). IRQ 13 is the latched bits or scatter/gather's
+// management): bit 0 the primary channel's request as it stands (the drive's INTRQ: nIEN clear, the
+// interrupt pending, cleared by the status read); NT's HALCARO and OS/2's dd_ide read it and write the other
+// bit's 1 back, which clears nothing here. IRQ 13 (edge-triggered at the PIC) is the request or scatter/gather's.
+// (Latched on the request's rise until 2026-10-31: the loader's last disk read left the drive's request pending,
+// the kernel's nIEN toggle set the latch while nothing listened, and dd_ide, which never clears it first, saw
+// IRQ 13 stuck high and polled the CD's packets until a READ CAPACITY waited for an interrupt for good.)
 logic [1:0]  r838;
-logic        at_irq_q;
 wire         r838_hit = atapi_on && s_isa && bport == 16'h0838;
 wire         ide_irq = atapi_irq | hd_irq;
 always_ff @(posedge clk) begin
-	at_irq_q <= ide_irq;
-	if (d_go & d_we & r838_hit) r838 <= r838 & bwd[1:0];
-	if (ide_irq & ~at_irq_q) r838[0] <= 1'b1;
-	if (reset | ~atapi_on) r838 <= 2'b00;
+	if (d_go & d_we & r838_hit) r838[1] <= r838[1] & bwd[1];
+	if (reset | ~atapi_on) r838[1] <= 1'b0;
 end
+always_comb r838[0] = ide_irq & atapi_on;
 `else
 assign atapi_hit = 1'b0;  assign atapi_q = '0;  assign atapi_irq = 1'b0;
 wire [31:0]  hd_q = '0;
@@ -1044,8 +1046,8 @@ always_ff @(posedge clk) if (d_go) begin
 	q_iomap  <= iomap_hit;
 	q_atapi  <= atapi_hit;
 	q_atdp   <= atapi_hit && bport[2:0] == 3'd0 && bport != 16'h03F6;   // (its data port: not logged)
-	q_atcmd  <= atapi_hit && ((bport == 16'h01F7 && d_we) ||            // a command, and the CD-ROM's registers (the disk's saturated the stream, 2026-10-31)
-	                          (!hd_selected && !(bport[2:0] == 3'd0 && bport != 16'h03F6)));
+	q_atcmd  <= atapi_hit && ((bport == 16'h01F7 && d_we) ||            // a command (the one IDE access logged: the rest saturated the stream, 2026-10-31)
+	                          (1'b0 && !hd_selected && !(bport[2:0] == 3'd0 && bport != 16'h03F6)));   // (and the CD-ROM's registers, when wanted: build os2t)
 	q_838    <= r838_hit;
 	q_pd    <= pd_hit;
 	q_cf8   <= cf8_hit;
