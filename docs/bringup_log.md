@@ -1458,3 +1458,11 @@ Next: the bench from a snapshot at the prompt (`--save-exit`), COM1 input with `
   completion (`irq <= !nien`, nIEN still set from the ISR) and dropped the pending state. A drive keeps the
   interrupt pending and asserts INTRQ when nIEN clears. **ATAPI: `ipend`**, set by a DRQ block or a
   completion, cleared by a status read or a command, `irq = ipend & ~nien`. `sim/atapi` passes. Build os2k.
+- **Run os2k (the pending interrupt; the device log off to fit): the OS/2 Warp logo on the display**
+  (`docs/images/os2_warp_ppc_logo_20261031.png`). pagrinit: "Boot volume is a CD", `vpmisrv` (the PCI
+  walk finds the S3 at 8000_7000, loads `s3_864.pmi`, "PMIREQUEST_SETMODE mode id: 1", SETCLUT),
+  `logovid` draws the logo, `personal/insmain` starts and pagrinit polls "Waiting for PI to complete...".
+  insmain then fails: "Error: RC = 23: NS Convert Error, filertns.c, NS_GetAttr Failed", "Searching for
+  the boot device...", GETPERS resolves and reads the node, then `mach_msg_overwrite` fails with
+  0x10000003 (MACH_SEND_INVALID_DEST): most likely the hand-made `boot_device` node (set_boot's argument
+  path adds only `name`). Hand-off: `docs/resume_os2.md`.

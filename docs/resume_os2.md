@@ -48,76 +48,67 @@ forever without touching video (below). Work through blockers one at a time; com
 | `c65ae47` | FDC: RECALIBRATE of a drive other than 0 ends with equipment check (ST0 71), as the 82077 with no TRK0; SENSE DRIVE STATUS's TRK0 only for drive 0; `sim/floppy` case. COM1's text in the debug stream (`DBG_COM1TX`). |
 | `dba46f6` | The stream's interrupt acknowledges, PIC mask and ELCR writes, decrementer-exception count, COM2 text. |
 
-## Where it stands
+## Where it stands (2026-10-31 03:15)
 
-**Fixed (commit `0a61ebf`): the idle kernel.** The floppy driver `dd_flopp` probes drive B at init: `start_drive`
-(DOR, a 0.5 s motor wait, a timeout timer, "interrupt expected" = 1), `recal_start` (RECALIBRATE), then
-`condition_wait` in `flop_device_init`. Our FDC finished the recalibrate in the clock the command was written,
-so IRQ 6, the kernel-side ISR (SENSE INTERRUPT STATUS), the higher-priority interrupt thread and its
-`int_step` (cancel the timer, `condition_signal`) all ran before the waiter waited; a cthreads signal with no
-waiter is lost, so `flop_device_init` slept forever, `DriverReady` never reached the device manager, which
-`condition_wait`s for it before exiting, and the bootstrap never started the servers after the drivers. A
-real 82077 steps for milliseconds (79 steps for an absent drive). The FDC now takes SRT per step (the drive
-busy in the MSR, SENSE INTERRUPT STATUS 80 meanwhile); ST0 71 for the absent drive B. With it the boot goes
-on: "FS Server is up (multi-threaded mode)", then `set_boot`.
+**The OS/2 Warp logo is on the display** (`docs/images/os2_warp_ppc_logo_20261031.png`, build os2k =
+commit `fb3ea29`, `scratch/work/IBMRS6K7248_os2k.rbf`, staged in `_Unstable`): pagrinit mounts the CD
+("Boot volume is a CD"), loads `os2/vpmisrv` (the video server: PCI walk, "adapter found" 88c05333 at
+8000_7000, `s3_864.pmi` loaded, "PMIREQUEST_SETMODE mode id: 1", SETCLUT) and `os2/logovid` (the logo), then
+`personal/insmain`, and polls "Waiting for PI to complete..." (200 times, then it stops polling; the
+transcript `scratch/work/os2_com1_os2k.log`, the stream `Y:\ibmrs6k-bench-logsoard_os2k_dbg.raw`).
 
-**Worked around: `set_boot` crashes on the firmware's boot path.** Without an argument it parses the NVRAM's
-`fw-boot-device` (ours: the 7248 firmware's SCSI CD path `/pci@80000000/pci1000,1@10,0/cdrom@3,0`) and does
-`strlen(NULL)` when the path has no ':' (`GetNSBootDevice`, SET_BOOT+0xD58, KERN_INVALID_ADDRESS at
-0x02001130). Its device names are `devices/hd0`-`hd3` (the real 850's CD is `hd2`, the secondary master;
-ours is the primary master, `hd0`). Typing `devices/hd0` at set_boot's `[PN_FILE_ARGV=""]` prompt makes it
-take that as the boot device ("Boot device set to %s as specified"); dbgauto's rule
-`'set_boot@PN_FILE_ARGV=>devices/hd0'` does it (and `'pagrinit@PN_FILE_ARGV="-s60"=>-d1'` for pagrinit's
-messages). A proper fix would be the IDE path the 850's firmware writes (unknown; it needs a ':' after the
-second component) or set_boot's input in a modelled NVRAM string.
+**The blocker now: `insmain` fails before drawing anything.** Its text on COM1:
+`Error: RC = 23: NS Convert Error / Occurred in file filertns.c / Function NS_GetAttr Failed.`, then
+"Searching for the boot device...", `GETPERS: NS_Resolve passed (0), handle = 2`, `ReadNode Passed,
+node_contents = 19008`, `port_create: (?/?) unknown system code (error code=0x00000000)`,
+`_GEN_XferData -> mach_msg_overwrite : ... (error code=0x10000003)` = MACH_SEND_INVALID_DEST: insmain
+sends to a port it got from the name space and the port is dead or null. The likeliest cause is the
+hand-made boot device: `set_boot devices/hd0` (below) adds node `boot_device` with only a `name`
+attribute, while a real boot (the NVRAM path parsed by `GetNSBootDevice`) goes through `GetDevType` on
+the device node first; insmain's GETPERS ("get personality"?) then resolves the boot device and wants an
+attribute (a port, "device_type", "system_bvm_name"...) that is missing or of the wrong type (RC 23, a
+conversion error). To find out: `OS2/INSMAIN` is not on the CD under that name (pagrinit loads
+`file/system/personal/insmain` from the mounted volume: `PERSONAL/INSMAIN` on the ISO); extract it and
+look at GETPERS and at the NS_GetAttr call in `filertns.c` (the strings say which attribute); compare
+with what BVM/pagrinit put in the name space ("system_bvm_name", "system_partition_type" are attributes
+pagrinit reads from the boot volume). A cheaper experiment first: make set_boot's own parser succeed so
+the node is built its way: its string wants `.../<bridge>/<device>:...` with a ':' after the second
+component; the loader prints the firmware string, and the core could carry a different `fw-boot-device`
+in the NVRAM image (the firmware rewrites it at boot? check) or the 850 personality could answer the
+firmware with an IDE path. Failing that, build the node as GetNSBootDevice would (read its code at
+SET_BOOT+0x12A8-0x1350: GetDevType(devices/hd0) == 3 (cdrom), then AddBootDevice).
 
-**Fixed (commit `eb671bb`): BVM could not read the disc.** With the boot device set, pagrinit found the volume
-and mounted `volumes/hd0.0` but as a HARD_DISK, could not load `os2/vpmisrv` or `os2/logovid` or open
-`os2/swapper`, and died ("*** FATAL ERROR ***"). The stream's ATAPI traffic: BVM recognises the disc with
-MODE SENSE(10) 3F, READ CAPACITY and then **READ CD (BE)** (LBA 0, 1 block, user data only, byte count
-4096), which the CD target refused (sense 5/20, invalid opcode) forty times; it then fell back to the
-CD's MBR (the PReP boot partition, type 41) as a hard disk. The target now serves READ CD's user-data
-form like READ(10) (the raw forms: 5/24). `sim/atapi` covers it.
+The path that works today, end to end: the loader (COM1, manual mode), the kernel, console0/ide0/floppy0,
+conmgr/devmgr, ffpnserv, fs, set_boot (with `devices/hd0`), bvm, ade, initld, initldev, utilfs, pagrinit,
+vpmisrv (mode 1 set on the S3 864), logovid (the logo drawn through the VGA window), insmain started.
 
-**Fixed (next commit): the ATAPI answer came too soon.** With READ CD served, run os2h read LBA 0 (one block,
-then two, delivered as two 2 KB DRQ chunks, taken fine) and then hung on a later packet: its DRQ interrupt
-came (IRQ 13, status 58, I/O, 2048 bytes) and the driver never read the data. The floppy's race again:
-dd_ide's thread sends the packet, then waits for its interrupt thread's signal, and a block the target
-already held answered within microseconds. `IBMRS6K7248_atapi` now holds a command's first DRQ or status
-(and the interrupt) for 2 ms after the command or the packet's last byte, a CD-ROM's order of latency.
-Build os2i carried it, and hung the same way; the stream then showed the real mechanism: dd_ide asks 4096
-bytes a DRQ (1F4/1F5 = 1000) and the 2 KB buffer split BVM's two-block read into two DRQ blocks; the driver
-polls the alternate status through the second block without waiting for its interrupt, whose 0838 latch
-(set again by the completion interrupt after the ISR's clear) is then taken as the *next* packet's
-interrupt before that packet's CDB exists, and the real DRQ's wake-up is lost. **Fixed (commit after
-`8f605e9`): a 4 KB ATAPI buffer**, a 4096-byte count served in one DRQ block as a real drive does. Build
-os2j carried it: the two-block read is one DRQ block and completes cleanly; then READ CD of LBA 16 (the
-ISO volume descriptor) delivered its block and the driver, clearing nIEN after taking the data, waited for
-the completion interrupt that the model had dropped (`irq <= !nien` sampled nIEN while the ISR still had
-it set). **Fixed (commit after `195f49e`): the ATAPI interrupt is a pending state**, `irq = ipend & ~nien`,
-cleared by a status read or a command. Build os2k carries it; its run is the first that can reach
-`insmain`.
+**The fixes that got here (all on master):**
 
-What should follow: pagrinit "Boot volume is a CD", the CD mounted with its file system, `vpmisrv` (the
-base video server) and `logovid` (the logo) loaded from it, the swapper, then `personal/insmain`: the
-first video accesses (the S3 864 through its VGA ports and the linear frame buffer; NT's s3.dll path in
-`docs/s3_nt_driver.md` is the reference for what the core's S3 can do).
+| Commit | What |
+|---|---|
+| `c65ae47` | FDC: RECALIBRATE of an absent drive ends ST0 71; COM1's text in the debug stream (`DBG_COM1TX`). |
+| `dba46f6` | The stream's interrupt acknowledges, PIC masks, decrementer count, COM2 text. |
+| `0a61ebf` | **FDC seeks take their step time** (the kernel idled: dd_flopp's wake-up lost to an instant interrupt). |
+| `eb671bb` | **READ CD (BE)** in the CD target (BVM reads the disc with it); dbgauto's per-file prompt rules. |
+| `8237b4c` | **ATAPI: a 2 ms command latency** (dd_ide's wake-up lost to an instant DRQ). |
+| `b1b6067` | **ATAPI: a 4 KB buffer**, 4096-byte counts in one DRQ block (the 2 KB split left a phantom 0838 interrupt). |
+| `197bda1` | **ATAPI: the interrupt stays pending through nIEN** (dd_ide waits for the completion interrupt after re-enabling). |
+| `fb3ea29` | The device log off (the build did not fit with it). |
+
 ## Open issues and the next step
 
-- Build os2k (READ CD, the ATAPI latency, the 4 KB buffer, the pending interrupt) and its run:
-  `scratch/work/IBMRS6K7248_os2k.rbf` if the build finished; logs `Y:\ibmrs6k-bench-logsoard_os2k_dbg.raw`,
-  `scratch/work/os2_com1_os2k.log` if the run did. If BVM's reads go past 4096 bytes a packet, the chunking returns: raise the buffer or
-  look at how dd_ide handles the second DRQ block (it polls the alternate status). The
-  ATAPI packets in a decoded stream: `Wnq F7:A0` then the CDB as 16-bit writes to 1F0 (`Ddv 800001F0`),
-  the data as reads; the session's extraction snippet is in the bringup log's method (a PACKET, its CDB,
-  byte count, data words, status/error). BVM may ask for more than READ CD: watch for new 5/20 refusals
-  (READ TOC, READ DISC INFO, GET CONFIGURATION, MODE SENSE pages).
-- The earlier runs' logs: os2g holds the READ CD refusals and pagrinit's messages; os2h the hang after
-  the third READ CD. The stream's device log (`DBG_DEVLOG`) stops after 16383 entries: a run with many
-  data-port reads loses the later CDBs (raise `dv_n`'s width or exclude 1F0 reads to see them).
-- The FDC's seek time is new: re-check the firmware's diskette boot (SMS from the configuration diskette)
-  and NT's ARC diskette on the board; both polled or waited on the interrupt before, but never had to wait.
-- `dd_ide` units 1-3 fail `io_ext_create` (rc 5) for the absent positions, printed as errors; harmless so far.
-- The loader crashes (Program Exception at 0xCC14, dar A0000040) after some 60 stray Enters at its device
-  prompt: answer prompts from the text, never blindly.
-- The stream's DBG_DEVLOG/COM1TX probes cost ~250 ALMs; the core is at 99 %. CD audio is still on.
+1. insmain's failure above: the boot_device node / GETPERS. Start with `PERSONAL/INSMAIN`'s strings and
+   code (capstone through `kdis.py`/`strref.py`, which resolve a function's string references), and with
+   what `GetNSBootDevice` would have added. Re-run with the same dbgauto rules (`dbg_run.sh` in the
+   session's scratchpad; copy it and `devlog.py`, `kdis.py`, `strref.py`, `syms.py` into `tools/`).
+2. `set_boot`'s parser and the firmware's `fw-boot-device` (a SCSI path on a machine whose OS/2 has only
+   dd_ide): the clean fix is an IDE path with a ':'; see what the 850's firmware would write.
+3. The FDC's seek time and the ATAPI changes are new: re-check the firmware's diskette boot, NT's ARC
+   diskette, AIX's cd0 (the SCSI CD is untouched, but the target's READ CD is shared), and NT's CD (ATAPI
+   under the 850 ID is OS/2-only so far).
+4. dd_ide units 1-3 fail `io_ext_create` (rc 5): harmless.
+5. The loader crashes after ~60 stray Enters at its device prompt (Program Exception at 0xCC14): answer
+   prompts from the text, never blindly (dbgauto does).
+6. The core is at 99 %: `DBG_DEVLOG` is off now (the device log; it hid the CDBs anyway once the data-port
+   reads flooded its FIFO: exclude 1F0 reads from it before turning it on again). CD audio is still on.
+7. The user plans two Quartus revisions (IBMRS6K7248, IBMPS850): not started.
