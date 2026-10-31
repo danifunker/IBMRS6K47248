@@ -7,8 +7,7 @@
 //  the 850's disks are IDE (OS/2's install boot loads dd_ide only). This is
 //  device 1: an ATA disk whose sectors are the OSD's disk 0 image, reached
 //  as a third initiator on IBMRS6K7248_scsitgt's bus (the machine gives it
-//  the bus while the 53C810 and the CD-ROM have nothing on it), with one
-//  READ(10)/WRITE(10) of the block's sectors per DRQ block.
+//  the bus while the 53C810 and the CD-ROM have nothing on it).
 //
 //  Registers (the byte of the access's first lane, wd8; the answer on every
 //  lane; the data port 16 or 32 bits, aligned, lane 0 the lowest address):
@@ -22,14 +21,21 @@
 //  Geometry: 16 heads, 63 sectors a track, the cylinders from the image's
 //  size (16383 at most in the identify data, as ATA-2 asks); LBA too.
 //  Commands: IDENTIFY DEVICE (EC), READ/WRITE SECTORS (20/21, 30/31), READ/
-//  WRITE MULTIPLE (C4/C5, after SET MULTIPLE C6: 8 sectors at most, the
-//  buffer), READ VERIFY (40/41), RECALIBRATE (1x), SEEK (7x), INITIALIZE
-//  DEVICE PARAMETERS (91), SET FEATURES (EF), the power commands and FLUSH
-//  CACHE (E0-E7, done at once), DEVICE RESET / DIAGNOSTIC (08/90: the ATA
-//  signature); anything else aborted (ERR, ABRT).
+//  WRITE MULTIPLE (C4/C5, after SET MULTIPLE C6: 8 sectors at most), READ
+//  VERIFY (40/41), RECALIBRATE (1x), SEEK (7x), INITIALIZE DEVICE PARAMETERS
+//  (91), SET FEATURES (EF), the power commands and FLUSH CACHE (E0-E7, done
+//  at once), DEVICE RESET / DIAGNOSTIC (08/90: the ATA signature); anything
+//  else aborted (ERR, ABRT).
+//  The host sees ATA's blocks: a DRQ block a sector (READ/WRITE SECTORS) or
+//  a SET MULTIPLE count of them, an interrupt with each block (a write's
+//  first excepted) and a write's completion. The disk side moves chunks of
+//  up to 32 sectors in one READ(10)/WRITE(10) through a 16 KB buffer: the
+//  Main's image access costs a round trip a request, and OS/2's format
+//  writes its partition in 256-sector commands.
 //  Timing as the CD-ROM's: a command's first DRQ or its completion no
 //  sooner than LATENCY_US after the command (OS/2's drivers wait for their
-//  interrupt thread's signal, which an instant answer loses).
+//  interrupt thread's signal, which an instant answer loses); the blocks
+//  within a command follow as fast as the disk side allows.
 //============================================================================
 
 module IBMRS6K7248_idehd #(
@@ -71,6 +77,7 @@ localparam logic [2:0] DISK_ID = 3'd0;
 localparam logic [2:0] P_DOUT = 3'b000, P_DIN = 3'b001, P_CMD = 3'b010, P_STAT = 3'b011;
 localparam int unsigned LATENCY_US = 2000;
 localparam logic [7:0]  HEADS = 8'd16, SPT = 8'd63;
+localparam logic [8:0]  CHUNK = 9'd32;         // sectors a SCSI command (the 16 KB buffer)
 
 // the task file
 logic [7:0] err, scnt, snum, cyl_l, cyl_h, drv;
@@ -86,29 +93,31 @@ wire [31:0] lba_chs  = (({cyl_h, cyl_l} * 32'(HEADS)) + 32'(drv[3:0])) * 32'(SPT
 wire [31:0] lba_in   = drv[6] ? {4'd0, drv[3:0], cyl_h, cyl_l, snum} : lba_chs;
 
 // the command in progress
-typedef enum logic [3:0] {S_IDLE, S_ID, S_WANT, S_SEL, S_RUN, S_HOST, S_NEXT, S_DONE} st_t;
+typedef enum logic [3:0] {S_IDLE, S_ID, S_WANT, S_SEL, S_RUN, S_HOST, S_DONE} st_t;
 st_t s;
 logic        wr;                               // a write command (the host's data first)
 logic        verify;                           // READ VERIFY: no data to the host
 logic        multi;                            // READ/WRITE MULTIPLE: blocks of the SET MULTIPLE count
-logic [31:0] lba;                              // the next block to transfer
-logic [8:0]  left;                             // sectors left (256 at most)
-logic [3:0]  mult, bsz;                        // the SET MULTIPLE count; the sectors of the block running
-logic [12:0] hptr, hlen;                       // the host's byte position in the block, its length
-logic [12:0] tptr;                             // the target's byte position
+logic [31:0] lba;                              // the chunk running: its first sector
+logic [8:0]  left;                             // sectors left, the chunk running included (256 at most)
+logic [5:0]  chunk;                            // the sectors of the chunk running (32 at most)
+logic [3:0]  mult;                             // the SET MULTIPLE count
+logic [14:0] hptr, hlen;                       // the host's byte position in the buffer, the end of its block (16384 at most)
+logic [14:0] cend;                             // the end of the chunk in the buffer
+logic [13:0] tptr;                             // the target's byte position
 logic [31:0] acc;
 logic [3:0]  ci;
 logic [7:0]  stat_b, idw;
 logic [31:0] lat_cnt;
 wire         lat_ok = lat_cnt == 32'd0;
 
-// the data buffer: 4 KB (8 sectors), a word a line
-logic [31:0] buf_mem [1024];
-logic [9:0]  bwa, bra, bra_q;
+// the data buffer: 16 KB (32 sectors), a word a line
+logic [31:0] buf_mem [4096];
+logic [11:0] bwa, bra, bra_q;
 logic [31:0] bwd, brq;
 logic        bwe;
 wire         host_rd = s == S_HOST && !wr;
-wire  [9:0]  rda = host_rd ? hptr[11:2] : bra;
+wire  [11:0] rda = host_rd ? hptr[13:2] : bra;
 always_ff @(posedge clk) begin
 	if (bwe) buf_mem[bwa] <= bwd;
 	brq   <= buf_mem[rda];
@@ -147,17 +156,27 @@ wire [15:0] idv = ident(idw);
 // the data port's lanes
 wire [1:0]  dbase = {hptr[1] & ~be[1], 1'b0};
 wire [2:0]  nb    = be[1] ? 3'd4 : be[2] ? 3'd2 : 3'd1;
-wire [12:0] hnext = hptr + 13'(nb);
+wire [14:0] hnext = hptr + 15'(nb);
 wire        dsel  = sel && en && selected && !cs1 && reg_a == 3'd0 && drq;
 
-// the CDB of the block running: READ(10) or WRITE(10), bsz blocks at lba
+// the CDB of the chunk running: READ(10) or WRITE(10), chunk sectors at lba
 function automatic logic [7:0] cdb(input logic [3:0] i);
 	case (i)
 		4'd0: cdb = wr ? 8'h2A : 8'h28;
 		4'd2: cdb = lba[31:24]; 4'd3: cdb = lba[23:16]; 4'd4: cdb = lba[15:8]; 4'd5: cdb = lba[7:0];
-		4'd8: cdb = {4'd0, bsz};
+		4'd8: cdb = {2'd0, chunk};
 		default: cdb = 8'h00;
 	endcase
+endfunction
+
+// the host's blocks: the SET MULTIPLE count for the MULTIPLE commands, else a sector; a block ends at the chunk
+wire  [3:0]  hb = multi ? mult : 4'd1;
+function automatic logic [14:0] block_end(input logic [14:0] p, input logic [14:0] e);
+	block_end = (p + 15'(hb) * 15'd512 > e) ? e : p + 15'(hb) * 15'd512;
+endfunction
+// the chunk to run next: what is left, 32 at most
+function automatic logic [5:0] next_chunk(input logic [8:0] n);
+	next_chunk = n > CHUNK ? 6'(CHUNK) : 6'(n);
 endfunction
 
 // a command's end: a write or a verify (and any error) ends with the completion interrupt, a read does not
@@ -168,23 +187,18 @@ task automatic finish(input logic ok);
 	ipend <= !ok || wr || verify; s <= S_IDLE;
 endtask
 
-// the sectors of a block: the multiple count (1 without one), or what is left
-function automatic logic [3:0] blk(input logic [8:0] n, input logic multi);
-	logic [3:0] m;
-	m = (multi && mult != 4'd0) ? mult : 4'd1;
-	blk = n < 9'(m) ? 4'(n) : m;
-endfunction
-
-// the block after this one, or done; a write's next block is the host's first (DRQ with the interrupt)
-task automatic next_block();
+// the chunk after the one running (left, lba, chunk, cend), or done
+task automatic advance();
 	logic [8:0] rest;
-	rest = left - 9'(bsz);
-	lba  <= lba + 32'(bsz);
-	left <= rest;
+	rest = left - 9'(chunk);
 	if (rest == 9'd0) s <= S_DONE;
 	else begin
-		bsz <= blk(rest, bsz != 4'd1 || multi);
-		if (wr) begin s <= S_HOST; drq <= 1'b1; bsy_s <= 1'b0; hptr <= 13'd0; hlen <= 13'(blk(rest, bsz != 4'd1 || multi)) * 13'd512; ipend <= 1'b1; end
+		left <= rest; lba <= lba + 32'(chunk); chunk <= next_chunk(rest); cend <= 15'(next_chunk(rest)) * 15'd512;
+		hptr <= 15'd0;
+		if (wr) begin                                     // the host's next block: DRQ with the interrupt
+			hlen <= block_end(15'd0, 15'(next_chunk(rest)) * 15'd512);
+			drq <= 1'b1; bsy_s <= 1'b0; ipend <= 1'b1; s <= S_HOST;
+		end
 		else s <= S_WANT;
 	end
 endtask
@@ -202,15 +216,21 @@ always_ff @(posedge clk) begin
 			for (int k = 0; k < 4; k++)
 				if (k < nb) acc[8 * (dbase + 2'(k)) +: 8] <= wdata[31 - 8 * k -: 8];
 			if (hnext[1:0] == 2'd0 || hnext >= hlen) begin
-				bwe <= 1'b1; bwa <= hptr[11:2];
+				bwe <= 1'b1; bwa <= hptr[13:2];
 				bwd <= acc;
 				for (int k = 0; k < 4; k++)
 					if (k < nb) bwd[8 * (dbase + 2'(k)) +: 8] <= wdata[31 - 8 * k -: 8];
 			end
 		end
-		if (hnext >= hlen && s == S_HOST) begin
-			drq <= 1'b0; bsy_s <= 1'b1;
-			s <= wr ? S_WANT : S_NEXT;                        // a write's block goes to the disk; a read's is done
+		if (hnext >= hlen && s == S_HOST) begin           // the host's block is complete
+			if (hnext >= cend) begin                      // ... and the chunk with it
+				drq <= 1'b0; bsy_s <= 1'b1;
+				if (wr) s <= S_WANT;                      // to the disk
+				else advance();                           // read: the next chunk, or done
+			end
+			else begin                                    // the next block of the chunk: its DRQ and interrupt
+				hlen <= block_end(hnext, cend); ipend <= 1'b1;
+			end
 		end
 	end
 
@@ -235,19 +255,25 @@ always_ff @(posedge clk) begin
 			case (wd8)
 				8'hEC: begin s <= S_ID; bsy_s <= 1'b1; idw <= 8'd0; end
 				8'h20, 8'h21, 8'h30, 8'h31, 8'h40, 8'h41, 8'hC4, 8'hC5: begin
-					logic [8:0] n0;
-					logic [3:0] b0;
+					logic [8:0]  n0;
+					logic [14:0] c0;
+					logic        w0, m0;
 					n0 = scnt == 8'd0 ? 9'd256 : 9'(scnt);
-					b0 = (wd8[7] && mult != 4'd0) ? (n0 < 9'(mult) ? 4'(n0) : mult) : 4'd1;
-					wr     <= wd8 == 8'h30 || wd8 == 8'h31 || wd8 == 8'hC5;
+					c0 = 15'(next_chunk(n0)) * 15'd512;
+					w0 = wd8 == 8'h30 || wd8 == 8'h31 || wd8 == 8'hC5;
+					m0 = wd8[7];
+					wr     <= w0;
 					verify <= wd8[6] && !wd8[7];
-					multi  <= wd8[7];
+					multi  <= m0;
 					lba    <= lba_in;
 					left   <= n0;
-					bsz    <= b0;
-					if (lba_in >= blocks || (wd8[7] && mult == 4'd0)) begin errb <= 1'b1; err <= wd8[7] ? 8'h04 : 8'h10; ipend <= 1'b1; end   // ABRT / IDNF
-					else if (wd8 == 8'h30 || wd8 == 8'h31 || wd8 == 8'hC5) begin   // a write: the host's first block (no interrupt), then the disk
-						s <= S_HOST; drq <= 1'b1; hptr <= 13'd0; hlen <= 13'(b0) * 13'd512;
+					chunk  <= next_chunk(n0);
+					hptr   <= 15'd0;
+					cend   <= c0;
+					if (lba_in >= blocks || (m0 && mult == 4'd0)) begin errb <= 1'b1; err <= m0 ? 8'h04 : 8'h10; ipend <= 1'b1; end   // ABRT / IDNF
+					else if (w0) begin                            // a write: the host's first block (no interrupt), then the disk
+						s <= S_HOST; drq <= 1'b1;
+						hlen <= (15'(m0 ? mult : 4'd1) * 15'd512 > c0) ? c0 : 15'(m0 ? mult : 4'd1) * 15'd512;
 					end
 					else begin s <= S_WANT; bsy_s <= 1'b1; end
 				end
@@ -276,24 +302,25 @@ always_ff @(posedge clk) begin
 	case (s)
 		S_ID: begin
 			if (!idw[0]) acc[15:0] <= idv;
-			else begin bwe <= 1'b1; bwa <= {2'b00, idw[7:1]}; bwd <= {idv, acc[15:0]}; end
+			else begin bwe <= 1'b1; bwa <= {5'b00000, idw[7:1]}; bwd <= {idv, acc[15:0]}; end
 			if (idw != 8'd255 || lat_ok) idw <= idw + 8'd1;
 			if (idw == 8'd255 && lat_ok) begin
-				bsy_s <= 1'b0; drq <= 1'b1; hptr <= 13'd0; hlen <= 13'd512; ipend <= 1'b1;
-				s <= S_HOST; wr <= 1'b0; left <= 9'd1; bsz <= 4'd1;
+				bsy_s <= 1'b0; drq <= 1'b1; hptr <= 15'd0; hlen <= 15'd512; cend <= 15'd512; ipend <= 1'b1;
+				s <= S_HOST; wr <= 1'b0; multi <= 1'b0; left <= 9'd1; chunk <= 6'd1;
 			end
 		end
-		S_WANT: if (grant && !bsy && lat_ok) begin i_sel <= 1'b1; s <= S_SEL; ci <= 4'd0; tptr <= 13'd0; bra <= 10'd0; stat_b <= 8'h00; end
+		S_WANT: if (grant && !bsy && lat_ok) begin i_sel <= 1'b1; s <= S_SEL; ci <= 4'd0; tptr <= 14'd0; bra <= 12'd0; stat_b <= 8'h00; end
 		S_SEL: begin
 			if (sel_fail) begin stat_b <= 8'h02; s <= S_DONE; end
 			else if (sel_done) s <= S_RUN;
 		end
 		S_RUN: begin
-			if (!bsy && !req) begin                           // the target let go: the block is done
-				if (stat_b != 8'h00) begin s <= S_DONE; end
-				else if (wr || verify) begin s <= S_NEXT; end
-				else begin                                    // a read block to the host
-					drq <= 1'b1; bsy_s <= 1'b0; hptr <= 13'd0; hlen <= 13'(bsz) * 13'd512; ipend <= 1'b1; s <= S_HOST;
+			if (!bsy && !req) begin                           // the target let go: the chunk is done
+				if (stat_b != 8'h00) s <= S_DONE;
+				else if (wr || verify) advance();             // written (or verified): the next chunk, or done
+				else begin                                    // a read chunk is in the buffer: its first block to the host
+					hptr <= 15'd0; hlen <= block_end(15'd0, cend);
+					drq <= 1'b1; bsy_s <= 1'b0; ipend <= 1'b1; s <= S_HOST;
 				end
 			end
 			else if (req && !ack) begin
@@ -301,15 +328,15 @@ always_ff @(posedge clk) begin
 					P_CMD: begin idata <= cdb(ci); ack <= 1'b1; ci <= ci + 4'd1; end
 					P_DIN: begin
 						acc[8 * tptr[1:0] +: 8] <= tdata;
-						bwe <= 1'b1; bwa <= tptr[11:2];
+						bwe <= 1'b1; bwa <= tptr[13:2];
 						bwd <= acc; bwd[8 * tptr[1:0] +: 8] <= tdata;
-						tptr <= tptr + 13'd1;
+						tptr <= tptr + 14'd1;
 						ack  <= 1'b1;
 					end
 					P_DOUT: begin
-						bra <= tptr[11:2];
+						bra <= tptr[13:2];
 						idata <= brq[8 * tptr[1:0] +: 8];
-						if (bra == tptr[11:2] && bra_q == tptr[11:2]) begin ack <= 1'b1; tptr <= tptr + 13'd1; end
+						if (bra == tptr[13:2] && bra_q == tptr[13:2]) begin ack <= 1'b1; tptr <= tptr + 14'd1; end
 					end
 					P_STAT: begin stat_b <= tdata; ack <= 1'b1; end
 					default: ack <= 1'b1;
@@ -317,7 +344,6 @@ always_ff @(posedge clk) begin
 			end
 		end
 		S_HOST: ;                                             // the host drains or fills the block (the data port)
-		S_NEXT: next_block();
 		S_DONE: if (lat_ok) finish(stat_b == 8'h00);
 		default: ;
 	endcase

@@ -90,9 +90,9 @@ static int read_cmd(uint8_t cmd, uint32_t lba, int n, std::vector<uint8_t> *d, b
 	wr8(7, cmd);
 	int st = 0, blocks = 0;
 	for (int left = n; left > 0; ) {
-		if (!wait_irq()) return -1;
+		if (!wait_irq()) { printf("  (read block %d of %d: status %02X, error %02X)\n", blocks, n, rd8(7), rd8(1)); return -1; }
 		st = wait_not_busy();
-		if (st & 1) return st;
+		if (st & 1) { printf("  (read block %d: ERR, error %02X)\n", blocks, rd8(1)); return st; }
 		if (!(st & 0x08)) { printf("  no DRQ (status %02X)\n", st); fails++; return st; }
 		int k = left < blk ? left : blk;
 		for (int i = 0; i < k * 512; ) {
@@ -200,6 +200,24 @@ int main(int argc, char **argv) {
 		if (bad) { printf("  %d bytes not written\n", bad); fails++; }
 	}
 	report("SET MULTIPLE 8, READ MULTIPLE 19, WRITE MULTIPLE 10", f0);
+
+	f0 = fails;
+	{
+		std::vector<uint8_t> d;
+		s = read_cmd(0x20, 7000, 40, &d, true);                   // 32 + 8: two chunks
+		expect("READ SECTORS 40 ERR", s & 1, 0); expect("bytes", d.size(), 40 * 512);
+		int bad = 0; for (size_t i = 0; i < d.size(); i++) if (d[i] != img(0, 7000 + i / 512, i % 512)) bad++;
+		if (bad) { printf("  %d bytes wrong\n", bad); fails++; }
+		std::vector<uint8_t> w; for (int i = 0; i < 256 * 512; i++) w.push_back(uint8_t(i * 5 + (i >> 9)));
+		s = write_cmd(0x30, 8000, 256, w);                        // sector count 0: 8 chunks
+		expect("WRITE SECTORS 256 ERR", s & 1, 0);
+		bad = 0; for (int i = 0; i < 256 * 512; i++) if (img(0, 8000 + i / 512, i % 512) != w[i]) bad++;
+		if (bad) { printf("  %d bytes not written\n", bad); fails++; }
+		d.clear(); s = read_cmd(0xC4, 8000, 40, &d, false, 8);     // read back in multiples across a chunk edge
+		bad = 0; for (size_t i = 0; i < d.size(); i++) if (d[i] != w[i]) bad++;
+		if (bad || d.size() != 40 * 512) { printf("  read back: %d wrong of %zu\n", bad, d.size()); fails++; }
+	}
+	report("40 sectors read, 256 written (sector count 0), 40 read back in 8s", f0);
 
 	f0 = fails;
 	wr8(2, 4); wr8(3, 50); wr8(4, 0); wr8(5, 0); wr8(6, 0xF0); wr8(7, 0x40);
