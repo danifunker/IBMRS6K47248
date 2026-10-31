@@ -733,6 +733,7 @@ wire        dec_hit = dec_ev & (dec_n[5:0] == 6'd63);
 // check of the result) and pagrinit's AddLeafNode return code (p reached, q not "exists", r not tolerated,
 // s not 0); the instruction word tells the program's copy of the code from another's at the same address
 // (every server is linked at 02000000); a 64-entry FIFO
+localparam bit DBG_WATCH = 1'b0;         // the watch points (off: they answered, and the disk build needs the room)
 reg  [3:0]  wq [64];
 reg  [5:0]  wq_w = 0, wq_r = 0, wq_wq = 0;
 reg  [3:0]  wq_e;
@@ -761,7 +762,7 @@ always_comb begin
 		4'd5: w_ch = 8'h66; 4'd6: w_ch = 8'h46; 4'd7: w_ch = 8'h6B; 4'd8: w_ch = 8'h65; default: w_ch = 8'h58;
 	endcase
 end
-wire        wq_ev = DBG_COM1TX & isi_armed & trace_valid & trace_last & w_any;
+wire        wq_ev = DBG_WATCH & DBG_COM1TX & isi_armed & trace_valid & trace_last & w_any;
 always @(posedge clk_cpu) begin
 	if (wq_ev && wq_w + 6'd1 != wq_r) begin wq[wq_w] <= w_hit; wq_w <= wq_w + 6'd1; end
 	wq_e  <= wq[wq_r];
@@ -778,7 +779,8 @@ wire        iq_p21 = io_we & (io_addr[31:2] == 30'h2000_0008) & io_be[2];
 wire        iq_pa1 = io_we & (io_addr[31:2] == 30'h2000_0028) & io_be[2];
 wire        iq_e0  = io_we & (io_addr[31:2] == 30'h2000_0134) & io_be[3];
 wire        iq_e1  = io_we & (io_addr[31:2] == 30'h2000_0134) & io_be[2];
-wire        iq_ev  = DBG_COM1TX & isi_armed & io_ev & (iq_ack | iq_p21 | iq_pa1 | iq_e0 | iq_e1);
+localparam bit DBG_IQ = 1'b0;            // the interrupt acknowledges and PIC writes (off for the disk build's room)
+wire        iq_ev  = DBG_IQ & DBG_COM1TX & isi_armed & io_ev & (iq_ack | iq_p21 | iq_pa1 | iq_e0 | iq_e1);
 always @(posedge clk_cpu) begin
 	if (iq_ev && iq_w + 6'd1 != iq_r) begin
 		iq[iq_w] <= iq_ack ? {1'b0, 12'h000, io_rdata[7:0]} :
@@ -1017,12 +1019,12 @@ always @(posedge clk_cpu) begin
 		stage    <= {8'h54, 8'h3D, hex(dec_n[15:12]), hex(dec_n[11:8]), hex(dec_n[7:4]), hex(dec_n[3:0]), 8'h20, 56'h0};
 		dec_pend <= 1'b0;
 	end
-	else if (wq_r != wq_wq) begin           // (wq_e: read a clock after wq_r moved, long before this)
+	else if (DBG_WATCH && wq_r != wq_wq) begin   // (wq_e: read a clock after wq_r moved, long before this)
 		stage_n <= 4'd2;
 		stage   <= {8'h7E, w_ch, 96'h0};
 		wq_r    <= wq_r + 6'd1;
 	end
-	else if (iq_r != iq_wq) begin           // (iq_e: read a clock after iq_r moved, long before this)
+	else if (DBG_IQ && iq_r != iq_wq) begin   // (iq_e: read a clock after iq_r moved, long before this)
 		if (iq_e[20]) begin
 			stage_n <= 4'd8;
 			stage   <= {8'h50, hex(iq_e[19:16]), hex(iq_e[15:12]), hex(iq_e[11:8]), 8'h3D, hex(iq_e[7:4]), hex(iq_e[3:0]), 8'h20, 48'h0};

@@ -80,7 +80,7 @@ assign      irq = ipend & ~nien & selected;
 wire  [7:0] status = {bsy_s, drdy, 1'b0, 1'b1, drq, 2'b00, errb};   // DSC always
 
 // the disk: cylinders for the identify data (16383 at most) and the CHS translation
-wire [31:0] cyls_all = blocks / 32'(HEADS * SPT);
+wire [31:0] cyls_all = blocks >> 10;                 // of 16 x 63 = 1008 sectors: 1024 undercounts by 1.6 % (no divider; the CHS area a little short of the end)
 wire [15:0] cyls_id  = cyls_all > 32'd16383 ? 16'd16383 : cyls_all[15:0];
 wire [31:0] lba_chs  = (({cyl_h, cyl_l} * 32'(HEADS)) + 32'(drv[3:0])) * 32'(SPT) + 32'(snum) - 32'd1;
 wire [31:0] lba_in   = drv[6] ? {4'd0, drv[3:0], cyl_h, cyl_l, snum} : lba_chs;
