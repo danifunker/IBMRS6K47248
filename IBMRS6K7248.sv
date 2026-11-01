@@ -696,8 +696,14 @@ end
 reg  [45:0] nq [64];                      // {s3, we, be, offset, data}
 reg  [5:0]  nq_w = 0, nq_r = 0;
 // (and, for ARC and NT, any access to the 53C810's I/O BAR wherever they place it: io_ncr)
-wire        ncr_ev = isi_armed & io_ev & (io_ncr || io_addr[31:8] == 24'h810000 ||
-                                         (io_addr[31:3] == 29'h1000_000C && (io_we || !io_addr[2])));   // (not the 8042's status polls)
+// (DBG_IDEFW: from reset on, the firmware's IDE writes: 170-177, 1F0-1F7 and 370-377, 3F0-3F7, as "Wbaa=",
+// to see its ATAPI boot of the CD-ROM; the reads are its polls and would fill the FIFO)
+localparam bit DBG_IDEFW = 1'b0;             // (on in build os2z/os2aa, 2026-11-01)
+wire        idefw_ev = DBG_IDEFW & io_ev & io_we & (io_addr[31:3] == 29'h1000_002E || io_addr[31:3] == 29'h1000_003E ||
+                                                    io_addr[31:3] == 29'h1000_006E || io_addr[31:3] == 29'h1000_007E);
+wire        ncr_ev = (isi_armed & io_ev & (io_ncr || io_addr[31:8] == 24'h810000 ||
+                                         (io_addr[31:3] == 29'h1000_000C && (io_we || !io_addr[2])))) |   // (not the 8042's status polls)
+                     idefw_ev;
 // (not the reads of 3DA, input status 1: AIX's X server polls it without end and they filled the FIFO)
 wire        s3v_ev = isi_armed & io_ev & (io_addr[31:5] == 27'h400_001E) & ~(~io_we & io_addr[7:0] == 8'hD8);   // 8000_03C0-8000_03DF
 wire        s3e_ev = isi_armed & io_ev & io_addr[31:16] == 16'h8000 && io_addr[9:2] == 8'hBA;   // 8000_xxE8

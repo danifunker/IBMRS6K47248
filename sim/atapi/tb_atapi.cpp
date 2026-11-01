@@ -148,6 +148,21 @@ int main(int argc, char **argv) {
 	}
 	report("READ CD: user data, the raw form refused", f0);
 
+	// READ CD under SFF-8020's draft number D4, as the 850's firmware sends it (its template D4 08 .. 10 at 2 KB a
+	// DRQ): the probe of length 0 first, then the blocks
+	f0 = fails;
+	{
+		d.clear(); s = packet({0xD4, 0x08, 0, 0, 0, 0, 0, 0, 0, 0x10, 0, 0}, 0x800, &d);
+		expect("D4 of 0 blocks: no ERR", s & 1, 0); expect("D4 of 0 blocks: no data", d.size(), 0);
+		d.clear(); std::vector<int> bl3;
+		s = packet({0xD4, 0x08, 0, 0, 0, 16, 0, 0, 2, 0x10, 0, 0}, 0x800, &d, false, &bl3);
+		expect("D4 ERR", s & 1, 0); expect("D4 bytes", d.size(), 4096); expect("D4 DRQ blocks of 2 KB", bl3.size(), 2);
+		int bad = 0;
+		for (size_t i = 0; i < d.size(); i++) if (d[i] != img(64 + i / 512, i % 512)) { if (bad++ < 3) printf("  byte %zu: %02X, want %02X\n", i, d[i], img(64 + i / 512, i % 512)); }
+		if (bad) fails++;
+	}
+	report("READ CD as D4 (the 850 firmware's): the probe, then 2 blocks", f0);
+
 	f0 = fails;
 	d.clear(); std::vector<int> bl;
 	s = packet({0x28, 0, 0, 0, 0, 3, 0, 0, 1, 0}, 512, &d, false, &bl);

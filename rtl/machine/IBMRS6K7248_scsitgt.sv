@@ -364,6 +364,8 @@ module IBMRS6K7248_scsitgt #(
             3'd0: return 4'd6;
             3'd1, 3'd2: return 4'd10;
             3'd5: return 4'd12;
+            // (D4: READ CD as SFF-8020's drafts numbered it, BE in MMC; the 850's firmware reads its CD-ROM with it)
+            3'd6: return op == 8'hD4 ? 4'd12 : 4'd6;
             default: return 4'd6;
         endcase
     endfunction
@@ -756,15 +758,17 @@ module IBMRS6K7248_scsitgt #(
                                 else begin st <= T_DIN; req <= 1'b0; phase <= P_DIN; pending <= 1'b1; end
                             end
                         end
-                        8'h08, 8'h28, 8'hBE: begin                            // READ; READ CD (user data only)
+                        8'h08, 8'h28, 8'hBE, 8'hD4: begin                     // READ; READ CD (user data only)
                             // (READ CD, MMC: the length in bytes 6-8, byte 9 what of each sector: 10 the user
                             // data, our 2048-byte blocks; OS/2's BVM reads the disc with it; the raw forms
-                            // (sync, headers, EDC: F8) are not kept: ILLEGAL REQUEST, invalid field)
-                            if (op == 8'hBE) cnt = {8'd0, cdb[6], cdb[7], cdb[8]};
+                            // (sync, headers, EDC: F8) are not kept: ILLEGAL REQUEST, invalid field.
+                            // D4 is the same command under SFF-8020's draft number, which the 850's firmware
+                            // sends (its template D4 08 .. 10: a CD-ROM of the time took it; 2026-11-01)
+                            if (op == 8'hBE || op == 8'hD4) cnt = {8'd0, cdb[6], cdb[7], cdb[8]};
                             if (is_cd) a_stop <= 1'b1;                        // a data read ends a play
-                            if (op == 8'hBE && cdb[9][7:3] != 5'b00010 && cdb[9][7:3] != 5'b00000) begin
+                            if ((op == 8'hBE || op == 8'hD4) && cdb[9][7:3] != 5'b00010 && cdb[9][7:3] != 5'b00000) begin
                                 skey[dev] <= 4'h5; sasc[dev] <= 8'h24; go_status(8'h02);
-                            end else if (op == 8'hBE && cdb[9][7:3] == 5'b00000) go_status(8'h00);
+                            end else if ((op == 8'hBE || op == 8'hD4) && cdb[9][7:3] == 5'b00000) go_status(8'h00);
                             else if (((lba + cnt) << bshift) > blocks) begin
                                 skey[dev] <= 4'h5; sasc[dev] <= 8'h21; go_status(8'h02);
                             end else if (cnt == 0) go_status(8'h00);

@@ -741,8 +741,11 @@ IBMRS6K7248_idehd #(.CLK_HZ(CPU_HZ), .UNIT(1'b0)) idehd (
 	.phase(sb_phase), .tdata(sb_tdata), .ack(hd_ack), .idata(hd_idata)
 );
 // the disk image is the IDE disk's under the 850 personality: the 53C810 finds nobody at ID 0 (the
-// firmware booted the PReP partition OS/2's installer wrote there instead of the CD, 2026-10-31)
-wire         hd_hide = atapi_on && hd_present && n_sel_id == 3'd0;
+// firmware booted the PReP partition OS/2's installer wrote there instead of the CD, 2026-10-31); and the CD
+// image is the IDE CD-ROM's, as on a real 850: nobody at ID 3 either, so the firmware boots the CD over IDE and
+// names it with an IDE path, the one OS/2's loader and set_boot map by themselves (given the SCSI path, the
+// loader asks for the device and set_boot has no IDE name for it, 2026-11-01)
+wire         hd_hide = atapi_on && ((hd_present && n_sel_id == 3'd0) || n_sel_id == 3'd3);
 logic        hd_hide_fail;
 always_ff @(posedge clk) hd_hide_fail <= !i_own && n_sel && hd_hide;
 assign sb_sel     = at_own ? at_sel    : hd_own ? hd_sel    : (n_sel & ~hd_hide);

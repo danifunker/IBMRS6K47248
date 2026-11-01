@@ -1550,3 +1550,29 @@ and the Workplace Shell came up. A keyboard window move (Alt+F7) left no outline
 With the 7248's boot list (floppy, SCSI CD-ROM, SCSI disk) the firmware tries none of the IDE devices and ends
 at the SMS diskette prompt. Not tried yet: an install from the CD under this layout (the CD-ROM is now OS/2's
 hd2, as set_boot's default expects; the firmware still boots the CD through the 53C810).
+
+## 2026-11-01 (later): the install CD boots over IDE, unattended: the firmware's READ CD is D4
+
+A fresh install under the 850 layout (a blank 2 GB image `OS2_new_install.img` as disk 0, the OS/2 CD) first
+showed how the CD booted: the firmware chose the 53C810's CD at ID 3 (`fw-boot-device=/pci@80000000/pci1000,1@10,0/
+cdrom@3,0`), and the CD's loader cannot name a SCSI device in automatic mode ("boot_device_name is ''", "Unknown
+device: automatic", the `[PN_BOOT_DEV=...]` prompt on COM1, which a user without a serial terminal never sees).
+A real 850's CD-ROM is IDE only. So under the 850 ID the 53C810 now finds nobody at ID 3 either
+(`IBMRS6K7248_machine`, beside the disk's ID 0). The firmware then booted nothing from the CD and went on to
+BOOTP. SMS (`sms107.img`, F1) showed the firmware's boot list: diskette, IDE controller 1 ID 0 (the CD-ROM),
+IDE controller 0 ID 0 (the disk), Ethernet; so it found the ATAPI drive and failed to read it.
+A debug build (`DBG_IDEFW` in `IBMRS6K7248.sv`: the IDE task-file writes logged from reset on) gave the
+firmware's ATAPI sequence: IDENTIFY DEVICE (aborted: the signature), IDENTIFY PACKET DEVICE, DEVICE RESET, SET
+FEATURES (PIO 3), INQUIRY, START STOP UNIT (load, then start), TEST UNIT READY, READ CAPACITY, SEEK(10), then a
+packet `D4 08 00 00 00 00 00 00 00 10 00 00` and REQUEST SENSE. The firmware's read template (its ATAPI module's
+static data, TOC 0x105980 + 1308 -> 0x1039D8, offset 2476 in the RAM image) is that `D4 08 .. 10`: READ CD as
+the SFF-8020 drafts numbered it (MMC's BE, the same fields: LBA in bytes 2-5, the length in 6-8, byte 9 0x10
+the user data). The SCSI target refused it (an unknown group-6 opcode, a 6-byte CDB). `IBMRS6K7248_scsitgt` now
+takes D4 as READ CD (12 bytes), as a CD-ROM of the time did; `sim/atapi` has the firmware's two packets (the
+length-0 probe, a 2-block read at 2 KB a DRQ), and sim/atapi and sim/idehd pass.
+On .92 (build os2aa, Model 850, NVRAM `OS2_850.nvr`, UART None, nothing answered): the firmware booted the CD
+over IDE, wrote `fw-boot-device=/pci@80000000/pci1014,a@b,0/PNP0600@170/cdrom@0`, the loader named it
+`ide_cdrom2` and loaded `boot.cfg` without a prompt, dd_ide found the CD, and the installer's welcome screen was
+up about four minutes after the core load (it took ~12 minutes with dbgauto's answers before).
+Builds: the first fit of this change (os2y, slack -3.3; the video clock -0.37) gave the scaler a 48 x 36
+picture and the capture box "Video Format Not Supported"; a refit (`quartus_fit --seed=7`) fixed it.

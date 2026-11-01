@@ -294,6 +294,14 @@ With Model = Power Series 850 and an NVRAM image without the 7248's boot list (`
 zeros), the firmware boots the disk, OS/2's loader and set_boot need no answers, and the desktop comes up
 (volume `hd0.1`). The CD install under this layout is untried (the CD-ROM is hd2 now). Details in the bring-up log.
 
+## The install CD boots by itself too (2026-11-01, build os2aa)
+
+Under the 850 the 53C810 no longer sees the CD image (nobody at ID 3), so the firmware boots the CD over IDE
+(`.../PNP0600@170/cdrom@0`) and the loader names it `ide_cdrom2`: the installer's welcome screen comes up about
+four minutes after the core load with nothing typed. The firmware reads ATAPI CDs with READ CD under SFF-8020's
+number D4, which the SCSI target now accepts. Easy Installation on a blank 2 GB image surface-checks the whole
+disk (both partitions) at ~100 KB/s: about 5.5 hours before the copy starts. Details in the bring-up log.
+
 ## Open issues and the next step
 
 1. (closed: the install screen is up) insmain's failure was the missing hard disk; the name space was fine. Start with `PERSONAL/INSMAIN`'s strings and
