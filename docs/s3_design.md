@@ -914,8 +914,12 @@ be watched (a fit before phase 2).
 
 1. **BAR0 of the 864.** Does the real 864 have a memory BAR that mirrors
    CR59/CR5A (8 MB? 64 MB?), or none (MAME has none)? The firmware never
-   writes one; AIX/NT might. Until known: no BAR (reads 0), the LFB from
-   CR59/CR5A only.
+   writes one. Answered in part (2026-11-01): Sun's VOF (Solaris 2.5.1's boot
+   diskette, which names pci5333,88c0/88c1) sizes and assigns BAR0 and maps
+   its 864 driver's registers through it; with no BAR it stopped on "pci_map_in:
+   Bad PCI map type". BAR0 is now 86Box's S3 form: bits 31-23 are CR59 and
+   CR5A bit 7 (8 MB of memory, non-prefetchable), a write sets them. Whether
+   the real 864's window is 8 MB or 64 MB is still open.
 2. **The class code and revision** the 864 reports at PCI 08 (MAME:
    000100; a PCI 2.0 part would say 030000), and whether AIX's
    configuration cares.

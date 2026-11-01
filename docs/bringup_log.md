@@ -1599,3 +1599,30 @@ memory size (32 MB loops the same). The PC samples step one instruction at a tim
 by itself, which looks like an exception between every instruction rather than a long loop. Next: the bench
 (`scratch/work/run_sol.sh`: the firmware from reset with the diskette, a snapshot at FE031BB0) to see the
 exceptions and the loop directly.
+
+The bench (build_sol, `scratch/work/run_sol*.sh`, logs `Y:\ibmrs6k-bench-logs\sol_*.log`) got the loop: no
+exceptions. FE031BB0 is VOF's `inb` (`eieio; lbz`), FE02A880-8A8 a wait for the 8042's input buffer (64 bit 1)
+to clear. Before it VOF had assigned the PCI BARs through CF8/CFC, Fire Coral's BAR0 (8 bytes of I/O) at
+01000060, then sent the 8042 20, 60 BF and AE. The core's Fire Coral compared only port bits 15-3, so it also
+answered at ISA 60-67: each status read came back as the 8042's status OR'd with Fire Coral's index register
+(the last command written to 64), and AE left 64 at BE, IBF set, forever. The earlier PC samples had shown the
+loop only because the wait calls `inb` 7 K times a second, which a 2^24 sample grid catches at varying points.
+A PCI target decodes the whole I/O address: `fc_io_hit` is now `fc_io_base == ia[29:3]` over the PCI I/O space,
+as the NCR's and the PCnet's are (build sol3, bench from reset `scratch/work/run_sol2.sh`).
+
+Build sol3 on the board: VOF passes the 8042 and prints on COM1 "NVRAM is unavailable" (ten times), "pci_map_in:
+Bad PCI map type", then traps (vector 300, DAR 6: an `outb` to 3C2-like offset 2 of a base of 4) in its S3 driver.
+`pci_map_in` (FE024C30) switches on phys.hi bits 25-24; VOF's own CF8 trace showed the S3 (dev 14) answering
+0 to the BAR0 sizing write, so its driver had no memory BAR to map and passed the config-space entry (type 0).
+The S3 now has 86Box's BAR0 (CR59 and CR5A bit 7, 8 MB; `docs/s3_design.md` 5.1). Build sol4. The NVRAM message
+is next if it stays.
+
+"NVRAM is unavailable" is VOF's `getenv` failing to open its `nvram-1385` device: the open (FE02811C) checks the
+PReP header's Crc1/Crc2 against eight CRC variants (FE028B20, table at image 0x4F380). The board's
+`SOL_7248.nvr` passes one of them (header from byte 8, no swap: 9BDE and 2C18, as stored), so VOF read other
+bytes than the file holds. VOF sets the NVRAM's index with one halfword store to 74 (75 its high byte) and reads
+76; the core's ISA path gave a wider access only its first byte lane, so 75 never changed. The machine now sizes
+the bus as the ISA bridge does: a halfword or word access to a byte-wide ISA device goes as byte cycles, a lane
+at a time in address order, the read bytes kept in their lanes (`d_rem`, `q_byte` in the machine). The devices
+that take wider accesses themselves (the IDE/ATAPI data ports, CF8/CFC, the S3, the NCR, the PCnet) are as
+before. Build sol4 (with the S3 BAR0), bench `scratch/work/run_sol4.sh`.

@@ -118,6 +118,7 @@ always_ff @(posedge clk) begin
 			6'h00:   cfg_rdata <= 32'h88C0_5333;
 			6'h01:   cfg_rdata <= {16'h0200, pci_cmd};
 			6'h02:   cfg_rdata <= 32'h0300_0000;          // display controller, VGA (an open question: docs/s3_design.md 5)
+			6'h04:   cfg_rdata <= {cr[7'h59], cr[7'h5A][7], 23'h0};   // BAR0: the linear window, 8 MB of memory
 			6'h0F:   cfg_rdata <= {16'h0000, 8'h01, pci_int_line};
 			default: cfg_rdata <= 32'h0;
 		endcase
@@ -459,6 +460,13 @@ always_ff @(posedge clk) begin
 	// held clear while it is 0, cleared by a 42E8 write with bit 0
 	if (!cr[7'h11][4]) vint <= 1'b0;
 	else if (vsync & ~vsync_q) vint <= 1'b1;
+
+	// BAR0 (PCI 10) is the linear window's base, CR59 and CR5A bit 7 (8 MB aligned, as 86Box's S3 has it):
+	// Sun's VOF sizes and assigns it, and its 864 driver maps the frame buffer through it
+	if (cfg_sel & cfg_we && cfg_reg == 6'h04) begin
+		if (cfg_be[2]) cr[7'h5A] <= {cfg_wdata[23], 7'd0};
+		if (cfg_be[3]) cr[7'h59] <= cfg_wdata[31:24];
+	end
 
 	case (ast)
 		A_IDLE: if (sel & ~ack) begin

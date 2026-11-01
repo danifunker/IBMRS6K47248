@@ -31,7 +31,7 @@ module IBMRS6K7248_firecoral
 
 	// BAR0: where the index/data pair is, while I/O decoding is on
 	output logic        io_on,
-	output logic [15:3] io_base,
+	output logic [31:3] io_base,       // (all 32 bits: a PCI target decodes the whole I/O address)
 
 	// the index/data pair
 	input  logic        io_sel,
@@ -81,7 +81,7 @@ always_comb begin
 	endcase
 end
 assign io_on   = r01[0][0];
-assign io_base = bar0[15:3];
+assign io_base = bar0[31:3];
 
 // ---- the internal registers -----------------------------------------------------------
 logic [7:0] index;

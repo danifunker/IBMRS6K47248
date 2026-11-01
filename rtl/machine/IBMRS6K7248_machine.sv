@@ -504,6 +504,10 @@ logic         dev_ack;
 logic         d_we, d_line;
 logic [31:2]  d_addr;                   // the line's first word, or the word
 logic [3:0]   d_be;
+logic [3:0]   d_rem;                    // the byte lanes a byte-wide ISA device has still to take (see below)
+logic         q_byte;                   // (the answer's device is byte wide; its lane, one-hot: below)
+logic [1:0]   q_lane;
+logic [3:0]   q_lane_be;
 logic [255:0] d_wdata;
 logic [2:0]   d_k;                      // the word of the line
 logic         d_sel;                    // the word's access, this cycle
@@ -524,7 +528,7 @@ always_ff @(posedge clk) begin
 	p_a    <= d_pa;
 	ia     <= d_pa[31:23] == 9'h100 && !iomap ? {d_pa[31:23], 7'd0, d_pa[22:12], d_pa[4:0]} : d_pa;
 	p_wd   <= d_line ? d_wdata[255 - 32 * d_k -: 32] : d_wdata[31:0];
-	p_be   <= d_line ? 4'hF : d_be;
+	p_be   <= d_line ? 4'hF : d_rem;
 	d_go   <= d_sel & ~reset;
 	d_go_q <= d_go & ~reset;
 end
@@ -546,12 +550,22 @@ always_ff @(posedge clk) begin
 		d_line   <= c_line;
 		d_addr   <= x_addr;
 		d_be     <= x_be;
+		d_rem    <= x_be;
 		d_wdata  <= x_wdata;
 		d_k      <= 3'd0;
 		d_sel    <= 1'b1;
 	end
-	if (w_done) begin
-		line_buf[d_k] <= w_rdata;
+	// A wider access to a byte-wide ISA device goes as byte cycles, a lane at a time in address order, as the
+	// ISA bridge sizes it: the device takes the first enabled lane, the word goes again for the rest, each
+	// read byte kept in its lane (Sun's VOF writes the NVRAM's index, 74 and 75, as one halfword)
+	if (w_done && !d_line && q_byte && (d_rem & ~q_lane_be) != 4'd0) begin
+		line_buf[0][31 - 8 * q_lane -: 8] <= w_rdata[31 - 8 * q_lane -: 8];
+		d_rem <= d_rem & ~q_lane_be;
+		d_sel <= 1'b1;
+	end
+	else if (w_done) begin
+		if (q_byte && d_rem != d_be) line_buf[d_k][31 - 8 * q_lane -: 8] <= w_rdata[31 - 8 * q_lane -: 8];
+		else                         line_buf[d_k] <= w_rdata;
 		if (!d_line || d_k == 3'd7) dev_ack <= 1'b1;
 		else begin
 			d_k   <= d_k + 3'd1;
@@ -580,7 +594,7 @@ wire s_iack  = p_a[31:12] == 20'hBFFFF;
 wire [15:0] port = ia[15:0];
 
 // the byte lane of a byte access (be[3] the lowest address); the ISA devices
-// are byte wide: a wider access reaches the byte at its first enabled lane
+// are byte wide: a wider access reaches the byte at its first enabled lane, then the rest a lane at a time (d_rem)
 logic [1:0] lane;
 always_comb begin
 	casez (p_be)
@@ -1012,9 +1026,11 @@ IBMRS6K7248_mpc105 mpc105 (
 
 // Fire Coral: its configuration, and its index/data pair at BAR0
 logic        fc_io_on;
-logic [15:3] fc_io_base;
+logic [31:3] fc_io_base;
 logic  [7:0] fc_io_q;
-wire         fc_io_hit = s_isa && fc_io_on && bport[15:3] == fc_io_base;
+// the whole I/O address, as a PCI target decodes it: Sun's VOF puts BAR0 at 01000060, which a
+// 16-bit compare took for the 8042's 60-67 (its status read back with the last command OR'd in)
+wire         fc_io_hit = s_pciio && fc_io_on && fc_io_base == {2'b00, ia[29:3]};
 IBMRS6K7248_firecoral firecoral (
 	.clk, .reset,
 	.sel(d_go & cfg_dev11), .we(d_we), .reg_n(cf8[7:2]), .be(le_be), .wdata(le_wd), .rdata(fc_q),
@@ -1027,7 +1043,10 @@ logic       q_sio, q_com2, q_dev14, q_fdc;
 logic       q_pic, q_pit, q_kbc, q_rtc, q_p92, q_err, q_aud, q_audc, q_ee, q_ide, q_dma, q_sb, q_fm, q_mpu, q_joy;
 logic       q_iomap, q_atapi, q_atsec, q_838, q_atdp, q_atcmd;
 logic       q_com1, q_planar, q_pd, q_cf8, q_cfc, q_dev0, q_dev11, q_fcio, q_pcicf, q_iack, q_dev16, q_ncr, q_dev12, q_pcn;
-logic [1:0] q_lane;
+// the byte-wide ISA devices (a byte lane each access: wider accesses are split for them)
+assign      q_byte    = q_com1 | q_com2 | q_fdc | q_sio | q_pic | q_pit | q_kbc | q_rtc | q_ee | q_p92 | q_aud | q_sb |
+                        q_fm | q_mpu | q_joy | q_dma | q_planar | q_iomap | q_pd | q_fcio | q_838;
+assign      q_lane_be = 4'b1000 >> q_lane;
 always_ff @(posedge clk) if (d_go) begin
 	q_com1  <= com1_hit;
 	q_com2  <= com2_hit;
