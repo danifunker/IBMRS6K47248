@@ -1576,3 +1576,26 @@ over IDE, wrote `fw-boot-device=/pci@80000000/pci1014,a@b,0/PNP0600@170/cdrom@0`
 up about four minutes after the core load (it took ~12 minutes with dbgauto's answers before).
 Builds: the first fit of this change (os2y, slack -3.3; the video clock -0.37) gave the scaler a 48 x 36
 picture and the capture box "Video Format Not Supported"; a refit (`quartus_fit --seed=7`) fixed it.
+
+## 2026-11-01 (afternoon): Solaris 2.5.1 PPC: VOF runs, the floppy in PS/2 mode
+
+Media: archive.org `solaris251ppc` (`installation_cd.iso`, SHA-1 06702b27...; `sol_251_ibm.img`, the MDB boot
+diskette for IBM hardware, SHA-1 117df545...: Sun's Virtual Open Firmware 1.0, Jan 1996, a PReP image at sector
+0x21 knowing the 6015, 6040, 6042, 6070 and 7248, with its own drivers: 53C810 SCRIPTS, ATA, S3 and other VGAs,
+the 82077, the 8042). On the board as `Solaris251_IBM_boot.img` (Floppy), `Solaris251_PPC_install.iso` (CD),
+`Solaris_ppc.img` (2 GB, blank, disk 0), `SOL_7248.nvr` (the default NVRAM), Model 7248-100.
+
+The firmware boots the diskette within a minute. VOF printed on COM1 "fdc_init: Driver does not support AT-mode
+controller mode" / "fdc_probe: Initialization failed": its `fdc_init` resets the controller and reads 3F0 (SRA);
+FF means AT mode. The core's 82077 now answers in PS/2 mode as the 7248's does: SRA (interrupt, nDRV2, nTRK0,
+nWP), SRB (drive select, motors) and the PS/2 DIR (build sol2: SRA D6, VOF's reset, SENSE INTERRUPT x4,
+CONFIGURE and SPECIFY follow, no message). `sim/floppy/run.sh` checks the three registers.
+
+Then VOF stops making progress: after it writes and reads the host bridge's PCI command register (dev 0,
+offset 4) the device log (`DBG_DEVLOG`, builds sol1/sol2) shows no further I/O, and the alive marks cycle through
+19 PCs, FE031BB0-BCC and FE02A880-8A8 (VOF runs at FE000000 + its image offset): straight-line property-creation
+code in a loop over a count VOF takes from the firmware's big-endian tables (`lhz 0xf6`, byte-swapped). Not the
+memory size (32 MB loops the same). The PC samples step one instruction at a time through code that is no loop
+by itself, which looks like an exception between every instruction rather than a long loop. Next: the bench
+(`scratch/work/run_sol.sh`: the firmware from reset with the diskette, a snapshot at FE031BB0) to see the
+exceptions and the loop directly.

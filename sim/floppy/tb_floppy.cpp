@@ -101,6 +101,11 @@ int main(int argc, char **argv) {
 	int f0 = fails;
 	fcmd({0x46, 0x00, 0, 0, 1, 2, 18, 0x1B, 0xFF});
 	{ auto r = fres(); expect("no medium: 7 results", r.size(), 7); if (r.size() == 7) { expect("ST0", r[0], 0x40); expect("ST1", r[1], 0x01); } }
+	// PS/2 mode (the 7248's): SRA not FF (Sun's VOF takes FF for AT mode), no second drive, the PS/2 DIR
+	expect("SRA not FF", in8(0x3F0) != 0xFF, 1);
+	expect("SRA nDRV2", in8(0x3F0) & 0x40, 0x40);
+	expect("SRB high bits", in8(0x3F1) & 0xC0, 0xC0);
+	expect("DIR PS/2 bits", in8(0x3F7) & 0x78, 0x78);
 	expect("disk change set", in8(0x3F7) & 0x80, 0x80);
 	printf("%-46s %s\n", "no diskette", fails != f0 ? "FAIL" : "pass"); f0 = fails;
 

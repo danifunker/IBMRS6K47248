@@ -1,13 +1,14 @@
 //============================================================================
 //
 //  IBMRS6K7248 - the floppy disk controller (the PC87312's, an 82077AA in
-//  AT mode) and its drive A:, a disk image
+//  PS/2 mode, as the 7248's) and its drive A:, a disk image
 //
-//  The registers at 3F0-3F7 (not 3F6, the IDE's): the digital output
+//  The registers at 3F0-3F7 (not 3F6, the IDE's): status registers A and B
+//  (SRA, SRB, 3F0/3F1 read, PS/2 mode's), the digital output
 //  register (DOR, 3F2), the tape drive register (TDR, 3F3), the main status
 //  register (MSR, 3F4 read) and data rate select (DSR, 3F4 write), the
 //  FIFO (3F5), the digital input register (DIR, 3F7 read: bit 7 the disk
-//  change line) and the configuration control register (CCR, 3F7 write).
+//  change line, the PS/2 form) and the configuration control register (CCR, 3F7 write).
 //  The command and result phases as QEMU's fdc.c has them: SPECIFY, SENSE
 //  DRIVE STATUS, RECALIBRATE, SEEK, SENSE INTERRUPT STATUS (four results
 //  after a reset), READ ID, the data commands, VERSION (90), CONFIGURE,
@@ -342,7 +343,12 @@ always_ff @(posedge clk) begin
 				end
 				else if (exec && nd && x_rd) rdata <= dev_byte;
 				else rdata <= 8'hFF;
-				3'd7: rdata <= {dchg, 7'h7F};
+				// PS/2 mode, as the 7248's: SRA (the interrupt, no second drive, TRK0, write protect, all
+				// active low but the interrupt), SRB (the drive select, the motors) and the PS/2 DIR (the
+				// data rate, nHIGHDENS). Sun's VOF reads SRA after a reset: FF is AT mode, and it gives up
+				3'd0: rdata <= {intp, 1'b1, 1'b0, track[cur[0]] != 8'd0, 1'b0, 1'b1, !(img_ro && img_in), 1'b0};
+				3'd1: rdata <= {2'b11, dor[0], 3'b000, dor[5], dor[4]};
+				3'd7: rdata <= {dchg, 4'b1111, rate, !(rate == 2'd0 || rate == 2'd3)};
 				default: rdata <= 8'hFF;
 			endcase
 		end

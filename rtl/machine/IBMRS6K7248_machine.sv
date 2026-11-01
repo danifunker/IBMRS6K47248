@@ -770,6 +770,7 @@ wire         r838_hit = atapi_on && s_isa && bport == 16'h0838;
 wire  [1:0]  r838 = {atapi_irq, hd_irq} & {2{atapi_on}};
 `else
 assign atapi_hit = 1'b0;  assign atapi_q = '0;  assign atapi_irq = 1'b0;
+wire         ide_sec = 1'b0;
 wire [31:0]  hd_q = '0;
 wire         hd_selected = 1'b0;
 assign {hd_st_irq, hd_st_blk, hd_st_disk, hd_st_host} = 4'b0000;
