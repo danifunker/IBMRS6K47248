@@ -1,9 +1,11 @@
 //============================================================================
-//  IBMRS6K7248 - an ATAPI CD-ROM on the primary IDE channel (Fire Coral's,
-//  1F0-1F7 and 3F6, IRQ 14), for the Power Series 830/850 personality
+//  IBMRS6K7248 - an ATAPI CD-ROM on the secondary IDE channel (Fire Coral's,
+//  170-177 and 376: the machine maps them to this module's 1F0-1F7 and 3F6
+//  names), for the Power Series 830/850 personality, where a real 850 has its
+//  CD-ROM (OS/2's set_boot: "Defaulting to IDE CDROM at HD2")
 //
 //  The 850's CD-ROM is an IDE drive (OS/2's install boot loads dd_ide only).
-//  This is its master device, an ATAPI packet device whose packets go to the
+//  This is the channel's master device, an ATAPI packet device whose packets go to the
 //  same CD as the 53C810's: it is a second initiator on IBMRS6K7248_scsitgt's
 //  bus (the machine gives it the bus while the 53C810 has nothing selected),
 //  selecting the CD-ROM's ID and passing the 12-byte packet as the CDB, the

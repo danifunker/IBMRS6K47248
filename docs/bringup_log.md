@@ -1529,3 +1529,24 @@ so PM's tracking frame, inverted in one set of rectangles and inverted back in a
 Fixed in `IBMRS6K7248_s3ge`; `sim/s3ge` gained an unaligned fill, a right-to-left upward fill and a
 halftone XOR erased in other pieces (all three fail on the old engine, with the screenshot's solid line).
 The live debug stream could not show it: the hardware cursor's CR45-4F writes saturate it. Build os2v.
+
+## 2026-11-01: OS/2 boots by itself: the 850's IDE layout
+
+An installed OS/2 still needed its loader's prompts answered (dbgauto: `ide_hd1`, `FAT_HARDDISK`, set_boot's
+`devices/hd1`). Two things were the core's, not OS/2's. OS/2's installer writes `ide_hd0` into the disk's PReP
+partition (the IDE loader, FAT_BL.IDE, boots it in automatic mode) because a real 850's disk is the primary
+master; ours was the slave behind the CD-ROM. And set_boot, given no argument ("carolina takes no args"),
+parses the NVRAM's `fw-boot-device`: its parser (GetNSBootDevice) takes `/pci@80000000/A/B/C`, C starting `h`
+giving devices/hd plus the path's last character, `c` the IDE CD-ROM (HD2 by default); a SCSI path crashes it.
+The firmware (the same code as the 6050/6070's; the planar ID picks the machine) has a full IDE and ATAPI
+driver and writes `.../pci1014,a@b,0/PNP0600@1f0/harddisk@0` when it boots an IDE disk.
+So the core now lays the IDE out as a real 850 does: `IBMRS6K7248_idehd` (UNIT 0) the primary master,
+`IBMRS6K7248_atapi` the secondary master (170-177, 376), 0838 bit 0 the primary's request and bit 1 the
+secondary's (OS/2's dd_ide `lide_intr`: bit 0 -> 1F0, bit 1 -> 170). The 53C810 still finds nobody at ID 0.
+On .92 (build os2x, Model 850 saved, a fresh NVRAM image `OS2_850.nvr`): the firmware, with no boot list,
+found the IDE disk and booted it, wrote the path above, the loader and set_boot ran unanswered (dbgauto
+listening only: its new `PASSIVE` argument), CHKDSK ran on `volumes/hd0.1` (the volume's name had been hd1.1),
+and the Workplace Shell came up. A keyboard window move (Alt+F7) left no outline trails (the S3 pattern fix).
+With the 7248's boot list (floppy, SCSI CD-ROM, SCSI disk) the firmware tries none of the IDE devices and ends
+at the SMS diskette prompt. Not tried yet: an install from the CD under this layout (the CD-ROM is now OS/2's
+hd2, as set_boot's default expects; the firmware still boots the CD through the 53C810).

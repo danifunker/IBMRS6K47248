@@ -287,6 +287,13 @@ Dragged windows left outline trails: the S3 engine's pattern fill started its 8 
 corner, while the chip (86Box) aligns it to the screen, and 864gradd fills a brush one clip rectangle at a
 time. Fixed in `IBMRS6K7248_s3ge` (build os2v, `scratch/work/IBMRS6K7248_os2v.rbf`); see the bring-up log.
 
+## OS/2 boots by itself (2026-11-01, build os2x)
+
+The IDE is now a real 850's: the disk the primary master, the CD-ROM the secondary master (0838 bit 0 / bit 1).
+With Model = Power Series 850 and an NVRAM image without the 7248's boot list (`OS2_850.nvr` on .92, made from
+zeros), the firmware boots the disk, OS/2's loader and set_boot need no answers, and the desktop comes up
+(volume `hd0.1`). The CD install under this layout is untried (the CD-ROM is hd2 now). Details in the bring-up log.
+
 ## Open issues and the next step
 
 1. (closed: the install screen is up) insmain's failure was the missing hard disk; the name space was fine. Start with `PERSONAL/INSMAIN`'s strings and

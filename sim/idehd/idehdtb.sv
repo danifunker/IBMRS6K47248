@@ -35,7 +35,7 @@ end
 IBMRS6K7248_atapi #(.CLK_HZ(1_000_000)) atapi (.clk, .reset(rst), .en(1'b1), .sel, .cs1, .we, .reg_a, .be, .wd8(wdata[31:24]), .wdata, .rdata(at_q), .irq(at_irq),
 	.want(at_want), .grant(at_own), .i_sel(at_sel), .i_sel_id(at_sel_id), .sel_done(at_own & sel_done), .sel_fail(at_own & sel_fail),
 	.bsy(at_own & bsy), .req(at_own & req), .phase, .tdata, .ack(at_ack), .idata(at_idata));
-IBMRS6K7248_idehd #(.CLK_HZ(1_000_000)) hd (.clk, .reset(rst), .en(1'b1), .sel, .cs1, .we, .reg_a, .be, .wd8(wdata[31:24]), .wdata, .rdata(hd_q), .irq(hd_irq),
+IBMRS6K7248_idehd #(.CLK_HZ(1_000_000), .UNIT(1'b1)) hd (.clk, .reset(rst), .en(1'b1), .sel, .cs1, .we, .reg_a, .be, .wd8(wdata[31:24]), .wdata, .rdata(hd_q), .irq(hd_irq),
 	.selected(hd_selected), .blocks(img_blocks[0]), .st_irq(), .st_blk(), .st_disk(), .st_host(),
 	.want(hd_want), .grant(hd_own), .i_sel(hd_sel), .i_sel_id(hd_sel_id), .sel_done(hd_own & sel_done), .sel_fail(hd_own & sel_fail),
 	.bsy(hd_own & bsy), .req(hd_own & req), .phase, .tdata, .ack(hd_ack), .idata(hd_idata));

@@ -1,11 +1,14 @@
 //============================================================================
 //  IBMRS6K7248 - an IDE hard disk on the primary IDE channel (1F0-1F7 and
-//  3F6, IRQ 14), the slave of IBMRS6K7248_atapi's CD-ROM, for the Power
-//  Series 830/850 personality
+//  3F6), its master (UNIT 0), for the Power Series 830/850 personality, where
+//  a real 850 has its disk (its firmware boots it, OS/2's installer writes
+//  ide_hd0 into the boot partition, set_boot maps the firmware's
+//  .../PNP0600@1f0/harddisk@0 to devices/hd0); the CD-ROM is the secondary
+//  channel's master
 //
 //  OS/2 PPC's installer wants a hard disk it can partition and format, and
 //  the 850's disks are IDE (OS/2's install boot loads dd_ide only). This is
-//  device 1: an ATA disk whose sectors are the OSD's disk 0 image, reached
+//  device UNIT: an ATA disk whose sectors are the OSD's disk 0 image, reached
 //  as a third initiator on IBMRS6K7248_scsitgt's bus (the machine gives it
 //  the bus while the 53C810 and the CD-ROM have nothing on it).
 //
@@ -15,9 +18,9 @@
 //    (LBA 7:0)  1F4 cylinder low (LBA 15:8)  1F5 cylinder high (LBA 23:16)
 //    1F6 drive/head (bit 4 the device, bit 6 LBA, bits 3:0 the head / LBA
 //    27:24)  1F7 status / command  3F6 alternate status / device control
-//  Both devices see the drive register; this one answers while bit 4 is set
-//  (the machine picks the answer), and is silent when no disk image is
-//  mounted (its registers read 00, as an empty position).
+//  This one answers while the drive register's bit 4 names UNIT (the other
+//  position reads 00, as an empty one), and is silent when no disk image is
+//  mounted.
 //  Geometry: 16 heads, 63 sectors a track, the cylinders from the image's
 //  size (16383 at most in the identify data, as ATA-2 asks); LBA too.
 //  Commands: IDENTIFY DEVICE (EC), READ/WRITE SECTORS (20/21, 30/31), READ/
@@ -39,7 +42,8 @@
 //============================================================================
 
 module IBMRS6K7248_idehd #(
-	parameter int unsigned CLK_HZ = 70_000_000
+	parameter int unsigned CLK_HZ = 70_000_000,
+	parameter bit          UNIT   = 1'b0         // the device it answers as: 0 master, 1 slave
 ) (
 	input  logic        clk,
 	input  logic        reset,
@@ -86,7 +90,7 @@ localparam logic [8:0]  CHUNK = 9'd32;         // sectors a SCSI command (the 16
 // the task file
 logic [7:0] err, scnt, snum, cyl_l, cyl_h, drv;
 logic       bsy_s, drdy, drq, errb, nien, ipend;
-assign      selected = drv[4];
+assign      selected = drv[4] == UNIT;
 assign      irq = ipend & ~nien & selected;
 wire  [7:0] status = {bsy_s, drdy, 1'b0, 1'b1, drq, 2'b00, errb};   // DSC always
 

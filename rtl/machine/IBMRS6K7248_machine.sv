@@ -690,8 +690,14 @@ IBMRS6K7248_ncr810 #(.STO_UNIT(STO_UNIT)) ncr810 (
 	.sb_ack(n_ack), .sb_idata(n_idata), .sb_ackhold(n_ackhold), .sb_atn(n_atn), .sb_rst
 );
 
-// ---- the 850's ATAPI CD-ROM (IBMRS6K7248_ATAPI): the primary IDE channel's master, under the 830/850 planar
-// IDs only; a second initiator on the SCSI target's bus, given it while the 53C810 has nothing connected (a
+// ---- the 850's IDE, as a real 850 has it: the hard disk (IBMRS6K7248_idehd, the OSD's disk 0 image) the
+// primary channel's master (1F0-1F7, 3F6), the ATAPI CD-ROM (IBMRS6K7248_atapi) the secondary's (170-177, 376),
+// both on IRQ 13 through 0838 (bit 0 the primary, bit 1 the secondary: OS/2's dd_ide lide_intr). The firmware
+// boots the disk from its boot list's IDE entry and writes .../pci1014,a@b,0/PNP0600@1f0/harddisk@0 as
+// fw-boot-device, which OS/2's set_boot maps to devices/hd0; OS/2's installer writes ide_hd0 into the disk's
+// boot partition. (Until 2026-10-31 night the CD-ROM was the primary master and the disk its slave: an
+// installed OS/2 then needed its loader's prompts answered by hand.) The CD-ROM, under the 830/850 planar
+// IDs only, is a second initiator on the SCSI target's bus, given it while the 53C810 has nothing connected (a
 // 53C810 selection while it holds the bus is not seen: under the 850's personality the OSes use the IDE drive)
 logic        n_sel, n_sel_atn, n_sel_done, n_sel_fail, n_bsy, n_req, n_ack, n_ackhold, n_atn;
 logic [2:0]  n_sel_id;
@@ -700,8 +706,10 @@ logic [31:0] atapi_q;
 logic        atapi_irq, atapi_hit;
 `ifdef IBMRS6K7248_ATAPI
 wire         atapi_on = ide_planar;
-assign       atapi_hit = atapi_on && s_isa && (bport[15:3] == 13'h003E || bport == 16'h03F6);
-// ... and the channel's slave, an IDE hard disk on the OSD's disk 0 image (IBMRS6K7248_idehd), a third
+wire         ide_pri   = s_isa && (bport[15:3] == 13'h003E || bport == 16'h03F6);    // 1F0-1F7, 3F6
+wire         ide_sec   = s_isa && (bport[15:3] == 13'h002E || bport == 16'h0376);    // 170-177, 376
+assign       atapi_hit = atapi_on && (ide_pri || ide_sec);
+// ... and the primary channel's master, an IDE hard disk on the OSD's disk 0 image (IBMRS6K7248_idehd), a third
 // initiator of the same bus: the CD-ROM first, then the disk, while the 53C810 has nothing on it
 logic        at_want, at_sel, at_ack, at_own, hd_want, hd_sel, hd_ack, hd_own, hd_irq, hd_selected;
 logic [2:0]  at_sel_id, hd_sel_id;
@@ -717,15 +725,15 @@ always_ff @(posedge clk) begin
 end
 IBMRS6K7248_atapi #(.CLK_HZ(CPU_HZ)) atapi (
 	.clk, .reset, .en(atapi_on),
-	.sel(d_go & atapi_hit), .cs1(bport == 16'h03F6), .we(d_we), .reg_a(bport[2:0]), .be(p_be), .wd8(bwd), .wdata(p_wd),
+	.sel(d_go & atapi_on & ide_sec), .cs1(bport == 16'h0376), .we(d_we), .reg_a(bport[2:0]), .be(p_be), .wd8(bwd), .wdata(p_wd),
 	.rdata(atapi_q), .irq(atapi_irq),
 	.want(at_want), .grant(at_own), .i_sel(at_sel), .i_sel_id(at_sel_id),
 	.sel_done(at_own & sb_sel_done), .sel_fail(at_own & sb_sel_fail), .bsy(at_own & sb_bsy), .req(at_own & sb_req),
 	.phase(sb_phase), .tdata(sb_tdata), .ack(at_ack), .idata(at_idata)
 );
-IBMRS6K7248_idehd #(.CLK_HZ(CPU_HZ)) idehd (
+IBMRS6K7248_idehd #(.CLK_HZ(CPU_HZ), .UNIT(1'b0)) idehd (
 	.clk, .reset, .en(atapi_on & hd_present),
-	.sel(d_go & atapi_hit), .cs1(bport == 16'h03F6), .we(d_we), .reg_a(bport[2:0]), .be(p_be), .wd8(bwd), .wdata(p_wd),
+	.sel(d_go & atapi_on & ide_pri), .cs1(bport == 16'h03F6), .we(d_we), .reg_a(bport[2:0]), .be(p_be), .wd8(bwd), .wdata(p_wd),
 	.rdata(hd_q), .irq(hd_irq), .selected(hd_selected), .blocks(hd_blocks),
 	.st_irq(hd_st_irq), .st_blk(hd_st_blk), .st_disk(hd_st_disk), .st_host(hd_st_host),
 	.want(hd_want), .grant(hd_own), .i_sel(hd_sel), .i_sel_id(hd_sel_id),
@@ -749,20 +757,14 @@ assign n_sel_fail = !i_own & (sb_sel_fail | hd_hide_fail);
 assign n_bsy      = !i_own & sb_bsy;
 assign n_req      = !i_own & sb_req;
 // 0838, IRQ 13's request-active register (the Carolina's IDE share IRQ 13 with scatter/gather and power
-// management): bit 0 the primary channel's request as it stands (the drive's INTRQ: nIEN clear, the
-// interrupt pending, cleared by the status read); NT's HALCARO and OS/2's dd_ide read it and write the other
-// bit's 1 back, which clears nothing here. IRQ 13 (edge-triggered at the PIC) is the request or scatter/gather's.
+// management): bit 0 the primary channel's request as it stands, bit 1 the secondary's (each the drive's INTRQ:
+// nIEN clear, the interrupt pending, cleared by the status read); NT's HALCARO and OS/2's dd_ide read it and
+// write the other bit's 1 back, which clears nothing here. IRQ 13 (edge-triggered at the PIC) is the request or scatter/gather's.
 // (Latched on the request's rise until 2026-10-31: the loader's last disk read left the drive's request pending,
 // the kernel's nIEN toggle set the latch while nothing listened, and dd_ide, which never clears it first, saw
 // IRQ 13 stuck high and polled the CD's packets until a READ CAPACITY waited for an interrupt for good.)
-logic [1:0]  r838;
 wire         r838_hit = atapi_on && s_isa && bport == 16'h0838;
-wire         ide_irq = atapi_irq | hd_irq;
-always_ff @(posedge clk) begin
-	if (d_go & d_we & r838_hit) r838[1] <= r838[1] & bwd[1];
-	if (reset | ~atapi_on) r838[1] <= 1'b0;
-end
-always_comb r838[0] = ide_irq & atapi_on;
+wire  [1:0]  r838 = {atapi_irq, hd_irq} & {2{atapi_on}};
 `else
 assign atapi_hit = 1'b0;  assign atapi_q = '0;  assign atapi_irq = 1'b0;
 wire [31:0]  hd_q = '0;
@@ -1019,7 +1021,7 @@ IBMRS6K7248_firecoral firecoral (
 // the answer, the cycle after the access
 logic       q_sio, q_com2, q_dev14, q_fdc;
 logic       q_pic, q_pit, q_kbc, q_rtc, q_p92, q_err, q_aud, q_audc, q_ee, q_ide, q_dma, q_sb, q_fm, q_mpu, q_joy;
-logic       q_iomap, q_atapi, q_838, q_atdp, q_atcmd;
+logic       q_iomap, q_atapi, q_atsec, q_838, q_atdp, q_atcmd;
 logic       q_com1, q_planar, q_pd, q_cf8, q_cfc, q_dev0, q_dev11, q_fcio, q_pcicf, q_iack, q_dev16, q_ncr, q_dev12, q_pcn;
 logic [1:0] q_lane;
 always_ff @(posedge clk) if (d_go) begin
@@ -1045,8 +1047,9 @@ always_ff @(posedge clk) if (d_go) begin
 	q_planar <= planar_hit;
 	q_iomap  <= iomap_hit;
 	q_atapi  <= atapi_hit;
-	q_atdp   <= atapi_hit && bport[2:0] == 3'd0 && bport != 16'h03F6;   // (its data port: not logged)
-	q_atcmd  <= atapi_hit && ((bport == 16'h01F7 && d_we) ||            // a command (the one IDE access logged: the rest saturated the stream, 2026-10-31)
+	q_atsec  <= ide_sec;                                               // the secondary channel's (the CD-ROM's) answer
+	q_atdp   <= atapi_hit && bport[2:0] == 3'd0 && bport != 16'h03F6 && bport != 16'h0376;   // (a data port: not logged)
+	q_atcmd  <= atapi_hit && (((bport == 16'h01F7 || bport == 16'h0177) && d_we) ||            // a command (the one IDE access logged: the rest saturated the stream, 2026-10-31)
 	                          (1'b0 && !hd_selected && !(bport[2:0] == 3'd0 && bport != 16'h03F6)));   // (and the CD-ROM's registers, when wanted: build os2t)
 	q_838    <= r838_hit;
 	q_pd    <= pd_hit;
@@ -1087,7 +1090,7 @@ always_comb begin
 	            when(q_rtc,    {4{rtc_q}})        |
 	            when(q_ee,     {4{ee_q}})         |
 	            when(q_ide & ~q_atapi, ide_planar ? 32'h0000_0000 : 32'hFFFF_FFFF) |
-	            when(q_atapi,  atapi_q | hd_q)    |
+	            when(q_atapi,  q_atsec ? atapi_q : hd_q) |
 	            when(q_838,    {4{6'd0, r838}})   |
 	            when(q_p92,    {4{p92}})          |
 	            when(q_aud,    {4{aud_q}})        |

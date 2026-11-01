@@ -20,7 +20,12 @@ txt = open(sys.argv[2] + '.com1', 'ab')
 txt2 = open(sys.argv[2] + '.com2', 'ab')
 com2 = False
 # a rule FILE@KEY=>REPLY applies only while the last [PN_FILE_NAME="..."] prompt seen named FILE
-rules = [a.split('=>', 1) for a in sys.argv[3:]]
+# the single argument PASSIVE: log only, answer nothing (an unattended boot's test)
+passive = sys.argv[3:] == ['PASSIVE']
+rules = [] if passive else [a.split('=>', 1) for a in sys.argv[3:]]
+# a REPLY of the form A|B|C answers the prompt's first, second, third... occurrence with each in turn (the loader
+# asks again after "Unknown device"), the last one from then on
+used = {}
 lastfile = ''
 def say(s):
     speed(termios.B9600); os.write(fd, s.encode()); termios.tcdrain(fd); speed(termios.B115200)
@@ -47,16 +52,18 @@ while time.time() < end:
             txt.write(t); txt.flush()
             tbuf = (tbuf + t)[-300:]
             last = time.time()
-            if not manual and b'Press ENTER for manual boot' in tbuf:
+            if not passive and not manual and b'Press ENTER for manual boot' in tbuf:
                 say('\r'); manual = True; tbuf = b''
-    elif tbuf.rstrip().endswith(b']') and time.time() - last > 1.5:
+    elif not passive and tbuf.rstrip().endswith(b']') and time.time() - last > 0.8:
         prompt = tbuf[tbuf.rfind(b'['):].decode('latin1')
         if 'PN_FILE_NAME=' in prompt and not prompt.startswith('[#'): lastfile = prompt
         reply = ''
         for k, v in rules:
             f, _, kk = k.rpartition('@')
             if kk in prompt and (not f or f in lastfile):
-                reply = v
+                opts = v.split('|')
+                reply = opts[min(used.get(k, 0), len(opts) - 1)]
+                used[k] = used.get(k, 0) + 1
                 break
         say(reply + '\r')
         nans += 1
