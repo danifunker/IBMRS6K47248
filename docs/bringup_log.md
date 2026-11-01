@@ -1626,3 +1626,19 @@ the bus as the ISA bridge does: a halfword or word access to a byte-wide ISA dev
 at a time in address order, the read bytes kept in their lanes (`d_rem`, `q_byte` in the machine). The devices
 that take wider accesses themselves (the IDE/ATAPI data ports, CF8/CFC, the S3, the NCR, the PCnet) are as
 before. Build sol4 (with the S3 BAR0), bench `scratch/work/run_sol4.sh`.
+
+Build sol4 on the board and the bench (`run_sol4_s3*.sh`, from `snap_sol4_vof.bin`): VOF's display driver opens,
+sets 1024 x 768 (CR01 7F, CR12 FF), and fills the frame buffer through BAR0 (01800000) - but its VGA register
+writes went to PCI memory A0000 (C00A0014: the CRTC) and the fill stopped at 128 KB, so the screen kept the
+firmware's 640 x 480 with VOF's pixels laid over it. The node VOF built (RAM dump): "reg" = config, BAR0 (8 MB),
+I/O 3B0 (C), I/O 3C0 (20), memory A0000 (20000); its 864 driver maps entry 1 as the frame buffer and entry 4 as
+the registers, one entry later than this list. VOF sizes each device's ROM BAR (PCI 30) too: the 864 has the
+BIOS ROM base in silicon, the core answered 0. The S3 now has it (32 KB, 86Box's), which puts I/O 3C0 fifth.
+Build sol5.
+
+Build sol5 (the ROM base; DBG_DEVLOG off: with it the fit needed 4199 LABs of 4191) on the board: VOF's console
+comes up right (1024 x 768), finds nothing to boot on "disk net" and stops at `ok`; `boot cdrom` loads
+`solaris.elf` from the CD and the Solaris kernel runs: "Configuring the /devices directory", "/dev", then
+"pcfs: disk not in DOS format!", "I/O error or floppy disk change: possible file damage" and "ERROR: The
+Solaris boot diskette must be inserted in the diskette drive". The diskette is a FAT12 floppy (BPB in sector 0,
+2880 sectors) with the PReP image inside it, so Solaris's floppy driver reads it wrong through the core: next.

@@ -105,6 +105,8 @@ module IBMRS6K7248_s3
 // ---- PCI header -------------------------------------------------------------------------
 logic [15:0] pci_cmd;
 logic [7:0]  pci_int_line;
+logic [31:15] rom_base;                  // PCI 30: the BIOS ROM base the 864 has (32 KB, as 86Box's S3); no ROM behind it here
+logic        rom_en;
 always_ff @(posedge clk) begin
 	if (cfg_sel & cfg_we) begin
 		if (cfg_reg == 6'h01) begin
@@ -112,6 +114,12 @@ always_ff @(posedge clk) begin
 			if (cfg_be[1]) pci_cmd[15:8] <= cfg_wdata[15:8];
 		end
 		if (cfg_reg == 6'h0F && cfg_be[0]) pci_int_line <= cfg_wdata[7:0];
+		if (cfg_reg == 6'h0C) begin
+			if (cfg_be[0]) rom_en          <= cfg_wdata[0];
+			if (cfg_be[1]) rom_base[15]    <= cfg_wdata[15];
+			if (cfg_be[2]) rom_base[23:16] <= cfg_wdata[23:16];
+			if (cfg_be[3]) rom_base[31:24] <= cfg_wdata[31:24];
+		end
 	end
 	if (cfg_sel & ~cfg_we) begin
 		case (cfg_reg)
@@ -119,11 +127,13 @@ always_ff @(posedge clk) begin
 			6'h01:   cfg_rdata <= {16'h0200, pci_cmd};
 			6'h02:   cfg_rdata <= 32'h0300_0000;          // display controller, VGA (an open question: docs/s3_design.md 5)
 			6'h04:   cfg_rdata <= {cr[7'h59], cr[7'h5A][7], 23'h0};   // BAR0: the linear window, 8 MB of memory
+			// (Sun's VOF lists a ROM BAR in the node's "reg", and its 864 driver takes the 3C0 registers as the fifth)
+			6'h0C:   cfg_rdata <= {rom_base, 14'h0, rom_en};
 			6'h0F:   cfg_rdata <= {16'h0000, 8'h01, pci_int_line};
 			default: cfg_rdata <= 32'h0;
 		endcase
 	end
-	if (reset) begin pci_cmd <= 16'h0; pci_int_line <= 8'h0; end
+	if (reset) begin pci_cmd <= 16'h0; pci_int_line <= 8'h0; rom_base <= '0; rom_en <= 1'b0; end
 end
 wire io_on  = pci_cmd[0];
 wire mem_on = pci_cmd[1];
