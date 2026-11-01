@@ -186,6 +186,47 @@ int main(int argc, char **argv) {
 	for (int y = 0; y < 11; y++) for (int x = 0; x < 21; x++) setpx(40 + x, 640 + y, 0x80 + (x & 7) + 8 * (y & 7));
 	check("pattern fill E0B3", 35, 635, 30, 20);
 
+	// 8b. the pattern is aligned to the screen (86Box's vid_s3.c): a destination pixel takes the pattern's
+	// pixel (x & 7, y & 7), wherever the fill starts and in any direction. An 8 x 8 at (16, 602) (y not a
+	// multiple of 8, as OS/2's 864gradd puts its brush at the screen's height + 10) over 13 x 10 at (43, 645)
+	auto patref = [](int x0, int y0, int w, int h) {
+		for (int y = y0; y < y0 + h; y++) for (int x = x0; x < x0 + w; x++) setpx(x, y, 0x80 + (x & 7) + 8 * (y & 7));
+	};
+	fill(0x00);
+	for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++) vram[(602 + y) * PITCH + 16 + x] = 0x80 + x + 8 * y;
+	same();
+	w16(0xBAE8, 0x67); mf(0xA, 0x000);
+	w16(0x86E8, 16); w16(0x82E8, 602); w16(0x8EE8, 43); w16(0x8AE8, 645); w16(0x96E8, 12); mf(0, 9); w16(0x9AE8, 0xE0B3);
+	wait_idle();
+	patref(43, 645, 13, 10);
+	check("pattern fill E0B3, unaligned destination", 35, 635, 40, 30);
+	// ... the same area from its bottom-right corner, right to left and upwards (E013)
+	fill(0x00);
+	for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++) vram[(602 + y) * PITCH + 16 + x] = 0x80 + x + 8 * y;
+	same();
+	w16(0x86E8, 16); w16(0x82E8, 602); w16(0x8EE8, 55); w16(0x8AE8, 654); w16(0x96E8, 12); mf(0, 9); w16(0x9AE8, 0xE013);
+	wait_idle();
+	patref(43, 645, 13, 10);
+	check("pattern fill E013 (right to left, upwards)", 35, 635, 40, 30);
+	// ... and a 50 % mono halftone (PIX_CNTL C0, RD_MASK 01, both mixes XOR with colour FF, as 864gradd's
+	// PatternFillVRAM) inverted over one rectangle, then again as three rectangles split differently:
+	// the screen comes back (PM's tracking frame, drawn and erased in different pieces)
+	fill(0x3C);
+	for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++) vram[(602 + y) * PITCH + 16 + x] = (x + y) & 1;
+	same();
+	w16(0xAEE8, 0x01); mf(0xA, 0x0C0); w16(0xBAE8, 0x25); w16(0xB6E8, 0x05); w16(0xA6E8, 0xFF); w16(0xA2E8, 0x00);
+	w16(0x86E8, 16); w16(0x82E8, 602); w16(0x8EE8, 41); w16(0x8AE8, 641); w16(0x96E8, 20); mf(0, 6); w16(0x9AE8, 0xE0B3);
+	wait_idle();
+	for (int y = 641; y < 648; y++) for (int x = 41; x < 62; x++) if (((x & 7) + (y & 7)) & 1) setpx(x, y, 0x3C ^ 0xFF);
+	check("halftone XOR, one rectangle", 35, 635, 40, 20);
+	w16(0x86E8, 16); w16(0x82E8, 602); w16(0x8EE8, 41); w16(0x8AE8, 641); w16(0x96E8, 4);  mf(0, 6); w16(0x9AE8, 0xE0B3);
+	w16(0x86E8, 16); w16(0x82E8, 602); w16(0x8EE8, 46); w16(0x8AE8, 641); w16(0x96E8, 15); mf(0, 2); w16(0x9AE8, 0xE0B3);
+	w16(0x86E8, 16); w16(0x82E8, 602); w16(0x8EE8, 46); w16(0x8AE8, 644); w16(0x96E8, 15); mf(0, 3); w16(0x9AE8, 0xE0B3);
+	wait_idle();
+	for (int y = 641; y < 648; y++) for (int x = 41; x < 62; x++) setpx(x, y, 0x3C);
+	check("halftone XOR erased in other pieces", 35, 635, 40, 20);
+	w16(0xAEE8, 0xFF); mf(0xA, 0x000);
+
 	// 9. display memory picks the mix (PIX_CNTL C0): a mono bitmap in plane 0 expanded by a BitBLT
 	fill(0x00);
 	for (int x = 0; x < 16; x++) vram[700 * PITCH + x] = (x % 3) == 0 ? 0x01 : 0x00;

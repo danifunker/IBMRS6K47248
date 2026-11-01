@@ -15,8 +15,10 @@
 //      the direction in bits 7:5, drawn if bit 4, with the flags of the last
 //      command written (a NOP, CMD 0000);
 //    - CMD 4000, rectangles; C000, BitBLTs (source CUR_X/CUR_Y, destination
-//      DESTX/DESTY); E000, pattern fills (an 8 x 8 source at CUR_X/CUR_Y
-//      repeated over the destination); in any direction;
+//      DESTX/DESTY); E000, pattern fills (an 8 x 8 source at CUR_X/CUR_Y,
+//      aligned to the screen: a destination pixel takes the pattern's pixel
+//      (x & 7, y & 7), as 86Box's vid_s3.c; OS/2's 864gradd draws a brush as
+//      one fill per clip rectangle and relies on it); in any direction;
 //    - the 16 mixes with the four sources (background colour, foreground
 //      colour, CPU data, display memory); PIX_CNTL: the foreground mix
 //      always, CPU data selecting the mix (mono expansion, MSB first, with
@@ -178,7 +180,6 @@ logic [11:0] x, y, sx, sy;            // the destination and the source pixel
 logic [11:0] n_x, n_y;                // pixels left in the row (a line's or vector's steps), rows left
 logic [11:0] w0;                      // the row's width
 logic [11:0] x0, sx0, sy0;            // the row's first x; the source's (BitBLT) or pattern's origin
-logic [2:0]  px, py;                  // a pattern fill's place in its 8 x 8
 logic [2:0]  vdir;                    // a vector's direction
 logic        vdraw;                   // DRAW YES (a vector's bit 4)
 logic [15:0] err;                     // a line's running error term
@@ -322,11 +323,9 @@ always_ff @(posedge clk) begin
 						x    <= dest_x[11:0];
 						y    <= dest_y[11:0];
 						x0   <= dest_x[11:0];
-						if (r_data[5]) begin                           // the pattern: from its corner by direction
-							px <= lo[6'h26][5] ? 3'd0 : 3'd7;
-							py <= lo[6'h26][7] ? 3'd0 : 3'd7;
-							sx <= cur_x[11:0] + (lo[6'h26][5] ? 12'd0 : 12'd7);
-							sy <= cur_y[11:0] + (lo[6'h26][7] ? 12'd0 : 12'd7);
+						if (r_data[5]) begin                           // the pattern: its pixel by the destination's x & 7, y & 7
+							sx <= cur_x[11:0] + {9'd0, dest_x[2:0]};
+							sy <= cur_y[11:0] + {9'd0, dest_y[2:0]};
 						end
 						g    <= G_PIX;
 					end
@@ -485,10 +484,7 @@ always_ff @(posedge clk) begin
 					if (n_x != 12'd0) begin
 						n_x <= n_x - 12'd1;
 						x   <= inc_x ? x + 12'd1 : x - 12'd1;
-						if (kind == K_PAT) begin
-							px <= inc_x ? px + 3'd1 : px - 3'd1;
-							sx <= sx0 + {9'd0, inc_x ? px + 3'd1 : px - 3'd1};
-						end
+						if (kind == K_PAT) sx <= sx0 + {9'd0, inc_x ? x[2:0] + 3'd1 : x[2:0] - 3'd1};
 						else sx <= inc_x ? sx + 12'd1 : sx - 12'd1;
 						g   <= G_PIX;
 					end
@@ -498,10 +494,8 @@ always_ff @(posedge clk) begin
 						x     <= x0;
 						y     <= inc_y ? y + 12'd1 : y - 12'd1;
 						if (kind == K_PAT) begin
-							px <= inc_x ? 3'd0 : 3'd7;
-							py <= inc_y ? py + 3'd1 : py - 3'd1;
-							sx <= sx0 + (inc_x ? 12'd0 : 12'd7);
-							sy <= sy0 + {9'd0, inc_y ? py + 3'd1 : py - 3'd1};
+							sx <= sx0 + {9'd0, x0[2:0]};
+							sy <= sy0 + {9'd0, inc_y ? y[2:0] + 3'd1 : y[2:0] - 3'd1};
 						end
 						else begin
 							sx <= sx0;

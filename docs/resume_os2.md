@@ -281,6 +281,12 @@ disk rules (`RULES` in `run_os2l.sh`; mind its sed delimiter, now `%`), found th
    this answer. The exception tracer (`DBG_PC`) and the COM1 bit timing are off for room; the fit is at
    the device's edge (4191 LABs).
 
+## The desktop's trails (2026-10-31, night)
+
+Dragged windows left outline trails: the S3 engine's pattern fill started its 8 x 8 at each rectangle's
+corner, while the chip (86Box) aligns it to the screen, and 864gradd fills a brush one clip rectangle at a
+time. Fixed in `IBMRS6K7248_s3ge` (build os2v, `scratch/work/IBMRS6K7248_os2v.rbf`); see the bring-up log.
+
 ## Open issues and the next step
 
 1. (closed: the install screen is up) insmain's failure was the missing hard disk; the name space was fine. Start with `PERSONAL/INSMAIN`'s strings and

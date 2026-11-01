@@ -1516,3 +1516,16 @@ Next: the bench from a snapshot at the prompt (`--save-exit`), COM1 input with `
   desktop, F3 from the kvm closing its tutorial (`docs/images/os2_warp_ppc_desktop_20261031.png`). The disk's per-second counters (H/M tokens) put the
   whole boot at 0.67 ms a block on the disk side against 6.23 ms on the host's: OS/2's per-block
   interrupt path, not the Main's round trip, is the disk's time.
+
+## 2026-10-31 night: OS/2's desktop trails: the S3's pattern fill aligned to the screen
+
+The desktop showed trails of window outlines after windows were dragged: solid and checkerboard lines,
+black over white, red over the cyan desktop (an XOR's leftovers). OS/2's display path is GRADD
+(`gre2vman` -> `vman` -> `OS2/DLL/864GRADD.DLL`, an ELF with its symbols): `PatternFillVRAM` copies the
+brush once to (8, screen height + 10) and sends one E0B3 per clip rectangle (PIX_CNTL C0, RD_MASK 1, the
+mixes from the ROP). On the S3 (86Box's `vid_s3.c`) a destination pixel takes the pattern's pixel
+(x & 7, y & 7): the pattern is aligned to the screen. The engine started it at each rectangle's corner,
+so PM's tracking frame, inverted in one set of rectangles and inverted back in another, did not cancel.
+Fixed in `IBMRS6K7248_s3ge`; `sim/s3ge` gained an unaligned fill, a right-to-left upward fill and a
+halftone XOR erased in other pieces (all three fail on the old engine, with the screenshot's solid line).
+The live debug stream could not show it: the hardware cursor's CR45-4F writes saturate it. Build os2v.
