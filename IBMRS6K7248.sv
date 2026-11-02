@@ -232,7 +232,8 @@ generate for (gi = 0; gi < 3; gi++) begin : sd_scsi
 	assign sd_buff_din[gi] = scsi_buff_din[gi];
 end endgenerate
 
-hps_io #(.CONF_STR(CONF_STR), .VDNUM(5), .BLKSZ(2)) hps_io
+// F12KEYMOD: F12 goes to the machine (CDE and others use it); Win+F12 opens the MiSTer's menu (issue #1)
+hps_io #(.CONF_STR(CONF_STR), .VDNUM(5), .BLKSZ(2), .F12KEYMOD(1)) hps_io
 (
 	.clk_sys(clk_sys),
 	.HPS_BUS(HPS_BUS),

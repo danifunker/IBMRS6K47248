@@ -20,7 +20,9 @@
 //  the LEDs, the scan set (2, 3 as AIX selects it, or 1 as Windows NT's ARC does; asked, it answers which), the set 3
 //  key types (FB/FC/FD and their key lists: all keys stay make/break), typematic, echo, FE for a
 //  byte that is not a command;
-//  its keys in set 2 (E0 for extended keys, F0 before a release). The
+//  its keys in set 2 (E0 for extended keys, F0 before a release); a key held repeats its make code
+//  (typematic: F3's delay, 250-1000 ms, and rate, 2-30 a second; 500 ms and 10.9 by default; every
+//  key, as the set 3 key types are not kept). The
 //  mouse: reset (FA AA 00), identify (FA 00), enable and disable
 //  streaming, defaults, sample rate, resolution, scaling, status (FA 00 02
 //  64), read data; its movement as three-byte packets while streaming.
@@ -270,6 +272,7 @@ logic       k_rel;                      // translation: the next code is a relea
 logic       k_set3;                     // scan set 3 selected (F0 03; else set 2)
 logic       k_set1;                     // scan set 1 selected (F0 01: its codes are the 8042's translated ones)
 logic       k_list;                     // after FB/FC/FD: key codes follow until the next command
+logic [7:0] k_rate;                     // typematic: F3's byte (bits 6:5 the delay, 4:0 the rate)
 // mouse device
 logic       m_on;
 logic [7:0] m_wait;
@@ -284,6 +287,33 @@ always_ff @(posedge clk) begin
 end
 wire key_ev   = kt[2] != kt[1];
 wire mouse_ev = mt[2] != mt[1];
+
+// typematic: the last key pressed, while held, sends its make code again after the delay, then at the
+// rate, in units of 1/240 s (4.17 ms): the delay (1 + bits 6:5) x 60, the period (8 + bits 2:0) << bits 4:3
+localparam int TICK = CLK_HZ / 240;
+logic [23:0] t_div;
+logic  [8:0] t_key;                     // {extended, set 2 code}
+logic        t_held;
+logic  [7:0] t_left;
+wire         t_tick = t_div == 24'd0;
+wire         rep_ev = t_held && t_tick && t_left == 8'd0 && !key_ev;
+wire   [8:0] ev_key = key_ev ? ps2_key[8:0] : t_key;
+wire         ev_dn  = key_ev ? ps2_key[9] : 1'b1;
+wire   [7:0] t_per  = 8'((8 + k_rate[2:0]) << k_rate[4:3]);
+always_ff @(posedge clk) begin
+	t_div <= t_tick ? 24'(TICK - 1) : t_div - 24'd1;
+	if (t_tick && t_left != 8'd0) t_left <= t_left - 8'd1;
+	if (rep_ev) t_left <= t_per - 8'd1;
+	if (key_ev) begin
+		if (ps2_key[9]) begin
+			t_key  <= ps2_key[8:0];
+			t_held <= 1'b1;
+			t_left <= 8'(60 * (1 + k_rate[6:5]));
+		end
+		else if (ps2_key[8:0] == t_key) t_held <= 1'b0;
+	end
+	if (reset) begin t_div <= '0; t_held <= 1'b0; t_left <= '0; end
+end
 
 // queue pushes: up to four bytes for one queue in a cycle, from these (registered, then fed into the
 // queue a byte a clock through a small stage: the queues are single-port RAMs)
@@ -310,27 +340,27 @@ always_comb begin
 		endcase
 	end
 	// a key
-	else if (key_ev && k_on && kq_n + 5'(ks_n) <= 5'(QN - 3)) begin
+	else if ((key_ev || rep_ev) && k_on && kq_n + 5'(ks_n) <= 5'(QN - 3)) begin
 		if (k_set3 && !cbyte[6]) begin
 			// set 3 (AIX): the code, F0 before it for a release; keys without a set 3 code are dropped
 			logic [7:0] c3;
-			c3 = set3(ps2_key[8], ps2_key[7:0]);
+			c3 = set3(ev_key[8], ev_key[7:0]);
 			if (c3 != 8'h00) begin
-				if (ps2_key[9]) begin kpush_n = 3'd1; kpush[0] = c3; end
+				if (ev_dn) begin kpush_n = 3'd1; kpush[0] = c3; end
 				else            begin kpush_n = 3'd2; kpush[0] = 8'hF0; kpush[1] = c3; end
 			end
 		end
 		else if (cbyte[6] || k_set1) begin
 			// translated, or set 1: E0, then the code with bit 7 for a release
-			if (ps2_key[8]) begin kpush_n = 3'd2; kpush[0] = 8'hE0; kpush[1] = xlat(ps2_key[7:0]) | {~ps2_key[9], 7'd0}; end
-			else            begin kpush_n = 3'd1; kpush[0] = xlat(ps2_key[7:0]) | {~ps2_key[9], 7'd0}; end
+			if (ev_key[8]) begin kpush_n = 3'd2; kpush[0] = 8'hE0; kpush[1] = xlat(ev_key[7:0]) | {~ev_dn, 7'd0}; end
+			else            begin kpush_n = 3'd1; kpush[0] = xlat(ev_key[7:0]) | {~ev_dn, 7'd0}; end
 		end
 		else begin
-			case ({ps2_key[8], ps2_key[9]})
-				2'b01: begin kpush_n = 3'd1; kpush[0] = ps2_key[7:0]; end
-				2'b00: begin kpush_n = 3'd2; kpush[0] = 8'hF0; kpush[1] = ps2_key[7:0]; end
-				2'b11: begin kpush_n = 3'd2; kpush[0] = 8'hE0; kpush[1] = ps2_key[7:0]; end
-				2'b10: begin kpush_n = 3'd3; kpush[0] = 8'hE0; kpush[1] = 8'hF0; kpush[2] = ps2_key[7:0]; end
+			case ({ev_key[8], ev_dn})
+				2'b01: begin kpush_n = 3'd1; kpush[0] = ev_key[7:0]; end
+				2'b00: begin kpush_n = 3'd2; kpush[0] = 8'hF0; kpush[1] = ev_key[7:0]; end
+				2'b11: begin kpush_n = 3'd2; kpush[0] = 8'hE0; kpush[1] = ev_key[7:0]; end
+				2'b10: begin kpush_n = 3'd3; kpush[0] = 8'hE0; kpush[1] = 8'hF0; kpush[2] = ev_key[7:0]; end
 			endcase
 		end
 	end
@@ -468,9 +498,10 @@ always_ff @(posedge clk) begin
 						if (k_wait != 8'h00) begin
 							// the scan set: 1-3 select (set 1 is taken as 2), 0 asks (answered below)
 							if (k_wait == 8'hF0 && wdata != 8'h00) begin k_set3 <= wdata == 8'h03; k_set1 <= wdata == 8'h01; end
+							if (k_wait == 8'hF3) k_rate <= wdata;              // the typematic delay and rate
 							k_wait <= 8'h00;
 						end
-						else if (k_list && !k_cmd(wdata)) ;      // a key code after FB/FC/FD: all keys stay make/break
+						else if (k_list && !k_cmd(wdata)) ;      // a key code after FB/FC/FD: all keys stay make/break, and repeat
 						else begin
 							k_list <= wdata == 8'hFB || wdata == 8'hFC || wdata == 8'hFD;
 							// (enable, disable, defaults and reset clear the keyboard's buffer, as a keyboard does: the
@@ -480,8 +511,8 @@ always_ff @(posedge clk) begin
 								8'hED, 8'hF0, 8'hF3: k_wait <= wdata;
 								8'hF4: begin k_on <= 1'b1; kq_r <= kq_w; end
 								8'hF5: begin k_on <= 1'b0; kq_r <= kq_w; end
-								8'hF6: begin k_on <= 1'b1; kq_r <= kq_w; end
-								8'hFF: begin k_on <= 1'b1; k_set3 <= 1'b0; k_set1 <= 1'b0; kq_r <= kq_w; end   // the reset: set 2 again
+								8'hF6: begin k_on <= 1'b1; kq_r <= kq_w; k_rate <= 8'h2B; end
+								8'hFF: begin k_on <= 1'b1; k_set3 <= 1'b0; k_set1 <= 1'b0; kq_r <= kq_w; k_rate <= 8'h2B; end   // the reset: set 2 again
 								default: ;
 							endcase
 						end
@@ -503,7 +534,7 @@ always_ff @(posedge clk) begin
 	if (reset) begin
 		kq_r <= '0; kq_w <= '0; mq_r <= '0; mq_w <= '0;
 		obf <= 1'b0; ob_aux <= 1'b0; cbyte <= 8'h00; a2 <= 1'b0; pend <= 8'h00; outport <= 8'hCF;
-		gap <= '0; k_on <= 1'b1; k_wait <= 8'h00; k_set3 <= 1'b0; k_set1 <= 1'b0; k_list <= 1'b0; m_on <= 1'b0; m_wait <= 8'h00;
+		gap <= '0; k_on <= 1'b1; k_wait <= 8'h00; k_set3 <= 1'b0; k_set1 <= 1'b0; k_list <= 1'b0; k_rate <= 8'h2B; m_on <= 1'b0; m_wait <= 8'h00;
 		m_rate <= 8'd100; m_res <= 8'd2; m_scale <= 1'b0;
 	end
 end

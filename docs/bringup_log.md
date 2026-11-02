@@ -1742,3 +1742,23 @@ from the SCSI disk fails and it ends at the diskette prompt. rel90: 41,134 ALMs,
 memory clock +0.01 ns); on .92 it boots the installed AIX 5.1 from disk to the CDE login.
 
 Released as `releases/IBMRS6K7248_90MHz_20261102.rbf` beside the 70 MHz core (the user ran it on .92).
+
+## 2026-11-02 (evening): typematic keys, the OSD on Win+F12, a regression of every OS at 70 and 90 MHz
+
+The keyboard repeats a held key (`IBMRS6K7248_kbc`): the last key made sends its make code again after F3's delay
+(250-1000 ms) and then at F3's rate (2-30 a second; 500 ms and 10.9 a second after reset, F6 or FF), in whichever
+set the OS uses; the release ends it. Set 3's per-key types (FB/FC/FD lists) are not kept: a 256-bit table of them
+pushed the 90 MHz build over the device (42,191 ALMs), so every key repeats, as in sets 1 and 2. And hps_io's
+F12KEYMOD (issue #1): F12 goes to the machine (CDE's F12), Win+F12 opens the MiSTer's menu.
+
+Builds: rel70b (70 MHz: 40,981 ALMs, slack -2.2 ns) and rel90c (90 MHz, fitter seed 1: 41,487 ALMs, -5.4 ns).
+The 90 MHz build with the default seed (rel90b, -5.6 ns) failed the AIX 4.3.3 disk boot twice (the SMS diskette
+prompt, as at 100 MHz): at 90 MHz the result depends on the placement, so each 90 MHz build is board-tested.
+On .92 both rel70b and rel90c boot to a login and shut down cleanly: AIX 4.3.3 (CDE, Halt completed), AIX 5.1
+(CDE, Halt completed), Solaris 2.5.1 (CDE login; init 0, the disk idle; the S3 shows the desktop in the text
+palette after X exits, known), OS/2 Warp (Model 850: the desktop; Shut down from the LaunchPad, "Shutdown has
+completed") and NT 4.0 (ARC disk: logon, the desktop; Shut Down, "It is now safe to turn off your computer").
+Held keys repeat in AIX, Solaris and OS/2. Released as `releases/IBMRS6K7248_20261102b.rbf` and
+`releases/IBMRS6K7248_90MHz_20261102b.rbf` (replacing the morning's pair). `tools/ukey.py`: W- (Win), stacked
+modifiers (C-A-delete), key~N held N/10 s, and the mouse (m:dx,dy, click).
+

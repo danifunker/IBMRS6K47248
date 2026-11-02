@@ -59,6 +59,7 @@ The core is `releases/IBMRS6K7248_<date>.rbf` (the newest date, the CPU at 70 MH
 `_Computer/`) on the SD card. `releases/IBMRS6K7248_90MHz_<date>.rbf` is the same core with the CPU at 90 MHz,
 past its timing: it runs AIX 5.1 on a SuperStation; on other boards it may not, so use the 70 MHz core there.
 Copy either one as `IBMRS6K7248.rbf`: Main's support for the core goes by that name.
+The MiSTer's menu opens with Win+F12; F12 alone goes to the machine.
 
 Put the files in `games/IBMRS6K7248/`:
 
