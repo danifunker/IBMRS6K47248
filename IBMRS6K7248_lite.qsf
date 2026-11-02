@@ -50,8 +50,6 @@ set_global_assignment -name PHYSICAL_SYNTHESIS_ASYNCHRONOUS_SIGNAL_PIPELINING ON
 set_global_assignment -name ALM_REGISTER_PACKING_EFFORT MEDIUM
 set_global_assignment -name SEED 1
 
-# the debug build: the OSD's P9 (the UART's bring-up log) and its logging; comment out for a release
-set_global_assignment -name VERILOG_MACRO "IBMRS6K7248_DEBUG=1"
 
 # the LITE revision (quartus_sh --flow compile IBMRS6K7248 -c IBMRS6K7248_lite): for quick debugging builds,
 # no PCnet, no audio card, no FM chip (the machine's floppy, SCSI, DMA, S3 and the rest as in the full build)

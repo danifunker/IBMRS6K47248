@@ -9,16 +9,22 @@ Work in progress: just started (2026-10-16).
 
 ## Status
 
+| Operating system | State on the board |
+|---|---|
+| AIX 4.3.3 | installs and boots from disk to the CDE login; Ethernet (FTP, telnet) |
+| AIX 5.1 | installs from volume 1 and boots from disk to the CDE desktop (2026-11-02) |
+| Solaris 2.5.1 PPC | installs from the CD (with Sun's boot diskette in the floppy slot) and boots by itself to the CDE login; CDE, ODBC and Wabi from the Desktop 1.1 CD |
+| OS/2 Warp for PowerPC | installs and boots to the desktop under Model `Power Series 850` (IDE disk and CD-ROM) |
+| Windows NT 4.0 PPC | setup's text and GUI parts run; its S3 and CS4232 drivers work |
+
 | Piece | State |
 |---|---|
-| Project skeleton | Template_MiSTer `5dda373` (2026-10-16), renamed `IBMRS6K7248`; `sys/` unmodified |
-| CPU | `DSPPC604` from MacPPC7300_MiSTer `21ba191` (2026-10-16; `rtl/DSPPC604/`): a 32-bit PowerPC 604-class core, verified against a real 604 there; plus little-endian mode behind `LE_MODE` (1 here), the one change so far (`docs/cpu_patches/`) |
-| Clock | CPU and machine 100 MHz, SDRAM 100 MHz: MacPPC7300's PLL in its 100 MHz-only form |
-| SDRAM controller | MacPPC7300's (`rtl/machine/IBMRS6K7248_sdram.sv`, renamed only); the ROM in the board's top 4 MB, RAM below it |
-| Machine | `rtl/machine/`: the PReP map; the MPC105 (configuration, the RAM banks as SIMM pairs, the little-endian byte-lane swap); Fire Coral's configuration; the 8259s, the 8254, the RTC and 4 KB NVRAM, the 8042 with a PS/2 keyboard and mouse, the PC87312 (COM1 on the MiSTer's UART, COM2, the parallel port), a silent CS4232; the planar ID (F5, a 7248-100). The rest is a logged stub |
-| Firmware | v1.12 on the bench: through the recovery block (memory sizing, the CS4232, the main block's CRC) into the main block, to its RAM test (`docs/bringup_log.md`) |
-| Bench | `sim/`: Verilator, the whole machine from the reset vector on a ROM image, COM1's output and every stubbed device access logged |
-| Video, SCSI, floppy, Ethernet, sound | not yet: `docs/plan.md` |
+| CPU | `DSPPC604` from MacPPC7300_MiSTer (`rtl/DSPPC604/`), a 32-bit PowerPC 604-class core, plus little-endian mode (`docs/cpu_patches/`); 70 MHz |
+| Machine | `rtl/machine/`: the PReP map, the MPC105 (RAM as SIMM pairs, up to 112 MB on a 128 MB board), Fire Coral, the 8259s, 8254, 8237 DMA with scatter/gather, the RTC and 4 KB NVRAM (kept on the SD card), the 8042 (PS/2 keyboard and mouse), the PC87312 (COM1 on the MiSTer's UART, COM2, the floppy, the parallel port as a log), the VPD EEPROM |
+| Video | the S3 Vision864 with its SDAC: VGA, 8 to 32 bits a pixel, the 8514 engine, the hardware cursor (`docs/s3_design.md`) |
+| Disks | the NCR 53C810 with SCSI disks at IDs 0 and 1 and a CD-ROM at ID 3 (its tray opens and closes); under the 850 model, an IDE disk and an ATAPI CD-ROM |
+| Network, sound | the PCnet Ethernet bridged to the MiSTer's network; the CS4232 (WSS codec, Sound Blaster Pro, OPL2 FM, MPU-401 to an MT32-pi, joystick) |
+| Open | `docs/stubbed-hardware.md`: the S3 back to text mode after X, the PCnet's duplicate frames, the OPL3's second bank, CD audio, IDE DMA, dot clocks over 100 MHz |
 
 ## Documents
 
@@ -98,7 +104,7 @@ Mounted images are remembered and mounted again at every core load.
 | P4 Audio | `Use MT32-pi`, `Synth`, `Munt ROM` / `SoundFont` | the MPU-401's MIDI to an MT32-pi on the user port, and its synth's settings (they act at once, like the Input page) |
 | P5 Advanced | `Model` | the planar ID the firmware reads at 0852: `7248-100` (F5, with SCSI) or `Power Series 850` (F1); at the next reset. OS/2 for PowerPC was made for the 850 (`PPC_INFO.STZ` has no 7248). Under the 850 the IDE is a real 850's: the disk 0 image is the primary channel's master and the CD image the secondary's (the 53C810 sees neither): the firmware boots the OS/2 CD over IDE and its installer comes up with nothing typed; an installed OS/2 boots by itself from the disk when the NVRAM's boot list has the IDE disk, or has no list at all (a fresh NVRAM image: the firmware then finds the disk itself). A boot list left by the 7248 (floppy, SCSI CD-ROM, SCSI disk) ends at the SMS diskette prompt: use another NVRAM image for OS/2 |
 | P5 Advanced | `NVRAM image` | the file holding the 4 KB PReP NVRAM and the CMOS: the boot list, the console choice, SMS settings. Loaded at the mount, saved two seconds after AIX or the firmware writes them |
-| System page | `UART mode` | the framework's own setting. Any mode (PPP, Console, MIDI, Modem) connects the MiSTer's Linux to COM1. With `None`, a debug build (`IBMRS6K7248_DEBUG` in the `.qsf`) sends the bring-up log instead (POST codes, exceptions, PCI configuration accesses: read `/dev/ttyS1` at 115200); a release build carries COM1 (watch it with `picocom -b 9600 /dev/ttyS1` over ssh) |
+| System page | `UART mode` | the framework's own setting. The MiSTer's UART is COM1: any mode (PPP, Console, MIDI, Modem) connects the MiSTer's Linux to it (watch it with `picocom -b 9600 /dev/ttyS1` over ssh) |
 
 Memory and the aspect ratio take effect at the next reset; the UART mode at once. Media, Input, the MT32-pi rows and Network interface take effect at once.
 

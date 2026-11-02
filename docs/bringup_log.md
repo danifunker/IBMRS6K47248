@@ -1724,3 +1724,10 @@ CDE desktop. 245 filesets in 1 h 24 min, then the RPMs (cdrecord, mkisofs, mtool
 post-install work with no change on the screen while the disk was still being written. The user stopped it at the
 reboot. Backed up as `AIX51_installed_20261102.tar.xz` (173 MB, md5 fba23a13...) in `games/IBMRS6K7248/backups/`
 on .92 and in `Y:\ibmrs6k-backups`. Next: boot the installed disk.
+
+## 2026-11-02: the release build
+
+The debug stream is out of the top level (`IBMRS6K7248.sv`: the UART is COM1 always) and the `IBMRS6K7248_DEBUG`
+macro out of both `.qsf` files; the system's trace and I/O-event ports stay for the bench and are left open.
+Build rel1: 39,968 of 41,910 ALMs (95 %), worst setup slack -2.8 ns. On .92 it boots the installed AIX 5.1 from
+disk to the CDE desktop. Released as `releases/IBMRS6K7248_20261102.rbf`.
