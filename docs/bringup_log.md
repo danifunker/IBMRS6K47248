@@ -1657,3 +1657,18 @@ Build sol7 (the 82077 fix; DBG_COM1TX off: with the default debug options the fi
 the board: `boot cdrom` at VOF's `ok`, and the Solaris 2.5.1 kernel reads the boot diskette (no pcfs errors),
 asks the terminal type (6, PC Console) and starts "The Solaris Installation Program" (identify peripherals,
 identify the system, install the software). Next: the installation onto the blank 2 GB disk (SCSI ID 0).
+
+The installation on the board (sol7, 112 MB): standalone, not networked, Entire Distribution, c0t0d0 laid out
+by hand: / on s0 (1929 MB), swap on s1 (112 MB, the core's most memory). The installer writes an fdisk table
+(PReP 41 at 1, a DOS boot partition 01 at 2048 with `solaris.elf`, Solaris 82 from 8192) and the VTOC; the
+copy of 319 MB from the CD took about 20 minutes. VOF's own "disk" alias does not find it ("Unable to boot any
+of disk net"); `boot /pci/pci1000,1@10/disk@0,0:,\solaris.elf` at `ok` does, and the installed system runs
+its first-boot configuration and comes up to "rs6k7248 console login:" (SunOS 5.5.1 prep ppc
+IBM,PPS_Model_7248, 112 MB, swap on c0t0d0s1, / 14 % used, the CD mounted by vold).
+Two things that are not the core: the installer's date screen shows the year 2026 as "1912" (2.5.1 prints
+1900 + 126 in four columns; the RTC header line reads 11/01/26 right), and its F-keys did not answer because
+terminal type 6 (PC Console) was chosen while the console speaks Sun's sequences (F1 ESC[224z, F2 ESC[225z;
+TERM=sun after installation): type 8, Sun Workstation, is the one for this console. And an operator slip: an
+F12 sent to test the keys opened the MiSTer's OSD and the keys after it mounted the boot diskette as disk 0
+under the running system (LBA out of range, then a UFS panic); with the image put back, fsck salvaged the
+free counts and it booted clean.
