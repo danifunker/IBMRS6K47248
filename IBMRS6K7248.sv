@@ -34,7 +34,11 @@ module emu
 	`include "sys/emu_ports.vh"
 );
 
-`ifdef IBMRS6K7248_CPU58
+`ifdef IBMRS6K7248_CPU100
+localparam int CPU_MHZ = 100;               // the 100 MHz build (MacPPC7300's: the same CPU past its timing; the DE10-Nano, MiSTer Pi, SuperStation)
+`elsif IBMRS6K7248_CPU90
+localparam int CPU_MHZ = 90;                // the 90 MHz build (the PLL's VCO at 900 MHz; 100 ran POST but did not boot the disk)
+`elsif IBMRS6K7248_CPU58
 localparam int CPU_MHZ = 58;                // (a debugging build: the PLL's 58.3, the CPU's paths with room to spare)
 `else
 localparam int CPU_MHZ = 70;                // the PLL's 70 or 100: the first fit at 100 missed by 6.2 ns (the CPU's paths, as MacPPC7300's, which runs at 70)

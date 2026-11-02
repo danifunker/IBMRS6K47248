@@ -1731,3 +1731,12 @@ The debug stream is out of the top level (`IBMRS6K7248.sv`: the UART is COM1 alw
 macro out of both `.qsf` files; the system's trace and I/O-event ports stay for the bench and are left open.
 Build rel1: 39,968 of 41,910 ALMs (95 %), worst setup slack -2.8 ns. On .92 it boots the installed AIX 5.1 from
 disk to the CDE desktop. Released as `releases/IBMRS6K7248_20261102.rbf`.
+
+## 2026-11-02: faster builds: 100 MHz does not boot, 90 MHz does
+
+As MacPPC7300's 100 MHz build, the same RTL clocked past its timing: `IBMRS6K7248_CPU100` (the PLL's 100 MHz CPU
+counter, merged by Quartus with the memory clock's) and `IBMRS6K7248_CPU90` (a 900 MHz VCO, M 18: the CPU 900/10,
+memory 900/9 = 100, the unused 20 MHz 900/45; `rtl/pll/pll_0002.v`), each set on quartus_map's command line
+(`--verilog_macro`). rel100: 41,117 ALMs, CPU slack -7.1 ns at 10 ns; on .92 the firmware's POST runs but the boot
+from the SCSI disk fails and it ends at the diskette prompt. rel90: 41,134 ALMs, CPU slack -6.0 ns at 11.1 ns (the
+memory clock +0.01 ns); on .92 it boots the installed AIX 5.1 from disk to the CDE login.
