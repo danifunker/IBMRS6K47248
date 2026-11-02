@@ -1712,3 +1712,15 @@ The installed Solaris (disk and NVRAM after `init 0`) is backed up as
 and in `Y:\ibmrs6k-backups`. Seen at that shutdown: when X exits, the screen keeps the desktop's picture with
 the text palette instead of Solaris's text console: the S3 does not go back to VGA text after the X server's
 enhanced mode (next for the S3).
+
+## 2026-11-02: AIX 5.1 installs
+
+Build trim1 on .92, Model 7248-100, 112 MB, disk 0 a blank 4 GB `AIX51_4GB.img`, the CD `AIX51_VOLUME1.iso`
+(LCD4-1061), a blank diskette, a zeroed NVRAM `AIX51_7248.nvr`. The firmware boots the CD; AIX 5.1 loads the
+lft display driver (COM1: "Preserving ... symbol table [lft_loadpin32]") and puts "Please define the System
+Console" on the S3 (the 2026-10-28 attempt parked in rc.boot with an ER01 for scsi0: the 53C810, S3 and bus
+fixes since then carried it past). F1 + Enter, English, then the BOS menu: New and Complete Overwrite on hdisk0,
+CDE desktop. 245 filesets in 1 h 24 min, then the RPMs (cdrecord, mkisofs, mtools) and about 45 minutes of
+post-install work with no change on the screen while the disk was still being written. The user stopped it at the
+reboot. Backed up as `AIX51_installed_20261102.tar.xz` (173 MB, md5 fba23a13...) in `games/IBMRS6K7248/backups/`
+on .92 and in `Y:\ibmrs6k-backups`. Next: boot the installed disk.
