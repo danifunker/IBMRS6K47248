@@ -1740,3 +1740,5 @@ memory 900/9 = 100, the unused 20 MHz 900/45; `rtl/pll/pll_0002.v`), each set on
 (`--verilog_macro`). rel100: 41,117 ALMs, CPU slack -7.1 ns at 10 ns; on .92 the firmware's POST runs but the boot
 from the SCSI disk fails and it ends at the diskette prompt. rel90: 41,134 ALMs, CPU slack -6.0 ns at 11.1 ns (the
 memory clock +0.01 ns); on .92 it boots the installed AIX 5.1 from disk to the CDE login.
+
+Released as `releases/IBMRS6K7248_90MHz_20261102.rbf` beside the 70 MHz core (the user ran it on .92).

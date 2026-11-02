@@ -19,7 +19,7 @@ Work in progress: just started (2026-10-16).
 
 | Piece | State |
 |---|---|
-| CPU | `DSPPC604` from MacPPC7300_MiSTer (`rtl/DSPPC604/`), a 32-bit PowerPC 604-class core, plus little-endian mode (`docs/cpu_patches/`); 70 MHz |
+| CPU | `DSPPC604` from MacPPC7300_MiSTer (`rtl/DSPPC604/`), a 32-bit PowerPC 604-class core, plus little-endian mode (`docs/cpu_patches/`); 70 MHz, or 90 MHz in the 90 MHz release |
 | Machine | `rtl/machine/`: the PReP map, the MPC105 (RAM as SIMM pairs, up to 112 MB on a 128 MB board), Fire Coral, the 8259s, 8254, 8237 DMA with scatter/gather, the RTC and 4 KB NVRAM (kept on the SD card), the 8042 (PS/2 keyboard and mouse), the PC87312 (COM1 on the MiSTer's UART, COM2, the floppy, the parallel port as a log), the VPD EEPROM |
 | Video | the S3 Vision864 with its SDAC: VGA, 8 to 32 bits a pixel, the 8514 engine, the hardware cursor (`docs/s3_design.md`) |
 | Disks | the NCR 53C810 with SCSI disks at IDs 0 and 1 and a CD-ROM at ID 3 (its tray opens and closes); under the 850 model, an IDE disk and an ATAPI CD-ROM |
@@ -47,7 +47,7 @@ Work in progress: just started (2026-10-16).
   made in that core's copy behind a parameter and carried to the other as a
   patch (`docs/cpu_patches/`); the first is little-endian mode (`LE_MODE`),
   which Windows NT and OS/2 need. Nothing machine-specific goes into the CPU.
-- CPU clock 100 MHz (the 7248-100's own speed).
+- CPU clock 70 MHz (the CPU's timing closes near 58 MHz; a 90 MHz build runs past it, as MacPPC7300's 100 MHz build does).
 - One core for both machines of the Carolina board: the 7248 (with SCSI)
   and the Power Series 830/850 run the same firmware code, which tells
   them apart by the planar ID at port 0852.
@@ -55,8 +55,10 @@ Work in progress: just started (2026-10-16).
 
 ## Using it on the MiSTer
 
-The core is `releases/IBMRS6K7248_<date>.rbf` (the newest date); copy it to `_Unstable/` (or
-`_Computer/`) on the SD card.
+The core is `releases/IBMRS6K7248_<date>.rbf` (the newest date, the CPU at 70 MHz); copy it to `_Unstable/` (or
+`_Computer/`) on the SD card. `releases/IBMRS6K7248_90MHz_<date>.rbf` is the same core with the CPU at 90 MHz,
+past its timing: it runs AIX 5.1 on a SuperStation; on other boards it may not, so use the 70 MHz core there.
+Copy either one as `IBMRS6K7248.rbf`: Main's support for the core goes by that name.
 
 Put the files in `games/IBMRS6K7248/`:
 
