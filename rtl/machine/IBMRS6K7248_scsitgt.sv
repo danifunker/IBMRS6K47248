@@ -556,6 +556,7 @@ module IBMRS6K7248_scsitgt #(
                          img_present[0] && sel_id == DISK0_ID};
     logic        sd_busy;
     logic        cd_ua;            // a disc mounted since: the next command but INQUIRY or REQUEST SENSE gets UNIT ATTENTION
+    logic        cd_out;           // the tray opened by START STOP UNIT (LoEj, not Start): no medium until a load or a new disc
     logic [1:0]  sd_dev;
     logic        sd_was_ack;
 
@@ -577,6 +578,7 @@ module IBMRS6K7248_scsitgt #(
             st <= T_FREE; bsy <= 1'b0; req <= 1'b0; e_rd <= 3'd0; e_wr <= 3'd0; sd_busy <= 1'b0; aud_busy <= 1'b0;
             for (int d = 0; d < 3; d++) begin skey[d] <= 4'd0; sasc[d] <= 8'd0; end
             pending <= 1'b0; cd_ua <= 1'b0;
+            if (rst) cd_out <= 1'b0;
             if (rst) begin toc_ok <= 1'b0; toc_n <= 8'd0; vol0 <= 8'hFF; vol1 <= 8'hFF; a_stop <= 1'b1; end
         end else begin
             // block device handshake: drop rd/wr when ack rises, done when it falls
@@ -586,7 +588,7 @@ module IBMRS6K7248_scsitgt #(
                 if (aud_busy) begin aud_busy <= 1'b0; fr_done <= 1'b1; end
             end
             // a new disc: its table is read again at the next command that needs it
-            if (cd_change) begin toc_ok <= 1'b0; toc_n <= 8'd0; a_stop <= 1'b1; cd_ua <= 1'b1; end
+            if (cd_change) begin toc_ok <= 1'b0; toc_n <= 8'd0; a_stop <= 1'b1; cd_ua <= 1'b1; cd_out <= 1'b0; end
 
             case (st)
                 T_FREE: if (sel) begin
@@ -669,7 +671,7 @@ module IBMRS6K7248_scsitgt #(
                     if (is_cd && cd_ua && op != 8'h12 && op != 8'h03) begin
                         cd_ua <= 1'b0;
                         skey[dev] <= 4'h6; sasc[dev] <= 8'h28; go_status(8'h02);   // UNIT ATTENTION, medium may have changed
-                    end else if (is_cd && !img_present[2] && op != 8'h12 && op != 8'h03 && op != 8'h1B && op != 8'h1E) begin
+                    end else if (is_cd && (!img_present[2] || cd_out) && op != 8'h12 && op != 8'h03 && op != 8'h1B && op != 8'h1E) begin
                         skey[dev] <= 4'h2; sasc[dev] <= 8'h3A; go_status(8'h02);   // NOT READY, medium not present
                     end else if (is_cd && !toc_ok && (op == 8'h43 || op == 8'h42 || op == 8'h45 || op == 8'h47 ||
                                              op == 8'h48 || op == 8'hA5)) begin
@@ -738,8 +740,13 @@ module IBMRS6K7248_scsitgt #(
                             skey[dev] <= 4'd0; sasc[dev] <= 8'd0; go_status(8'h00);
                         end
                         8'h4E: begin a_stop <= 1'b1; skey[dev] <= 4'd0; sasc[dev] <= 8'd0; go_status(8'h00); end
-                        8'h00, 8'h01, 8'h04, 8'h0B, 8'h16, 8'h17, 8'h1B, 8'h1D, 8'h1E, 8'h2B, 8'h2F, 8'h35:
-                            begin skey[dev] <= 4'd0; sasc[dev] <= 8'd0; go_status(8'h00); end
+                        8'h00, 8'h01, 8'h04, 8'h0B, 8'h16, 8'h17, 8'h1B, 8'h1D, 8'h1E, 8'h2B, 8'h2F, 8'h35: begin
+                            // START STOP UNIT with LoEj: the CD's tray opens (Start 0) or closes on the same disc (Start 1),
+                            // as a drive's: open, it answers NOT READY, medium not present, until a load or a new disc
+                            // (Solaris's vold ejects and then waits for the medium to come and go)
+                            if (is_cd && op == 8'h1B && cdb[4][1]) cd_out <= !cdb[4][0];
+                            skey[dev] <= 4'd0; sasc[dev] <= 8'd0; go_status(8'h00);
+                        end
                         8'h12, 8'h03, 8'h25, 8'h1A, 8'h5A: begin
                             logic [15:0] alloc, rl;
                             rl = resp_len(op, cdb[2][5:0]);

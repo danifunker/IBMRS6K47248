@@ -1672,3 +1672,24 @@ TERM=sun after installation): type 8, Sun Workstation, is the one for this conso
 F12 sent to test the keys opened the MiSTer's OSD and the keys after it mounted the boot diskette as disk 0
 under the running system (LBA out of range, then a UFS panic); with the image put back, fsck salvaged the
 free counts and it booted clean.
+
+## 2026-11-01 (evening): Solaris's desktop: CDE, ODBC and Wabi; the boot by itself; the CD's tray
+
+From the "Solaris 2.5.1 PowerPC Desktop 1.1" CD (OSD CD slot, vold mounts it at /cdrom/solaris_2_5_1_desktop_1_1):
+`install-cde` (CDE 1.0.1: end user, developer and AnswerBook), `pkgadd` of ODBC 2.11 (ISLIodbc, ISLIodbcD) and
+Wabi (SUNWaws, SUNWwabi under /opt; /opt/SUNWwabi/bin on PATH from /etc/profile); `kdmconfig -c` set the X
+server up (the S3 864). The boot needs nothing typed: VOF's `boot-device` and `auto-boot?` live in the PReP
+NVRAM (SOL_7248.nvr, the OSD's NVR slot) with the boot diskette left in the floppy slot (VOF runs from it), and
+dtlogin brings up the CDE login on the S3; root's desktop (File Manager, Help Viewer, the front panel, Terminal)
+works with the PS/2 keyboard and mouse.
+
+The CD's tray (`IBMRS6K7248_scsitgt.sv`): START STOP UNIT was a no-op, so `eject cdrom0` left the disc "in" and
+vold never saw the next one. Now LoEj opens the tray (Start 0; Start 1 closes it on the same disc): the CD
+answers NOT READY 2/3A until a load or an OSD mount, which gives UNIT ATTENTION 6/28 as before. On the board
+(build sol8, fitter seed 1: the FPGA is full, 4191 LABs; worst setup slack -4.4 ns against sol7's -2.7, no
+fault seen): `eject cdrom0` returns 0, volcheck says "no media was found", and an OSD mount of the image is
+seen as an insert (vold's log: action_exec "insert" ... rmmount) and mounted. Solaris's own vold then
+segfaults after the next eject it approves (the shell: "Segmentation Fault - core dumped"; it dies with
+the drive open, whatever is mounted next), which leaves /vol hung; `/etc/init.d/volmgt stop` and `start`
+bring it back. That is vold's (a debug vold started with the tray open waits on DKIOCSTATE and takes the new
+disc), not the drive's answers.

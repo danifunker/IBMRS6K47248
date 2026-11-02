@@ -1,4 +1,4 @@
-# ukey.py KEY [KEY...]: press keys on the MiSTer through a uinput keyboard (instant, no Remote service); S-<key> holds Shift, C-<key> Ctrl
+# ukey.py KEY [KEY...]: press keys on the MiSTer through a uinput keyboard (instant, no Remote service); S-<key> holds Shift, C-<key> Ctrl, A-<key> Alt
 import fcntl, os, struct, sys, time
 CODES = {'esc':1,'enter':28,'up':103,'down':108,'left':105,'right':106,'space':57,'tab':15,'backspace':14,
          'minus':12,'period':52,'slash':53,'comma':51,'backslash':43,'semicolon':39,'equal':13,'quote':40,
@@ -15,7 +15,7 @@ time.sleep(1.0)                                     # let Main open the new devi
 def ev(t, c, v): os.write(fd, struct.pack('llHHi', 0, 0, t, c, v))
 for a in sys.argv[1:]:
     n, _, rep = a.partition('*')
-    mod = 42 if n.startswith('S-') else 29 if n.startswith('C-') else 0   # S-<key> Shift (S-2 is @), C-<key> Ctrl
+    mod = {'S-': 42, 'C-': 29, 'A-': 56}.get(n[:2], 0)   # S-<key> Shift (S-2 is @), C-<key> Ctrl, A-<key> Alt
     sh = mod and len(n) > 2
     if sh: n = n[2:]
     for _ in range(int(rep or 1)):
