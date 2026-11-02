@@ -385,8 +385,16 @@ always_ff @(posedge clk) begin
 		X_WR_W: if (sec_ack != ack_q) xs <= X_NEXT;
 		X_NEXT: begin
 			// the next sector, unless the terminal count came or the track (and with MT, head 1) ended;
-			// past head 1's last sector with MT the result's H is back to 0 (the 82077's, QEMU's)
-			if (tc_seen) begin xr <= xr + 8'd1; xs <= X_DONE; end
+			// past head 1's last sector with MT the result's H is back to 0 (the 82077's, QEMU's). The
+			// result's ID is the next sector's either way: a terminal count on EOT gives head 1 sector 1
+			// (MT, head 0) or the next cylinder's sector 1, as the 82077's table has it (Solaris's fd
+			// driver goes on from the result's C, H, R: R EOT + 1 sent it to a sector that is not there)
+			if (tc_seen) begin
+				if (xr != xeot) xr <= xr + 8'd1;
+				else if (mt && xh == 8'd0) begin xh <= 8'd1; xr <= 8'd1; end
+				else begin xr <= 8'd1; xc <= xc + 8'd1; if (mt) xh <= 8'd0; end
+				xs <= X_DONE;
+			end
 			else if (xr == xeot) begin
 				if (mt && xh == 8'd0) begin xh <= 8'd1; xr <= 8'd1; xs <= X_SECT; end
 				else begin xr <= 8'd1; xc <= xc + 8'd1; if (mt) xh <= 8'd0; xs <= X_DONE; end

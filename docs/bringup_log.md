@@ -1642,3 +1642,13 @@ comes up right (1024 x 768), finds nothing to boot on "disk net" and stops at `o
 "pcfs: disk not in DOS format!", "I/O error or floppy disk change: possible file damage" and "ERROR: The
 Solaris boot diskette must be inserted in the diskette drive". The diskette is a FAT12 floppy (BPB in sector 0,
 2880 sectors) with the PReP image inside it, so Solaris's floppy driver reads it wrong through the core: next.
+
+Build sol6 (DBG_FLOPPY on, DBG_COM1TX off for room) on the board, the floppy's commands from `boot cdrom` to the
+prompt: the Solaris boot loader reads the diskette by PIO (SPECIFY ...29: ND), right; the kernel's fd driver by
+DMA (SPECIFY ...28; channel 2 single, write, page 81 and high page 481 = 80). Its data arrives right: the bench
+tests `sim/tests/le_fdma*.S` (`scratch/work/run_fdma.sh`) read the boot sector by floppy DMA in little-endian
+mode, with the data cache off and on (translation on, the buffer dirty in the cache): "FDMA OK 00 02" both.
+The fault was the result's ID: a read ended by the terminal count on its EOT sector (E6 C1 H0 R18 EOT 18, one
+sector) answered R 13 where the 82077's table has the next sector, H1 R1 (MT, head 0) or C+1 R1. Solaris goes
+on from the result's C, H, R, so after FAT sectors 11-18 it asked for C0 H0 R19: no data, and pcfs gave up.
+`IBMRS6K7248_fdc.sv` X_NEXT now wraps on a terminal count too; `sim/floppy/run.sh` checks it. Build sol7.

@@ -157,6 +157,20 @@ int main(int argc, char **argv) {
 	}
 	printf("%-46s %s\n", "DMA read across the heads (MT)", fails != f0 ? "FAIL" : "pass"); f0 = fails;
 
+	// 5b. the terminal count on EOT: the result's ID is the next sector's (the 82077's table; Solaris's fd
+	// driver goes on from it). MT on head 0: H1 R1; no MT: C+1 R1
+	dma2(0x46, 512, 0x30000);
+	fcmd({0xE6, 0x00, 1, 0, 18, 2, 18, 0x1B, 0xFF});
+	{ auto r = fres(); if (r.size() == 7) { expect("TC on EOT, MT: ST0", r[0] & 0xC0, 0); expect("TC on EOT, MT: C", r[3], 1); expect("TC on EOT, MT: H", r[4], 1); expect("TC on EOT, MT: R", r[5], 1); } else expect("TC on EOT, MT: 7 results", r.size(), 7); }
+	dma2(0x46, 512, 0x30000);
+	fcmd({0x66, 0x00, 1, 0, 18, 2, 18, 0x1B, 0xFF});
+	{ auto r = fres(); if (r.size() == 7) { expect("TC on EOT: C", r[3], 2); expect("TC on EOT: H", r[4], 0); expect("TC on EOT: R", r[5], 1); } else expect("TC on EOT: 7 results", r.size(), 7); }
+	dma2(0x46, 4096, 0x30000);                              // eight sectors, R11-18: Solaris's FAT read
+	fcmd({0xE6, 0x00, 0, 0, 11, 2, 18, 0x1B, 0xFF});
+	{ auto r = fres(); if (r.size() == 7) { expect("R11-18: H", r[4], 1); expect("R11-18: R", r[5], 1); } else expect("R11-18: 7 results", r.size(), 7); }
+	expect("R11-18: sectors 10-17", memcmp(&mem[0x30000], &img[10 * 512], 4096), 0);
+	printf("%-46s %s\n", "terminal count on EOT: the next sector's ID", fails != f0 ? "FAIL" : "pass"); f0 = fails;
+
 	// 6. PIO (non-DMA): one sector, C0 H0 R2 EOT 2, through the FIFO
 	fcmd({0x03, 0xDF, 0x03});                               // SPECIFY, ND
 	fcmd({0x46, 0x00, 0, 0, 2, 2, 2, 0x1B, 0xFF});
@@ -167,6 +181,21 @@ int main(int argc, char **argv) {
 		if (got.size() == 512) expect("PIO: sector 1", memcmp(got.data(), &img[1 * 512], 512), 0);
 		auto r = fres();
 		if (r.size() == 7) expect("PIO ST0", r[0] & 0xC0, 0x00);
+	}
+	// Solaris's fd driver (2.5.1 PPC): SPECIFY ND, a seek to 1, READ ID, then the track's last sector (R = EOT 18)
+	fcmd({0x03, 0xDF, 0x29});
+	fcmd({0x0F, 0x00, 0x01}); seek_wait(); fcmd({0x08}); fres();
+	fcmd({0x4A, 0x00});
+	{ int n = 0; while (!t->irq6 && n++ < 100000) tick(); auto r = fres(); expect("Solaris READ ID: 7 results", r.size(), 7); }
+	fcmd({0x66, 0x00, 0x01, 0x00, 0x12, 0x02, 0x12, 0x1B, 0xFF});
+	{
+		std::vector<uint8_t> got; int n = 0;
+		while (got.size() < 512 && n++ < 200000) { int m = in8(0x3F4); if ((m & 0xE0) == 0xE0) got.push_back(in8(0x3F5)); }
+		expect("Solaris PIO: 512 bytes", got.size(), 512);
+		if (got.size() == 512) expect("Solaris PIO: sector 53", memcmp(got.data(), &img[53 * 512], 512), 0);
+		auto r = fres();
+		expect("Solaris PIO: 7 results", r.size(), 7);
+		if (r.size() == 7) { expect("Solaris PIO ST0", r[0] & 0xC0, 0x00); expect("Solaris PIO ST1", r[1], 0x00); expect("Solaris PIO R", r[5], 1); }
 	}
 	fcmd({0x03, 0xDF, 0x02});
 	printf("%-46s %s\n", "PIO read through the FIFO", fails != f0 ? "FAIL" : "pass"); f0 = fails;
