@@ -1652,3 +1652,8 @@ The fault was the result's ID: a read ended by the terminal count on its EOT sec
 sector) answered R 13 where the 82077's table has the next sector, H1 R1 (MT, head 0) or C+1 R1. Solaris goes
 on from the result's C, H, R, so after FAT sectors 11-18 it asked for C0 H0 R19: no data, and pcfs gave up.
 `IBMRS6K7248_fdc.sv` X_NEXT now wraps on a terminal count too; `sim/floppy/run.sh` checks it. Build sol7.
+
+Build sol7 (the 82077 fix; DBG_COM1TX off: with the default debug options the fit needed 4201 LABs of 4191) on
+the board: `boot cdrom` at VOF's `ok`, and the Solaris 2.5.1 kernel reads the boot diskette (no pcfs errors),
+asks the terminal type (6, PC Console) and starts "The Solaris Installation Program" (identify peripherals,
+identify the system, install the software). Next: the installation onto the blank 2 GB disk (SCSI ID 0).
