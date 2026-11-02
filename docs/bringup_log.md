@@ -1693,3 +1693,22 @@ segfaults after the next eject it approves (the shell: "Segmentation Fault - cor
 the drive open, whatever is mounted next), which leaves /vol hung; `/etc/init.d/volmgt stop` and `start`
 bring it back. That is vold's (a debug vold started with the tray open waits on DKIOCSTATE and takes the new
 disc), not the drive's answers.
+
+## 2026-11-02: room in the FPGA: obsolete debug code out; the Solaris disk backed up
+
+The debug stream's dead and finished parts are gone from `IBMRS6K7248.sv`: the RAM 0-7FC shadow compare and the
+7FC watch (off since the NT video build), the COM1 bit timing and the COM1-register capture (gated by 1'b0), OS/2's
+user-program watch points (DBG_WATCH), the firmware's IDE writes (DBG_IDEFW) and the IDE disk's per-second
+statistics, which built in every debug build (with their ports in `IBMRS6K7248_idehd`, `_machine`, `_system`).
+The generic tools stay (progress codes, PCI configuration, alive PCs, vectors, the GPR trace, the little-endian
+ring and the stall header, the 53C810/S3/keyboard/floppy FIFO, COM1's text, decrementer ticks, interrupts, the
+device log). The framework's adaptive scanline filter is off (`MISTER_DISABLE_ADAPTIVE`: a CRT effect for 15 kHz
+pictures; this machine's pictures are 640x480 to 1280x1024 shown about 1:1). Build trim1 with DBG_COM1TX back on
+needs 41,623 ALMs (sol8 without it: 41,578), worst setup slack -4.6 ns (every build since OS/2: -2.1 to -4.4), and
+boots Solaris to the CDE login on .92 like sol8.
+
+The installed Solaris (disk and NVRAM after `init 0`) is backed up as
+`Solaris251_CDE_Wabi_ODBC_20261102.tar.xz` (90 MB, md5 3a82606a...) in `games/IBMRS6K7248/backups/` on .92
+and in `Y:\ibmrs6k-backups`. Seen at that shutdown: when X exits, the screen keeps the desktop's picture with
+the text palette instead of Solaris's text console: the S3 does not go back to VGA text after the X server's
+enhanced mode (next for the S3).

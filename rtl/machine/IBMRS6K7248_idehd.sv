@@ -59,10 +59,6 @@ module IBMRS6K7248_idehd #(
 	output logic [31:0] rdata,                 // the cycle after sel
 	output logic        irq,
 	output logic        selected,              // the drive register names this device (the machine's mux)
-	output logic        st_irq,                // (the top's statistics) an interrupt raised
-	output logic        st_blk,                // a block of the host's done
-	output logic        st_disk,               // the disk side's turn (the SCSI target and the Main)
-	output logic        st_host,               // the host's turn (DRQ: its interrupt latency and PIO)
 
 	input  logic [31:0] blocks,                // the image's size in 512-byte blocks
 
@@ -366,13 +362,6 @@ end
 assign want     = s == S_WANT || s == S_SEL || s == S_RUN;
 assign i_sel_id = DISK_ID;
 
-// the statistics
-logic ipend_q;
-always_ff @(posedge clk) ipend_q <= ipend;
-assign st_irq  = ipend & ~ipend_q;
-assign st_blk  = dsel && hnext >= hlen && s == S_HOST;
-assign st_disk = want;
-assign st_host = s == S_HOST;
 
 // the answer
 always_ff @(posedge clk) if (sel) begin

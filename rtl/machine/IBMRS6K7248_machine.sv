@@ -207,10 +207,6 @@ module IBMRS6K7248_machine
 	// the hard disk image (the OSD's disk 0, the 850's IDE disk): present, its 512-byte blocks
 	input  logic         hd_present,
 	input  logic [31:0]  hd_blocks,
-	output logic         hd_st_irq,                 // the disk's statistics (see IBMRS6K7248_idehd)
-	output logic         hd_st_blk,
-	output logic         hd_st_disk,
-	output logic         hd_st_host,
 	output logic         fd_req,
 	output logic         fd_we,
 	output logic [12:0]  fd_lba,
@@ -749,7 +745,6 @@ IBMRS6K7248_idehd #(.CLK_HZ(CPU_HZ), .UNIT(1'b0)) idehd (
 	.clk, .reset, .en(atapi_on & hd_present),
 	.sel(d_go & atapi_on & ide_pri), .cs1(bport == 16'h03F6), .we(d_we), .reg_a(bport[2:0]), .be(p_be), .wd8(bwd), .wdata(p_wd),
 	.rdata(hd_q), .irq(hd_irq), .selected(hd_selected), .blocks(hd_blocks),
-	.st_irq(hd_st_irq), .st_blk(hd_st_blk), .st_disk(hd_st_disk), .st_host(hd_st_host),
 	.want(hd_want), .grant(hd_own), .i_sel(hd_sel), .i_sel_id(hd_sel_id),
 	.sel_done(hd_own & sb_sel_done), .sel_fail(hd_own & sb_sel_fail), .bsy(hd_own & sb_bsy), .req(hd_own & sb_req),
 	.phase(sb_phase), .tdata(sb_tdata), .ack(hd_ack), .idata(hd_idata)
@@ -787,7 +782,6 @@ assign atapi_hit = 1'b0;  assign atapi_q = '0;  assign atapi_irq = 1'b0;
 wire         ide_sec = 1'b0;
 wire [31:0]  hd_q = '0;
 wire         hd_selected = 1'b0;
-assign {hd_st_irq, hd_st_blk, hd_st_disk, hd_st_host} = 4'b0000;
 wire  [1:0]  r838 = 2'b00;
 wire         r838_hit = 1'b0;
 assign sb_sel = n_sel;  assign sb_sel_id = n_sel_id;  assign sb_sel_atn = n_sel_atn;  assign sb_ack = n_ack;

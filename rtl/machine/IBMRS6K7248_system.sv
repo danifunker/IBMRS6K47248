@@ -138,10 +138,6 @@ module IBMRS6K7248_system
 	input  logic         sd_buff_wr,
 	input  logic         cd_change,
 	output logic         scsi_activity,
-	output logic         hd_st_irq,                 // the IDE disk's statistics (see IBMRS6K7248_idehd)
-	output logic         hd_st_blk,
-	output logic         hd_st_disk,
-	output logic         hd_st_host,
 
 	// the machine's device accesses (see IBMRS6K7248_machine)
 	output logic         io_ev,
@@ -248,7 +244,7 @@ IBMRS6K7248_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .LE_MODE(LE_MODE), .UART_F
 	.ext_irq, .tb_tick, .kbc_reset, .speaker, .aud_l(card_l), .aud_r(card_r),
 	.fm_cs, .fm_we, .fm_a, .fm_wdata, .fm_rdata, .fm_vol, .joy1, .joy2, .ana1, .ana2, .midi_tx, .midi_rx,
 	.fd_in, .fd_ro, .fd_blocks, .fd_mounted, .fd_req, .fd_we, .fd_lba, .fd_ack, .fd_buf_a, .fd_buf_q, .fd_buf_we, .fd_buf_d,
-	.hd_present(img_present[0]), .hd_blocks(img_blocks[0]), .hd_st_irq, .hd_st_blk, .hd_st_disk, .hd_st_host,
+	.hd_present(img_present[0]), .hd_blocks(img_blocks[0]),
 	.ps2_key, .ps2_mouse, .rtc_set, .rtc_time,
 	.nv_m_addr, .nv_m_we, .nv_m_wdata, .nv_m_q, .nv_m_ok, .nv_wr_seq,
 	.v_req, .v_we, .v_addr, .v_be, .v_wdata, .v_ack, .v_rdata,

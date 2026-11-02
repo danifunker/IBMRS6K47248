@@ -461,7 +461,6 @@ IBMRS6K7248_system #(.CPU_HZ(CPU_MHZ * 1_000_000), .TB_HZ(TB_HZ)) system
 	.sd_ack(sd_ack[2:0]), .sd_buff_addr, .sd_buff_dout, .sd_buff_din(scsi_buff_din), .sd_buff_wr,
 	.nv_m_addr, .nv_m_we, .nv_m_wdata, .nv_m_q, .nv_m_ok, .nv_wr_seq,
 	.cd_change(|cd_change_s), .scsi_activity(scsi_act),
-	.hd_st_irq, .hd_st_blk, .hd_st_disk, .hd_st_host,
 
 	.io_ev, .io_we, .io_stub(), .io_ncr, .io_addr, .io_be, .io_wdata, .io_rdata,
 	.trace_valid, .trace_last, .trace_pc, .trace_insn, .trace_msr, .trace_lr, .trace_ctr,
@@ -582,9 +581,7 @@ sdramclk_ddr
 // prints them) as two hex digits and a space; "." every 2^24 instructions
 // retired (the CPU is alive), with the PC then (".pppppppp "); the PCI configuration accesses ("C8=xxxxxxxx "
 // a write of CF8, "cW=" and "cR=" a write and a read of CFC, the data as the
-// CPU's); and, from the memory clock, the CPU's word accesses to RAM 7FC
-// ("W7=xxxxxxxx ", "R7=xxxxxxxx ") and any word read of RAM 0-7FC that differs
-// from the CPU's own last write there ("!aaa=expected/got "). A 4 KB queue in RAM.
+// CPU's). A 4 KB queue in RAM.
 // the stream's optional parts (1 to build them; off for room, 2026-10-29: the floppy and NT's audio are done)
 localparam bit DBG_DEVLOG = 1'b0;           // the whole-address device log (NT's audio and video bring-up)
 localparam bit DBG_COM1TX = 1'b1;           // COM1's transmitted text in the stream (OS/2's boot talks on COM1)
@@ -636,56 +633,6 @@ reg  [31:0] isi_v [40];
 reg  [39:0] isi_vw = 0;
 reg  [31:0] isi_lr, isi_ctr, isi_msr;
 reg  [1:0]  isi_hdr = 0;                  // header parts left to send (3: all)
-// (the COM1-rate build) from the hand-off (progress 2F) on, every write to COM1's registers (3F8-3FF):
-// "wbaaa=dddddddd " (b the byte lanes, aaa the port, the data as on the bus; the firmware's and AIX's divisor,
-// LCR, FCR and THR writes), and the shortest low and high pulses of com1_txd seen so far, in CPU clocks
-// ("L=cccccccc ", "H=cccccccc ": a lone bit is one bit time, 7292 clocks at 9600 baud and 70 MHz)
-reg         usr_on = 0;
-reg  [7:0]  usr_n = 8'd250;
-reg         usr_pend = 0, usr_we, usr_isa;
-reg  [15:0] usr_a;
-reg  [31:0] usr_d;
-reg         c1_q = 1'b1;
-reg  [31:0] c1_len = 32'd0, c1_minl = 32'hFFFFFFFF, c1_minh = 32'hFFFFFFFF;
-reg         c1_evl = 1'b0, c1_evh = 1'b0, c1_pendl = 1'b0, c1_pendh = 1'b0;
-// (the OS/2 build) the IDE disk's second, when it moved anything: "Hiiiibbbb " its interrupts and the host's
-// blocks, "Mddddhhhh " the milliseconds on the disk side (the SCSI target and the Main's image access) and on
-// the host's (its interrupt latency and PIO): where a transfer's time goes (2026-10-31: the install's writes)
-wire        hd_st_irq, hd_st_blk, hd_st_disk, hd_st_host;
-reg  [16:0] hs_cnt = 17'd0;
-reg  [9:0]  hs_ms = 10'd0;
-reg  [15:0] hs_irq = 16'd0, hs_blk = 16'd0;
-reg  [9:0]  hs_disk = 10'd0, hs_host = 10'd0;
-// (the counters stand still from the second's end until the stage has them, a few microseconds: no copies)
-wire [31:0] hs_a = {hs_irq, hs_blk}, hs_b = {6'd0, hs_disk, 6'd0, hs_host};
-reg         hs_pend = 1'b0, hs_half = 1'b0, hs_take = 1'b0;
-always @(posedge clk_cpu) begin
-	hs_cnt <= hs_cnt + 17'd1;
-	if (hd_st_irq && !hs_pend) hs_irq <= hs_irq + 16'd1;
-	if (hd_st_blk && !hs_pend) hs_blk <= hs_blk + 16'd1;
-	if (hs_cnt == 17'(CPU_MHZ * 1000 - 1)) begin            // a millisecond: the sides sampled
-		hs_cnt <= 17'd0;
-		hs_ms  <= hs_ms + 10'd1;
-		if (hd_st_disk && !hs_pend) hs_disk <= hs_disk + 10'd1;
-		if (hd_st_host && !hs_pend) hs_host <= hs_host + 10'd1;
-		if (hs_ms == 10'd999) begin
-			hs_ms <= 10'd0;
-			if (hs_irq != 16'd0 || hs_blk != 16'd0 || hs_disk != 10'd0) hs_pend <= 1'b1;
-		end
-	end
-	if (hs_take) begin hs_pend <= 1'b0; hs_irq <= 16'd0; hs_blk <= 16'd0; hs_disk <= 10'd0; hs_host <= 10'd0; end
-end
-always @(posedge clk_cpu) begin
-	c1_q   <= com1_txd;
-	c1_evl <= 1'b0;
-	c1_evh <= 1'b0;
-	if (1'b0 && com1_txd != c1_q) begin   // (off in the NT video build, for room: the COM1 bit timing)
-		c1_len <= 32'd1;
-		if (!c1_q && c1_len < c1_minl) begin c1_minl <= c1_len; c1_evl <= 1'b1; end
-		if ( c1_q && c1_len < c1_minh) begin c1_minh <= c1_len; c1_evh <= 1'b1; end
-	end
-	else if (1'b0 && ~&c1_len) c1_len <= c1_len + 32'd1;   // (off with it: the counter alone was a dozen LABs, 2026-10-31)
-end
 // (the SCSI and keyboard build) from the hand-off on, through a 64-entry FIFO so a burst is kept,
 // "Wbaa=dddddddd " / "Rbaa=dddddddd " (b the byte lanes, aa the offset, the data as on the bus):
 // every access to the 53C810's registers where AIX puts them (PCI I/O 0100_0000, CPU 8100_0000-8100_00FF:
@@ -696,14 +643,8 @@ end
 reg  [45:0] nq [64];                      // {s3, we, be, offset, data}
 reg  [5:0]  nq_w = 0, nq_r = 0;
 // (and, for ARC and NT, any access to the 53C810's I/O BAR wherever they place it: io_ncr)
-// (DBG_IDEFW: from reset on, the firmware's IDE writes: 170-177, 1F0-1F7 and 370-377, 3F0-3F7, as "Wbaa=",
-// to see its ATAPI boot of the CD-ROM; the reads are its polls and would fill the FIFO)
-localparam bit DBG_IDEFW = 1'b0;             // (on in build os2z/os2aa, 2026-11-01)
-wire        idefw_ev = DBG_IDEFW & io_ev & io_we & (io_addr[31:3] == 29'h1000_002E || io_addr[31:3] == 29'h1000_003E ||
-                                                    io_addr[31:3] == 29'h1000_006E || io_addr[31:3] == 29'h1000_007E);
-wire        ncr_ev = (isi_armed & io_ev & (io_ncr || io_addr[31:8] == 24'h810000 ||
-                                         (io_addr[31:3] == 29'h1000_000C && (io_we || !io_addr[2])))) |   // (not the 8042's status polls)
-                     idefw_ev;
+wire        ncr_ev = isi_armed & io_ev & (io_ncr || io_addr[31:8] == 24'h810000 ||
+                                         (io_addr[31:3] == 29'h1000_000C && (io_we || !io_addr[2])));   // (not the 8042's status polls)
 // (not the reads of 3DA, input status 1: AIX's X server polls it without end and they filled the FIFO)
 wire        s3v_ev = isi_armed & io_ev & (io_addr[31:5] == 27'h400_001E) & ~(~io_we & io_addr[7:0] == 8'hD8);   // 8000_03C0-8000_03DF
 wire        s3e_ev = isi_armed & io_ev & io_addr[31:16] == 16'h8000 && io_addr[9:2] == 8'hBA;   // 8000_xxE8
@@ -763,46 +704,6 @@ reg         dec_pend = 0;
 wire        dec_ev = DBG_COM1TX & isi_armed & trace_valid & trace_last & (trace_pc == 32'h0000_0900);
 always @(posedge clk_cpu) if (dec_ev) dec_n <= dec_n + 16'd1;
 wire        dec_hit = dec_ev & (dec_n[5:0] == 6'd63);
-// (the OS/2 build) nine (PC, instruction) watch points in OS/2's user programs, each hit queued as "~c" (c a
-// letter): insmain's NS_GetAttr (G the call, a each attribute compared, A found, x not found, g GETPERS's
-// check of the result) and pagrinit's AddLeafNode return code (p reached, q not "exists", r not tolerated,
-// s not 0); the instruction word tells the program's copy of the code from another's at the same address
-// (every server is linked at 02000000); a 64-entry FIFO
-localparam bit DBG_WATCH = 1'b0;         // the watch points (off: they answered, and the disk build needs the room)
-reg  [3:0]  wq [64];
-reg  [5:0]  wq_w = 0, wq_r = 0, wq_wq = 0;
-reg  [3:0]  wq_e;
-logic [3:0] w_hit;
-logic       w_any;
-logic [7:0] w_ch;
-always_comb begin
-	w_any = 1'b1;
-	// (the os2l set, insmain's attribute lookup and pagrinit's leaf add, answered its question: see
-	// docs/resume_os2.md; the os2m set below watches utilfs and insmain's UFS traffic)
-	case ({trace_pc, trace_insn})
-		{32'h0200_4FE0, 32'h4807_3591}: w_hit = 4'd0;   // utilfs ufs_service_loop: bl mk_msg_server (serving)
-		{32'h0200_4FE8, 32'h4800_1565}: w_hit = 4'd1;   // utilfs: cthread_exit after the loop (the server ended)
-		{32'h0200_4884, 32'h7C08_02A6}: w_hit = 4'd2;   // utilfs do_UFS_HandleRequest (a request taken)
-		{32'h0200_5D0C, 32'h4806_4D4D}: w_hit = 4'd3;   // utilfs RegSrvPort: bl NS_AddNode (servers/utilfs)
-		{32'h0200_5D34, 32'h4800_0008}: w_hit = 4'd4;   // ... its rc was not 0
-		{32'h0206_8934, 32'h386C_0764}: w_hit = 4'd5;   // insmain UFS_PNS_Service_Entry: "couldn't find UFS"
-		{32'h0206_756C, 32'h386C_0314}: w_hit = 4'd6;   // insmain format_and_send_msg: "(GetPort) couldn't find UFS"
-		{32'h0201_33B4, 32'h4803_865D}: w_hit = 4'd7;   // insmain GetPercentage: the send
-		{32'h0200_9000, 32'h7C08_02A6}: w_hit = 4'd8;   // insmain Ins_Exit
-		{32'h0206_9828, 32'h4BFE_5F35}: w_hit = 4'd9;   // insmain GEN_XferData: the send (mach_msg_overwrite)
-		default: begin w_hit = 4'd0; w_any = 1'b0; end
-	endcase
-	case (wq_e)
-		4'd0: w_ch = 8'h75; 4'd1: w_ch = 8'h74; 4'd2: w_ch = 8'h55; 4'd3: w_ch = 8'h52; 4'd4: w_ch = 8'h6E;
-		4'd5: w_ch = 8'h66; 4'd6: w_ch = 8'h46; 4'd7: w_ch = 8'h6B; 4'd8: w_ch = 8'h65; default: w_ch = 8'h58;
-	endcase
-end
-wire        wq_ev = DBG_WATCH & DBG_COM1TX & isi_armed & trace_valid & trace_last & w_any;
-always @(posedge clk_cpu) begin
-	if (wq_ev && wq_w + 6'd1 != wq_r) begin wq[wq_w] <= w_hit; wq_w <= wq_w + 6'd1; end
-	wq_e  <= wq[wq_r];
-	wq_wq <= wq_w;
-end
 // (the OS/2 build) the interrupts the CPU takes: each interrupt acknowledge (a read of BFFFFxxx) as "I=vv "
 // (vv the 8259s' vector, on every lane), and the writes of the 8259s' masks and the ELCR (21, A1, 4D0, 4D1)
 // as "Paaa=dd "; a 64-entry FIFO (a storm fills it; the first 64 win)
@@ -918,39 +819,8 @@ always @(posedge clk_cpu) begin
 	end
 	if (isi_go) begin isi_done <= 1'b1; isi_lr <= trace_lr; isi_ctr <= trace_ctr; isi_msr <= trace_msr; end
 	if (stall_go) begin isi_done <= 1'b1; isi_lr <= stall_pc; isi_ctr <= {t_daddr, 2'b00}; isi_msr <= {t_dreq, t_dwe, trace_msr[29:0]}; end
-	if (isi_armed && trace_valid && trace_last && trace_pc[31] == 1'b0 && trace_pc[30:28] != 3'd0) usr_on <= 1'b1;
 end
 
-// the memory port (the memory clock): the word accesses to 7FC, and the shadow of the
-// CPU's word writes to 0-7FC compared with every word read there
-wire        mem_ev = b_req & b_ack & ~b_line & (b_addr[31:2] == 30'h1FF);
-wire        low_w  = b_req & b_ack & ~b_line & b_we & (b_addr[31:11] == 21'd0);
-wire        low_r  = b_req & b_ack & ~b_line & ~b_we & (b_addr[31:11] == 21'd0);
-reg  [31:0] shadow [512];
-reg  [31:0] shadow_q;
-reg         cmp_pend = 0;
-reg  [31:0] cmp_got;
-reg  [10:2] cmp_addr;
-reg         m_tog = 0;                    // flips with every event carried over
-reg         m_mis = 0, m_we = 0;          // the event: a mismatch, else an access to 7FC (write or read)
-reg  [31:0] m_d, m_exp;
-reg  [10:2] m_addr;
-always @(posedge clk_mem) begin
-	if (low_w) shadow[b_addr[10:2]] <= b_wdata[31:0];
-	shadow_q <= shadow[b_addr[10:2]];
-	cmp_pend <= low_r;
-	cmp_got  <= b_rdata[31:0];
-	cmp_addr <= b_addr[10:2];
-	if (cmp_pend && cmp_got != shadow_q) begin
-		m_tog <= ~m_tog; m_mis <= 1'b1; m_d <= cmp_got; m_exp <= shadow_q; m_addr <= cmp_addr;
-	end
-	else if (mem_ev) begin
-		m_tog <= ~m_tog; m_mis <= 1'b0; m_we <= b_we; m_d <= b_we ? b_wdata[31:0] : b_rdata[31:0];
-	end
-end
-reg  [2:0]  m_s = 0;
-always @(posedge clk_cpu) m_s <= {m_s[1:0], m_tog};
-wire        m_ev = 1'b0;                  // (off in the NT video build, for room: was m_s[2] ^ m_s[1], the latched data stands still long enough)
 
 function automatic [7:0] hex(input [3:0] n);
 	hex = n < 4'd10 ? 8'h30 + {4'd0, n} : 8'h37 + {4'd0, n};
@@ -964,32 +834,22 @@ reg  [7:0]   dq [4096];                   // the byte queue (a RAM: one byte in 
 reg  [11:0]  dq_w = 0, dq_r = 0;
 reg  [111:0] stage;                       // the bytes being queued, the first in the top byte
 reg  [3:0]   stage_n = 0;                 // ... how many are left
-reg  [31:0]  mis_got;                     // a mismatch's second half, queued after its first
-reg          mis_half = 0;
-reg          post_pend = 0, reset_pend = 0, alive_pend = 0, m_pend = 0;   // events seen while the stage was busy
+reg          post_pend = 0, reset_pend = 0, alive_pend = 0;   // events seen while the stage was busy
 reg  [7:0]   post_code;
 reg  [31:0]  post_pc;                     // the PC before a code written from outside 7000-7FFF (else 0)
 reg          k92_pend = 0;
 reg  [7:0]   k92_d;
 wire         k92_ev = io_ev & io_we & (io_addr[31:2] == 30'h2000_0024) & io_be[1];   // port 92 (the byte in bits 15-8)
 always @(posedge clk_cpu) begin
-	hs_take <= 1'b0;
 	if (post_ev) begin post_code <= io_wdata[31:24]; post_pc <= pc_prev[31:12] == 20'h00007 ? 32'd0 : pc_prev; end
 	if (k92_ev) k92_d <= io_wdata[15:8];
 	k92_pend   <= k92_pend | k92_ev;
 	if (isi_go | stall_go) isi_hdr <= 2'd3;
 	if ((stall_go | isi_go) & le_arm) begin le_r <= le_w; le_left <= 7'd64; end   // the ring at the stall, and at the first program exception
-	if (1'b0 && isi_armed && io_ev && io_we && io_addr[31:3] == 29'h1000_007F && !usr_pend) begin   // (off in the NT video build, for room)
-		usr_pend <= 1'b1; usr_we <= io_we; usr_isa <= 1'b1; usr_a <= {io_be, io_addr[11:0]};
-		usr_d <= io_wdata;
-	end
-	c1_pendl <= c1_pendl | c1_evl;
 	dec_pend <= dec_pend | dec_hit;
-	c1_pendh <= c1_pendh | c1_evh;
 	post_pend  <= post_pend  | post_ev;
 	reset_pend <= reset_pend | reset_ev;
 	alive_pend <= alive_pend | alive_ev;
-	m_pend     <= m_pend     | m_ev;
 	pc_pend    <= pc_pend    | pc_hit;
 	if (stage_n != 4'd0) begin             // (a full queue holds the stage: the first 4 KB win, later events are dropped)
 		if (dq_w + 12'd1 != dq_r) begin
@@ -999,26 +859,9 @@ always @(posedge clk_cpu) begin
 			stage_n  <= stage_n - 4'd1;
 		end
 	end
-	else if (mis_half) begin
-		stage_n  <= 4'd9;
-		stage    <= {hex8(mis_got), 8'h20, 40'h0};
-		mis_half <= 1'b0;
-	end
 	else if (cf8_ev | cfc_ev) begin        // (a configuration access during a drain is lost)
 		stage_n <= 4'd12;
 		stage   <= {cf8_ev ? 8'h43 : 8'h63, cf8_ev ? 8'h38 : io_we ? 8'h57 : 8'h52, 8'h3D, hex8(io_d), 8'h20, 16'h0};
-	end
-	else if (m_pend | m_ev) begin
-		m_pend <= 1'b0;
-		if (m_mis) begin
-			stage_n  <= 4'd14;
-			stage    <= {8'h21, hex({1'b0, m_addr[10:8]}), hex(m_addr[7:4]), hex({m_addr[3:2], 2'b00}), 8'h3D, hex8(m_exp), 8'h2F};
-			mis_got  <= m_d;
-			mis_half <= 1'b1;
-		end else begin
-			stage_n <= 4'd12;
-			stage   <= {m_we ? 8'h57 : 8'h52, 8'h37, 8'h3D, hex8(m_d), 8'h20, 16'h0};
-		end
 	end
 	else if (isi_hdr != 2'd0) begin
 		stage_n <= 4'd12;
@@ -1055,11 +898,6 @@ always @(posedge clk_cpu) begin
 		stage    <= {8'h54, 8'h3D, hex(dec_n[15:12]), hex(dec_n[11:8]), hex(dec_n[7:4]), hex(dec_n[3:0]), 8'h20, 56'h0};
 		dec_pend <= 1'b0;
 	end
-	else if (DBG_WATCH && wq_r != wq_wq) begin   // (wq_e: read a clock after wq_r moved, long before this)
-		stage_n <= 4'd2;
-		stage   <= {8'h7E, w_ch, 96'h0};
-		wq_r    <= wq_r + 6'd1;
-	end
 	else if (DBG_IQ && iq_r != iq_wq) begin   // (iq_e: read a clock after iq_r moved, long before this)
 		if (iq_e[20]) begin
 			stage_n <= 4'd8;
@@ -1070,10 +908,6 @@ always @(posedge clk_cpu) begin
 		end
 		iq_r    <= iq_r + 6'd1;
 	end
-	else if (hs_half) begin stage_n <= 4'd10; stage <= {8'h4D, hex8(hs_b), 8'h20, 32'h0}; hs_half <= 1'b0; hs_take <= 1'b1; end
-	else if (hs_pend && !hs_take) begin stage_n <= 4'd10; stage <= {8'h48, hex8(hs_a), 8'h20, 32'h0}; hs_half <= 1'b1; end
-	else if (c1_pendl) begin stage_n <= 4'd11; stage <= {8'h4C, 8'h3D, hex8(c1_minl), 8'h20, 24'h0}; c1_pendl <= 1'b0; end
-	else if (c1_pendh) begin stage_n <= 4'd11; stage <= {8'h48, 8'h3D, hex8(c1_minh), 8'h20, 24'h0}; c1_pendh <= 1'b0; end
 	else if (dv_half) begin
 		stage_n <= 4'd10;
 		stage   <= {8'h3D, hex8(dv_d), 8'h20, 32'h0};
@@ -1091,12 +925,6 @@ always @(posedge clk_cpu) begin
 		stage   <= {nq_e[44] ? (nq_e[45] ? 8'h77 : 8'h57) : (nq_e[45] ? 8'h72 : 8'h52), hex(nq_e[43:40]), hex(nq_e[39:36]), hex(nq_e[35:32]), 8'h3D, hex8(nq_e[31:0]),
 		            8'h20};
 		nq_r    <= nq_r + 6'd1;
-	end
-	else if (usr_pend) begin
-		stage_n  <= 4'd14;
-		stage    <= {usr_isa ? (usr_we ? 8'h77 : 8'h72) : (usr_we ? 8'h57 : 8'h52), hex(usr_a[15:12]), hex(usr_a[11:8]),
-		             hex(usr_a[7:4]), hex(usr_a[3:0]), 8'h3D, hex8(usr_d), 8'h20};
-		usr_pend <= 1'b0;
 	end
 	else if (pc_pend) begin
 		pc_pend <= 1'b0;
