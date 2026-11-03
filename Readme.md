@@ -37,8 +37,8 @@ two cores:
 
 ## Setting up
 
-1. Copy one of the cores to `_Unstable/` (or `_Computer/`) on the SD card and rename it `IBMRS6K7248.rbf`.
-   Main's support for the core goes by that name.
+1. Copy the cores to `_Unstable/` (or `_Computer/`) on the SD card. Both can sit side by side; they share
+   the same settings and mounted images.
 2. Copy `boot.rom` to `games/IBMRS6K7248/`.
 3. Put disk images, CD images, diskettes and NVRAM files in `games/IBMRS6K7248/`.
 4. Set Memory to 112 MB (needs a 128 MB SDRAM module; less works too, AIX needs 32 MB or more).
