@@ -1762,3 +1762,20 @@ Held keys repeat in AIX, Solaris and OS/2. Released as `releases/IBMRS6K7248_202
 `releases/IBMRS6K7248_90MHz_20261102b.rbf` (replacing the morning's pair). `tools/ukey.py`: W- (Win), stacked
 modifiers (C-A-delete), key~N held N/10 s, and the mouse (m:dx,dy, click).
 
+
+## 2026-11-02 (night): CD audio in the releases; DMA scatter/gather in block RAM; set 3 key types back
+
+CD audio (`IBMRS6K7248_CDAUDIO`) is on in the `.qsf`. At 70 MHz it fit as it was (+425 ALMs); at 90 MHz it missed
+by 14 LABs (seed 1), 9 (seed 2) and 7 (register packing HIGH, duplication off). Room made without dropping
+anything: the DMA controller's scatter/gather entries (8 x address, count, last) are a block RAM, the served
+channel's in a working copy loaded as the engine takes it (`sim/audio`, `sim/floppy`: all pass). The keyboard's
+set 3 key types, dropped earlier for room, are back as a 256-entry block RAM (FB/FC/FD lists, F7-FA by a
+generation count): AIX's non-repeating keys stay non-repeating, letters and Enter repeat.
+Builds: cda70r (70 MHz, 41,189 ALMs, -2.7 ns) and cda90r (90 MHz seed 1, 41,534 ALMs, -5.6 ns). On .92: NT 4.0's
+CD Player plays the audio tracks of a CHD (heard: "it sounds beautiful"; 70 MHz cda70 and 90 MHz cda90r), and
+cda90r boots and shuts down NT, AIX 4.3.3 (repeat checked), AIX 5.1 and Solaris. Not run on these two builds:
+OS/2, and the 70 MHz build's own OS round. Released as `releases/IBMRS6K7248_20261102.rbf` and
+`releases/IBMRS6K7248_90MHz_20261102.rbf` (replacing the 20261102b pair).
+Deferred (the user): Solaris's console after X exits. VOF's console is a 1024x768 frame buffer, not VGA text;
+after X the colours come back but no text is drawn, even to /dev/console. A trace build (debug stream, LITE)
+is in scratch/work (IBMRS6K7248_dbgs3.rbf, not released).

@@ -1,4 +1,4 @@
-# ukey.py KEY [KEY...] (KEY*N repeated, KEY~N held N/10 s; m:dx,dy and click the mouse): press keys on the MiSTer through a uinput keyboard (instant, no Remote service); S-<key> holds Shift, C-<key> Ctrl, A-<key> Alt, W-<key> Win (W-f12: the MiSTer's menu)
+# ukey.py KEY [KEY...] (KEY*N repeated, KEY~N held N/10 s; m:dx,dy, click, mdown/mup the mouse): press keys on the MiSTer through a uinput keyboard (instant, no Remote service); S-<key> holds Shift, C-<key> Ctrl, A-<key> Alt, W-<key> Win (W-f12: the MiSTer's menu)
 import fcntl, os, struct, sys, time
 CODES = {'esc':1,'enter':28,'up':103,'down':108,'left':105,'right':106,'space':57,'tab':15,'backspace':14,
          'minus':12,'period':52,'slash':53,'comma':51,'backslash':43,'semicolon':39,'equal':13,'quote':40,
@@ -23,6 +23,8 @@ for a in sys.argv[1:]:
             sx, sy = max(-2, min(2, dx)), max(-2, min(2, dy))   # small steps: no pointer acceleration
             ev(2, 0, sx); ev(2, 1, sy); ev(0, 0, 0); dx -= sx; dy -= sy; time.sleep(0.01)
         time.sleep(0.2); continue
+    if a in ('mdown', 'mup'):                        # the left button held (mdown) or let go (mup)
+        ev(1, 272, 1 if a == 'mdown' else 0); ev(0, 0, 0); time.sleep(0.3); continue
     if a == 'click':
         ev(1, 272, 1); ev(0, 0, 0); time.sleep(0.1); ev(1, 272, 0); ev(0, 0, 0); time.sleep(0.3); continue
     a, _, hold = a.partition('~')                   # key~N: held N tenths of a second (typematic tests)

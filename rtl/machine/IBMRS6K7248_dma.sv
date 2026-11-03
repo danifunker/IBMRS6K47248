@@ -94,14 +94,20 @@ logic        rb_rd;                      // ... the read was one of them
 logic [7:0]  rdata_r;                    // the other reads' answers
 logic [7:0]  temp;                      // the last byte read (the temporary register)
 // the engine's (below): the channel served, its step or its TC
+typedef enum logic [3:0] {T_IDLE, T_RD, T_WR, T_DONE, T_GAP, T_SG, T_SG_W, T_LD, T_LD2} tst_t;
+tst_t        ts;
 logic [2:0]  ch;
 assign dev_ch = ch;
 logic        go_step, go_tc;
 // scatter/gather: each channel's list running, its entry (address, count left, the last), loading, ended
 logic [7:0]  sg_on, sg_load, sg_end, sg_int;
-logic [31:0] sg_a [8];
-logic [23:0] sg_c [8];
-logic [7:0]  sg_last;
+// (each channel's entry in a block RAM; the channel being served has its own in sg_wa/sg_wc/sg_wl,
+// read in when the engine takes it (T_LD, T_LD2) and written back with every change)
+(* ramstyle = "M10K, no_rw_check" *) logic [56:0] sg_ram [8];
+logic [56:0] sg_q;
+logic [31:0] sg_wa;
+logic [23:0] sg_wc;
+logic        sg_wl;
 logic [31:0] sg_ptr [8];                // the next entry's address
 logic        sg_go_step, sg_go_next, sg_go_end;   // the engine's (below)
 logic        sg_loaded;
@@ -147,6 +153,15 @@ assign rdata = rb_rd ? rb_q : rdata_r;
 wire        ctl     = d2;
 wire [3:0]  rn      = d2 ? d2r : port[3:0];
 wire [2:0]  rch     = {ctl, rn[2:1]};                                      // a channel's address or count
+
+// the entry RAM: read for the channel taken, written with the working copy's every change (the same clock)
+wire [31:0] sg_wa_n = mode[ch][3] ? sg_wa - (ch[2] ? 32'd2 : 32'd1) : sg_wa + (ch[2] ? 32'd2 : 32'd1);
+wire [23:0] sg_wc_n = sg_wc - (ch[2] ? 24'd2 : 24'd1);
+always_ff @(posedge clk) begin
+	if (sg_loaded)       sg_ram[ch] <= {sg_new_c[31], sg_new_c[23:0], sg_new_a};
+	else if (sg_go_step) sg_ram[ch] <= {sg_wl, sg_wc_n, sg_wa_n};
+	sg_q <= sg_ram[ch];
+end
 
 always_ff @(posedge clk) begin
 	if (sel) begin
@@ -230,16 +245,17 @@ always_ff @(posedge clk) begin
 	end
 
 	// ---- the transfers ----
+	if (ts == T_LD2) {sg_wl, sg_wc, sg_wa} <= sg_q;        // the served channel's entry, from the RAM
 	if (sg_loaded) begin                                   // an entry in
 		sg_load[ch] <= 1'b0;
-		sg_a[ch]    <= sg_new_a;
-		sg_c[ch]    <= sg_new_c[23:0];
-		sg_last[ch] <= sg_new_c[31];
+		sg_wa       <= sg_new_a;
+		sg_wc       <= sg_new_c[23:0];
+		sg_wl       <= sg_new_c[31];
 		sg_ptr[ch]  <= sg_ptr[ch] + 32'd8;
 	end
 	if (sg_go_step) begin
-		sg_a[ch] <= mode[ch][3] ? sg_a[ch] - (ch[2] ? 32'd2 : 32'd1) : sg_a[ch] + (ch[2] ? 32'd2 : 32'd1);
-		sg_c[ch] <= sg_c[ch] - (ch[2] ? 24'd2 : 24'd1);
+		sg_wa <= sg_wa_n;
+		sg_wc <= sg_wc_n;
 	end
 	if (sg_go_next) sg_load[ch] <= 1'b1;
 	if (sg_go_end) begin                                   // the list's end: masked, IRQ 13
@@ -280,10 +296,8 @@ always_comb
 		want[i] = (dreq[i] | req_sw[i]) && !mask[i] && mode[i][5:4] != 2'b11 && i != 4 &&
 		          !(i < 4 ? cmd1[2] : cmd2[2]) && !sg_load[i];
 
-typedef enum logic [2:0] {T_IDLE, T_RD, T_WR, T_DONE, T_GAP, T_SG, T_SG_W} tst_t;
-tst_t        ts;
 logic        w16;                                   // a 16-bit channel's transfer
-wire  [31:0] ta = sg_on[ch] ? sg_a[ch] :
+wire  [31:0] ta = sg_on[ch] ? sg_wa :
                   ch[2] ? {hpage[ch], cur_pg[ch][7:1], cur_a[ch], 1'b0} : {hpage[ch], cur_pg[ch], cur_a[ch]};
 wire  [1:0]  ttype = mode[ch][1:0];                 // 00 verify, 01 write (to memory), 10 read (from memory)
 
@@ -306,9 +320,11 @@ always_ff @(posedge clk) begin
 			end
 			else begin
 				for (int i = 7; i >= 0; i--) if (want[i]) ch <= 3'(i);
-				if (|want) ts <= T_RD;
+				if (|want) ts <= T_LD;
 			end
 		end
+		T_LD:  ts <= T_LD2;                                // the channel's entry out of the RAM (sg_q)
+		T_LD2: ts <= T_RD;                                 // ... into the working copy
 		T_SG: begin dm_we <= 1'b0; dm_be <= 8'hFF; dm_addr <= sg_ptr[ch][31:3]; dm_req <= 1'b1; ts <= T_SG_W; end
 		T_SG_W: if (dm_ack) begin
 			// the entry: the address (bytes 0-3), the count and the last flag (4-7), little-endian
@@ -348,8 +364,8 @@ always_ff @(posedge clk) begin
 			dack_ch <= ch;
 			if (sg_on[ch]) begin
 				// a list's entry: its count is the bytes less 1
-				if (sg_c[ch] < (ch[2] ? 24'd2 : 24'd1)) begin
-					if (sg_last[ch]) begin tc <= 1'b1; sg_go_end <= 1'b1; end
+				if (sg_wc < (ch[2] ? 24'd2 : 24'd1)) begin
+					if (sg_wl) begin tc <= 1'b1; sg_go_end <= 1'b1; end
 					else sg_go_next <= 1'b1;
 				end
 				else sg_go_step <= 1'b1;

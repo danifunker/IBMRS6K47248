@@ -31,23 +31,22 @@ A 100 MHz build was tried and fails to boot from disk.
 - Firmware: the 7248's own ROM, its SMS menus and boot list, and the 4 KB NVRAM, saved to the SD card.
 - Video: S3 Vision864 with its SDAC: VGA text and graphics, 8 to 32 bits per pixel, the 2D engine and the
   hardware cursor.
-- SCSI: NCR 53C810, two hard disks (IDs 0 and 1) and a CD-ROM (ID 3) with a working eject.
+- SCSI: NCR 53C810, two hard disks (IDs 0 and 1) and a CD-ROM (ID 3) with a working eject. CD audio: audio
+  tracks of CUE/BIN and CHD images play into the sound output (needs Main's IBMRS6K support).
 - IDE (Power Series 850 mode only): one hard disk and an ATAPI CD-ROM.
 - Floppy: one drive, 720 KB to 2.88 MB images.
 - Network: AMD PCnet Ethernet, bridged to the MiSTer's network.
 - Sound: CS4232 (Windows Sound System, Sound Blaster Pro, OPL2 FM, MPU-401 MIDI to an MT32-pi, joystick).
-- Keyboard and mouse: PS/2, with key repeat.
+- Keyboard and mouse: PS/2, with key repeat (including AIX's per-key repeat settings).
 - Serial: COM1 on the MiSTer's UART, plus COM2.
 
 ## What isn't
 
 - The OPL3's second bank and 4-operator voices (FM is OPL2 only).
-- CD audio (off by default; build with `IBMRS6K7248_CDAUDIO`).
 - IDE DMA (PIO only).
 - Video modes above a 100 MHz dot clock (1280x1024 and up) run slow.
 - After X exits, the S3 doesn't switch back to text mode.
 - The parallel port, a second floppy drive, ISA Plug and Play.
-- Duplicate replies to pings from AIX (a known network quirk).
 
 ## Getting started
 
@@ -164,8 +163,8 @@ Mounted images are remembered and mounted again when the core loads.
 ## Building
 
 Open `IBMRS6K7248.qpf` in Quartus 17.0 and compile; the result is `output_files/IBMRS6K7248.rbf`. For the
-90 MHz build, add `--verilog_macro="IBMRS6K7248_CPU90=1"` to `quartus_map`. A 90 MHz build depends on the
-fitter's placement: test each one before releasing it.
+90 MHz build, add `--verilog_macro="IBMRS6K7248_CPU90=1"` to `quartus_map` (the released one also used
+`--seed=1` on `quartus_fit`). A 90 MHz build depends on the fitter's placement: test each one before releasing it.
 
 The Verilator test bench (`sim/`) runs the whole machine from the firmware's reset vector:
 

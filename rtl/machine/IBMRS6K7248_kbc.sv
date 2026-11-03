@@ -18,11 +18,11 @@
 //
 //  The keyboard: reset (FA AA), identify (FA AB 83), enable and disable,
 //  the LEDs, the scan set (2, 3 as AIX selects it, or 1 as Windows NT's ARC does; asked, it answers which), the set 3
-//  key types (FB/FC/FD and their key lists: all keys stay make/break), typematic, echo, FE for a
+//  key types (FB/FC/FD and their key lists: which keys repeat; all keys stay make/break), typematic, echo, FE for a
 //  byte that is not a command;
 //  its keys in set 2 (E0 for extended keys, F0 before a release); a key held repeats its make code
-//  (typematic: F3's delay, 250-1000 ms, and rate, 2-30 a second; 500 ms and 10.9 by default; every
-//  key, as the set 3 key types are not kept). The
+//  (typematic: F3's delay, 250-1000 ms, and rate, 2-30 a second; 500 ms and 10.9 by default; in set 3
+//  not the keys listed after FC or FD, nor any after F8 or F9). The
 //  mouse: reset (FA AA 00), identify (FA 00), enable and disable
 //  streaming, defaults, sample rate, resolution, scaling, status (FA 00 02
 //  64), read data; its movement as three-byte packets while streaming.
@@ -273,6 +273,15 @@ logic       k_set3;                     // scan set 3 selected (F0 03; else set 
 logic       k_set1;                     // scan set 1 selected (F0 01: its codes are the 8042's translated ones)
 logic       k_list;                     // after FB/FC/FD: key codes follow until the next command
 logic [7:0] k_rate;                     // typematic: F3's byte (bits 6:5 the delay, 4:0 the rate)
+logic [7:0] k_lcmd;                     // the FB/FC/FD a key list follows
+// set 3's key types: which keys do not repeat, in a block RAM by set 3 code: {generation, not typematic};
+// an entry counts while its generation is k_gen, else k_def holds (F7-FA set every key: a new generation)
+(* ramstyle = "M10K, no_rw_check" *) logic [8:0] ty_ram [256];
+logic [8:0] ty_q;
+logic [7:0] k_gen;
+logic       k_def;
+logic       ty_we;
+logic [7:0] ty_wa;
 // mouse device
 logic       m_on;
 logic [7:0] m_wait;
@@ -293,7 +302,7 @@ wire mouse_ev = mt[2] != mt[1];
 localparam int TICK = CLK_HZ / 240;
 logic [23:0] t_div;
 logic  [8:0] t_key;                     // {extended, set 2 code}
-logic        t_held;
+logic        t_held, t_chk;
 logic  [7:0] t_left;
 wire         t_tick = t_div == 24'd0;
 wire         rep_ev = t_held && t_tick && t_left == 8'd0 && !key_ev;
@@ -312,7 +321,14 @@ always_ff @(posedge clk) begin
 		end
 		else if (ps2_key[8:0] == t_key) t_held <= 1'b0;
 	end
-	if (reset) begin t_div <= '0; t_held <= 1'b0; t_left <= '0; end
+	// (a key's type, a clock after its make: not typematic in set 3, it does not repeat)
+	t_chk <= key_ev && ps2_key[9];
+	if (t_chk && k_set3 && !cbyte[6] && (ty_q[8:1] == k_gen ? ty_q[0] : k_def)) t_held <= 1'b0;
+	if (reset) begin t_div <= '0; t_held <= 1'b0; t_left <= '0; t_chk <= 1'b0; end
+end
+always_ff @(posedge clk) begin
+	if (ty_we) ty_ram[ty_wa] <= {k_gen, k_lcmd != 8'hFB};
+	ty_q <= ty_ram[set3(ps2_key[8], ps2_key[7:0])];
 end
 
 // queue pushes: up to four bytes for one queue in a cycle, from these (registered, then fed into the
@@ -435,6 +451,7 @@ end
 
 always_ff @(posedge clk) begin
 	rst <= 1'b0;
+	ty_we <= 1'b0;
 
 	// queues in
 	if (k_pop) kq_w <= kq_w + 4'd1;
@@ -501,9 +518,10 @@ always_ff @(posedge clk) begin
 							if (k_wait == 8'hF3) k_rate <= wdata;              // the typematic delay and rate
 							k_wait <= 8'h00;
 						end
-						else if (k_list && !k_cmd(wdata)) ;      // a key code after FB/FC/FD: all keys stay make/break, and repeat
+						else if (k_list && !k_cmd(wdata)) begin ty_we <= 1'b1; ty_wa <= wdata; end   // a key after FB/FC/FD: its type
 						else begin
 							k_list <= wdata == 8'hFB || wdata == 8'hFC || wdata == 8'hFD;
+							k_lcmd <= wdata;
 							// (enable, disable, defaults and reset clear the keyboard's buffer, as a keyboard does: the
 							// queued keys are dropped, the answer staged behind them still comes; else keys typed to ARC
 							// and not read reached NT's setup, which took them for its Welcome screen's choices)
@@ -511,8 +529,10 @@ always_ff @(posedge clk) begin
 								8'hED, 8'hF0, 8'hF3: k_wait <= wdata;
 								8'hF4: begin k_on <= 1'b1; kq_r <= kq_w; end
 								8'hF5: begin k_on <= 1'b0; kq_r <= kq_w; end
-								8'hF6: begin k_on <= 1'b1; kq_r <= kq_w; k_rate <= 8'h2B; end
-								8'hFF: begin k_on <= 1'b1; k_set3 <= 1'b0; k_set1 <= 1'b0; kq_r <= kq_w; k_rate <= 8'h2B; end   // the reset: set 2 again
+								8'hF7, 8'hFA: begin k_def <= 1'b0; k_gen <= k_gen + 8'd1; end   // every key typematic
+								8'hF8, 8'hF9: begin k_def <= 1'b1; k_gen <= k_gen + 8'd1; end   // none
+								8'hF6: begin k_on <= 1'b1; kq_r <= kq_w; k_rate <= 8'h2B; k_def <= 1'b0; k_gen <= k_gen + 8'd1; end
+								8'hFF: begin k_on <= 1'b1; k_set3 <= 1'b0; k_set1 <= 1'b0; kq_r <= kq_w; k_rate <= 8'h2B; k_def <= 1'b0; k_gen <= k_gen + 8'd1; end   // the reset: set 2 again
 								default: ;
 							endcase
 						end
@@ -534,7 +554,7 @@ always_ff @(posedge clk) begin
 	if (reset) begin
 		kq_r <= '0; kq_w <= '0; mq_r <= '0; mq_w <= '0;
 		obf <= 1'b0; ob_aux <= 1'b0; cbyte <= 8'h00; a2 <= 1'b0; pend <= 8'h00; outport <= 8'hCF;
-		gap <= '0; k_on <= 1'b1; k_wait <= 8'h00; k_set3 <= 1'b0; k_set1 <= 1'b0; k_list <= 1'b0; k_rate <= 8'h2B; m_on <= 1'b0; m_wait <= 8'h00;
+		gap <= '0; k_on <= 1'b1; k_wait <= 8'h00; k_set3 <= 1'b0; k_set1 <= 1'b0; k_list <= 1'b0; k_rate <= 8'h2B; k_lcmd <= 8'h00; k_def <= 1'b0; k_gen <= k_gen + 8'd1; m_on <= 1'b0; m_wait <= 8'h00;
 		m_rate <= 8'd100; m_res <= 8'd2; m_scale <= 1'b0;
 	end
 end

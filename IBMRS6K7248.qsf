@@ -52,7 +52,7 @@ set_global_assignment -name SEED 2
 
 
 # CD audio: the CD drive's player (PLAY AUDIO from CUE/BIN and CHD images; needs the ibmrs6k Main); comment out to leave it out
-#set_global_assignment -name VERILOG_MACRO "IBMRS6K7248_CDAUDIO=1"   # (off for the os2l probe build: it did not fit with it)
+set_global_assignment -name VERILOG_MACRO "IBMRS6K7248_CDAUDIO=1"
 
 # the Power Series 850's IDE CD-ROM: an ATAPI drive on the primary IDE channel under the OSD's Model 850 (OS/2's
 # install boot loads only the IDE driver); the same CD image as the SCSI CD-ROM. Comment out to leave it out
